@@ -14,4 +14,9 @@ public interface VentaJPARepository extends JpaRepository<VentaEntity, Long> {
     List<VentaEntity> findByEmpresaId(Integer empresaId);
     
     List<VentaEntity> findByEmpresaIdAndFechaEmisionBetween(Integer empresaId, LocalDateTime desde, LocalDateTime hasta);
+
+    List<VentaEntity> findByClienteIdAndEmpresaIdOrderByFechaEmisionAsc(Long clienteId, Integer empresaId);
+
+    List<VentaEntity> findByClienteIdAndEmpresaIdAndFechaEmisionBetweenOrderByFechaEmisionAsc(
+            Long clienteId, Integer empresaId, LocalDateTime desde, LocalDateTime hasta);
 }

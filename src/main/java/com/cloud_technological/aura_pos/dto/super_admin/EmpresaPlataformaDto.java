@@ -14,6 +14,9 @@ public class EmpresaPlataformaDto {
     private String nit;
     private String dv;
     private String logoUrl;
+    private String telefono;
+    private String municipio;
+    private Integer municipioId;
     private Boolean activa;
     private LocalDateTime createdAt;
     // Stats en vivo

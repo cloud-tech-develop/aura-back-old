@@ -15,5 +15,9 @@ public class UpdateEmpresaPlataformaDto {
     private String nombreComercial;
 
     private String dv;
+    private String logoUrl;
+    private String telefono;
+    private String municipio;
+    private Integer municipioId;
     private Boolean activa;
 }

@@ -12,8 +12,8 @@ import lombok.Setter;
 public class CreateProductoPrecioDto {
     @NotNull(message = "La lista de precios es obligatoria")
     private Long listaPrecioId;
-    @NotNull(message = "La presentación del producto es obligatoria")
-    private Long productoPresentacionId;
+    private Long productoPresentacionId; // opcional si se indica productoId
+    private Long productoId;             // opcional si se indica productoPresentacionId
     @NotNull(message = "El precio es obligatorio")
     private BigDecimal precio;
     private BigDecimal utilidadEsperada;

@@ -9,4 +9,5 @@ import com.cloud_technological.aura_pos.entity.ProductoPrecioEntity;
 public interface ProductoPrecioJPARepository extends JpaRepository<ProductoPrecioEntity, Long> {
     Optional<ProductoPrecioEntity> findByIdAndListaPrecioEmpresaId(Long id, Integer empresaId);
     boolean existsByListaPrecioIdAndProductoPresentacionId(Long listaPrecioId, Long productoPresentacionId);
+    boolean existsByListaPrecioIdAndProductoId(Long listaPrecioId, Long productoId);
 }

@@ -1,10 +1,11 @@
 package com.cloud_technological.aura_pos.repositories.movimiento_caja;
 
-/**
- * @deprecated Repositorio eliminado. La funcionalidad fue reemplazada por
- * AbonoCobrarJPARepository y AbonoPagarJPARepository.
- */
-@Deprecated
-public interface MovimientoCajaJPARepository {
-    // Repositorio eliminado — ver AbonoCobrarJPARepository y AbonoPagarJPARepository
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
+
+public interface MovimientoCajaJPARepository extends JpaRepository<MovimientoCajaEntity, Long> {
+    List<MovimientoCajaEntity> findByTurnoCajaIdOrderByCreatedAtAsc(Long turnoCajaId);
 }

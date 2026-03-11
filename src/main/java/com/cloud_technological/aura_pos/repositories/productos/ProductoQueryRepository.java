@@ -113,7 +113,8 @@ public class ProductoQueryRepository {
                 p.id,
                 p.sku,
                 p.nombre,
-                p.precio
+                p.precio,
+                p.tipo_producto
             FROM producto p
             WHERE p.empresa_id = :empresaId
               AND p.deleted_at IS NULL
@@ -270,9 +271,10 @@ public class ProductoQueryRepository {
             p.descripcion,
             p.imagen_url         AS imagenUrl,
             p.tipo_producto      AS tipoProducto,
-            p.maneja_inventario  AS manejaInventario,
-            p.maneja_lotes       AS manejaLotes,
-            p.maneja_serial      AS manejaSerial,
+            p.maneja_inventario          AS manejaInventario,
+            p.maneja_lotes               AS manejaLotes,
+            p.maneja_serial              AS manejaSerial,
+            p.permitir_stock_negativo    AS permitirStockNegativo,
             p.precio,
             p.costo,
             p.iva_porcentaje     AS ivaPorcentaje,

@@ -23,6 +23,7 @@ import com.cloud_technological.aura_pos.entity.AbonoPagarEntity;
 import com.cloud_technological.aura_pos.entity.CajaEntity;
 import com.cloud_technological.aura_pos.entity.CuentaCobrarEntity;
 import com.cloud_technological.aura_pos.entity.CuentaPagarEntity;
+import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
 import com.cloud_technological.aura_pos.mappers.TurnoCajaMapper;
@@ -31,6 +32,7 @@ import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJ
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.AbonoPagarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository;
+import com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
@@ -52,6 +54,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     private final AbonoPagarJPARepository abonoPagarRepository;
     private final CuentaCobrarJPARepository cuentaCobrarRepository;
     private final CuentaPagarJPARepository cuentaPagarRepository;
+    private final MovimientoCajaJPARepository movimientoCajaRepository;
 
     @Autowired
     public TurnoCajaServiceImpl(TurnoCajaQueryRepository turnoRepository,
@@ -62,7 +65,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             AbonoCobrarJPARepository abonoCobrarRepository,
             AbonoPagarJPARepository abonoPagarRepository,
             CuentaCobrarJPARepository cuentaCobrarRepository,
-            CuentaPagarJPARepository cuentaPagarRepository) {
+            CuentaPagarJPARepository cuentaPagarRepository,
+            MovimientoCajaJPARepository movimientoCajaRepository) {
         this.turnoRepository = turnoRepository;
         this.turnoJPARepository = turnoJPARepository;
         this.cajaJPARepository = cajaJPARepository;
@@ -72,6 +76,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         this.abonoPagarRepository = abonoPagarRepository;
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.cuentaPagarRepository = cuentaPagarRepository;
+        this.movimientoCajaRepository = movimientoCajaRepository;
     }
 
     @Override
@@ -129,12 +134,18 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         if (turno.getEstado().equals("CERRADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno ya está cerrado");
 
-        BigDecimal totalSistema = turnoRepository.calcularTotalEfectivoSistema(id);
+        BigDecimal totalSistema  = turnoRepository.calcularTotalEfectivoSistema(id);
+        BigDecimal sumIngresos   = abonoCobrarRepository.sumMontoByTurnoCajaId(id);
+        BigDecimal sumEgresos    = abonoPagarRepository.sumMontoByTurnoCajaId(id);
+        BigDecimal ingresos      = sumIngresos != null ? sumIngresos : BigDecimal.ZERO;
+        BigDecimal egresos       = sumEgresos  != null ? sumEgresos  : BigDecimal.ZERO;
+        BigDecimal comisiones    = turnoRepository.totalComisionesTurno(id);
+        BigDecimal totalEsperado = turno.getBaseInicial().add(totalSistema).add(ingresos).subtract(egresos).subtract(comisiones);
 
         turno.setFechaCierre(LocalDateTime.now());
         turno.setTotalEfectivoSistema(totalSistema);
         turno.setTotalEfectivoReal(dto.getTotalEfectivoReal());
-        turno.setDiferencia(dto.getTotalEfectivoReal().subtract(turno.getBaseInicial().add(totalSistema)));
+        turno.setDiferencia(dto.getTotalEfectivoReal().subtract(totalEsperado));
         turno.setEstado("CERRADA");
         turnoJPARepository.save(turno);
 
@@ -218,8 +229,15 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             return abonoPagarToDto(saved);
         }
 
-        throw new GlobalException(HttpStatus.BAD_REQUEST,
-                "Debe indicar una cuenta por cobrar (INGRESO) o una cuenta por pagar (EGRESO)");
+        MovimientoCajaEntity movimiento = MovimientoCajaEntity.builder()
+                .turnoCaja(turno)
+                .usuario(usuario)
+                .tipo(dto.getTipo())
+                .concepto(dto.getConcepto())
+                .monto(dto.getMonto())
+                .build();
+        MovimientoCajaEntity saved = movimientoCajaRepository.save(movimiento);
+        return movimientoCajaToDto(saved);
     }
 
     // ─── Conversores ────────────────────────────────────────────────────────────
@@ -251,6 +269,17 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             dto.setCuentaNumero(e.getCuentaPagar().getNumeroCuenta());
             dto.setTerceroNombre(resolverNombreTercero(e.getCuentaPagar().getTercero()));
         }
+        return dto;
+    }
+
+    private MovimientoCajaDto movimientoCajaToDto(MovimientoCajaEntity e) {
+        MovimientoCajaDto dto = new MovimientoCajaDto();
+        dto.setId(e.getId());
+        dto.setTipo(e.getTipo());
+        dto.setConcepto(e.getConcepto());
+        dto.setMonto(e.getMonto());
+        dto.setFecha(e.getCreatedAt() != null ? e.getCreatedAt().toString() : null);
+        dto.setUsuarioNombre(e.getUsuario() != null ? e.getUsuario().getUsername() : null);
         return dto;
     }
 
@@ -294,49 +323,66 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         resumen.setTotalNeto(toBD(totales.get("total_neto")));
         resumen.setTotalTransacciones(toInt(totales.get("total_transacciones")));
 
-        if ("ABIERTA".equals(entity.getEstado())) {
-            BigDecimal efectivoSistema = turnoRepository.calcularTotalEfectivoSistema(turnoId);
-            resumen.setTotalEfectivoSistema(efectivoSistema);
-            resumen.setTotalEsperado(entity.getBaseInicial().add(efectivoSistema));
-            resumen.setTotalEfectivoReal(null);
-            resumen.setDiferencia(null);
-        } else {
-            resumen.setTotalEfectivoSistema(entity.getTotalEfectivoSistema());
-            resumen.setTotalEfectivoReal(entity.getTotalEfectivoReal());
-            resumen.setDiferencia(entity.getDiferencia());
-            resumen.setTotalEsperado(
-                entity.getBaseInicial().add(
-                    entity.getTotalEfectivoSistema() != null
-                        ? entity.getTotalEfectivoSistema()
-                        : BigDecimal.ZERO
-                )
-            );
-        }
-
-        // Construir lista unificada de movimientos desde abonos a cobrar y a pagar
+        // Movimientos (se calculan primero para incluirlos en totalEsperado)
         List<MovimientoCajaDto> movimientos = new ArrayList<>();
-
         abonoCobrarRepository.findByTurnoCajaIdOrderByFechaPagoAsc(turnoId)
-                .stream()
-                .map(this::abonoCobrarToDto)
-                .forEach(movimientos::add);
-
+                .stream().map(this::abonoCobrarToDto).forEach(movimientos::add);
         abonoPagarRepository.findByTurnoCajaIdOrderByFechaPagoAsc(turnoId)
-                .stream()
-                .map(this::abonoPagarToDto)
-                .forEach(movimientos::add);
-
-        // Ordenar la lista combinada por fecha ascendente
+                .stream().map(this::abonoPagarToDto).forEach(movimientos::add);
+        movimientoCajaRepository.findByTurnoCajaIdOrderByCreatedAtAsc(turnoId)
+                .stream().map(this::movimientoCajaToDto).forEach(movimientos::add);
         movimientos.sort(Comparator.comparing(
                 m -> m.getFecha() != null ? m.getFecha() : "",
                 Comparator.naturalOrder()));
 
-        BigDecimal totalIngresos = abonoCobrarRepository.sumMontoByTurnoCajaId(turnoId);
-        BigDecimal totalEgresos  = abonoPagarRepository.sumMontoByTurnoCajaId(turnoId);
+        BigDecimal totalIngresosAbonos = abonoCobrarRepository.sumMontoByTurnoCajaId(turnoId);
+        BigDecimal totalEgresosAbonos  = abonoPagarRepository.sumMontoByTurnoCajaId(turnoId);
+        
+        List<MovimientoCajaEntity> movimientosCaja = movimientoCajaRepository.findByTurnoCajaIdOrderByCreatedAtAsc(turnoId);
+        BigDecimal totalIngresosCaja = BigDecimal.ZERO;
+        BigDecimal totalEgresosCaja = BigDecimal.ZERO;
+        for (MovimientoCajaEntity m : movimientosCaja) {
+            if ("INGRESO".equals(m.getTipo())) {
+                totalIngresosCaja = totalIngresosCaja.add(m.getMonto());
+            } else if ("EGRESO".equals(m.getTipo())) {
+                totalEgresosCaja = totalEgresosCaja.add(m.getMonto());
+            }
+        }
+        
+        BigDecimal ingresosBD    = (totalIngresosAbonos != null ? totalIngresosAbonos : BigDecimal.ZERO).add(totalIngresosCaja);
+        BigDecimal egresosBD     = (totalEgresosAbonos  != null ? totalEgresosAbonos  : BigDecimal.ZERO).add(totalEgresosCaja);
+
+        var comisionesList = turnoRepository.comisionesPorTurno(turnoId);
+        BigDecimal totalComisiones = comisionesList.stream()
+                .map(c -> c.getTotalComision() != null ? c.getTotalComision() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal efectivoSistema;
+        if ("ABIERTA".equals(entity.getEstado())) {
+            efectivoSistema = turnoRepository.calcularTotalEfectivoSistema(turnoId);
+            resumen.setTotalEfectivoSistema(efectivoSistema);
+            resumen.setTotalEfectivoReal(null);
+            resumen.setDiferencia(null);
+        } else {
+            efectivoSistema = entity.getTotalEfectivoSistema() != null
+                    ? entity.getTotalEfectivoSistema() : BigDecimal.ZERO;
+            resumen.setTotalEfectivoSistema(entity.getTotalEfectivoSistema());
+            resumen.setTotalEfectivoReal(entity.getTotalEfectivoReal());
+            resumen.setDiferencia(entity.getDiferencia());
+        }
+
+        BigDecimal totalEsperado = entity.getBaseInicial()
+                .add(efectivoSistema)
+                .add(ingresosBD)
+                .subtract(egresosBD)
+                .subtract(totalComisiones);
+        resumen.setTotalEsperado(totalEsperado);
 
         resumen.setMovimientos(movimientos);
-        resumen.setTotalIngresos(totalIngresos != null ? totalIngresos : BigDecimal.ZERO);
-        resumen.setTotalEgresos(totalEgresos   != null ? totalEgresos  : BigDecimal.ZERO);
+        resumen.setTotalIngresos(ingresosBD);
+        resumen.setTotalEgresos(egresosBD);
+        resumen.setComisiones(comisionesList);
+        resumen.setTotalComisiones(totalComisiones);
 
         return resumen;
     }

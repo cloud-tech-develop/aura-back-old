@@ -13,6 +13,7 @@ import com.cloud_technological.aura_pos.dto.lista_precios.ProductoPrecioDto;
 import com.cloud_technological.aura_pos.dto.lista_precios.ProductoPrecioTableDto;
 import com.cloud_technological.aura_pos.dto.lista_precios.UpdateProductoPrecioDto;
 import com.cloud_technological.aura_pos.entity.ListaPreciosEntity;
+import com.cloud_technological.aura_pos.entity.ProductoEntity;
 import com.cloud_technological.aura_pos.entity.ProductoPrecioEntity;
 import com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity;
 import com.cloud_technological.aura_pos.mappers.ProductoPrecioMapper;
@@ -20,6 +21,7 @@ import com.cloud_technological.aura_pos.repositories.precios_listas_productos.Li
 import com.cloud_technological.aura_pos.repositories.precios_listas_productos.ProductoPrecioJPARepository;
 import com.cloud_technological.aura_pos.repositories.precios_listas_productos.ProductoPrecioQueryRepository;
 import com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository;
+import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.services.ProductoPrecioService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -31,6 +33,7 @@ public class ProductoPrecioServiceImpl implements ProductoPrecioService {
     private final ProductoPrecioJPARepository productoPrecioJPARepository;
     private final ListaPreciosJPARepository listaPreciosJPARepository;
     private final ProductoPresentacionJPARepository presentacionJPARepository;
+    private final ProductoJPARepository productoJPARepository;
     private final ProductoPrecioMapper productoPrecioMapper;
 
     @Autowired
@@ -39,11 +42,13 @@ public class ProductoPrecioServiceImpl implements ProductoPrecioService {
             ProductoPrecioJPARepository productoPrecioJPARepository,
             ListaPreciosJPARepository listaPreciosJPARepository,
             ProductoPresentacionJPARepository presentacionJPARepository,
+            ProductoJPARepository productoJPARepository,
             ProductoPrecioMapper productoPrecioMapper) {
         this.productoPrecioRepository = productoPrecioRepository;
         this.productoPrecioJPARepository = productoPrecioJPARepository;
         this.listaPreciosJPARepository = listaPreciosJPARepository;
         this.presentacionJPARepository = presentacionJPARepository;
+        this.productoJPARepository = productoJPARepository;
         this.productoPrecioMapper = productoPrecioMapper;
     }
 
@@ -67,20 +72,33 @@ public class ProductoPrecioServiceImpl implements ProductoPrecioService {
     @Override
     @Transactional
     public ProductoPrecioDto crear(CreateProductoPrecioDto dto, Integer empresaId) {
-        if (productoPrecioJPARepository.existsByListaPrecioIdAndProductoPresentacionId(
-                dto.getListaPrecioId(), dto.getProductoPresentacionId()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "Este producto ya tiene precio en esta lista");
+        if (dto.getProductoPresentacionId() == null && dto.getProductoId() == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe indicar el producto o la presentación");
 
         ListaPreciosEntity lista = listaPreciosJPARepository.findByIdAndEmpresaId(dto.getListaPrecioId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Lista de precios no encontrada"));
 
-        ProductoPresentacionEntity presentacion = presentacionJPARepository
-                .findByIdAndProductoEmpresaId(dto.getProductoPresentacionId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Presentación no encontrada"));
-
         ProductoPrecioEntity entity = productoPrecioMapper.toEntity(dto);
         entity.setListaPrecio(lista);
-        entity.setProductoPresentacion(presentacion);
+
+        if (dto.getProductoPresentacionId() != null) {
+            if (productoPrecioJPARepository.existsByListaPrecioIdAndProductoPresentacionId(
+                    dto.getListaPrecioId(), dto.getProductoPresentacionId()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Este producto ya tiene precio en esta lista");
+
+            ProductoPresentacionEntity presentacion = presentacionJPARepository
+                    .findByIdAndProductoEmpresaId(dto.getProductoPresentacionId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Presentación no encontrada"));
+            entity.setProductoPresentacion(presentacion);
+        } else {
+            if (productoPrecioJPARepository.existsByListaPrecioIdAndProductoId(
+                    dto.getListaPrecioId(), dto.getProductoId()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Este producto ya tiene precio en esta lista");
+
+            ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Producto no encontrado"));
+            entity.setProducto(producto);
+        }
 
         return productoPrecioMapper.toDto(productoPrecioJPARepository.save(entity));
     }

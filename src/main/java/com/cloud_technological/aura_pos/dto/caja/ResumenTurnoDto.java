@@ -43,4 +43,8 @@ public class ResumenTurnoDto {
     private List<MovimientoCajaDto> movimientos = new ArrayList<>();
     private BigDecimal totalIngresos = BigDecimal.ZERO;
     private BigDecimal totalEgresos  = BigDecimal.ZERO;
+
+    // Comisiones generadas en el turno
+    private List<ComisionResumenTurnoDto> comisiones = new ArrayList<>();
+    private BigDecimal totalComisiones = BigDecimal.ZERO;
 }

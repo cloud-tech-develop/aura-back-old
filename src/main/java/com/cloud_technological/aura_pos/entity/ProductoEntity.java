@@ -63,6 +63,9 @@ public class ProductoEntity {
     @Column(name = "maneja_serial")
     private Boolean manejaSerial;
 
+    @Column(name = "permitir_stock_negativo")
+    private Boolean permitirStockNegativo = false;
+
     private BigDecimal costo;
     private BigDecimal precio;
 

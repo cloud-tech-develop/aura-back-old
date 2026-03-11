@@ -5,6 +5,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import com.cloud_technological.aura_pos.dto.merma.CreateMotivoMermaDto;
 import com.cloud_technological.aura_pos.dto.merma.MotivoMermaDto;
 import com.cloud_technological.aura_pos.dto.merma.MotivoMermaTableDto;
@@ -43,6 +46,14 @@ public class MotivoMermaServiceImpl implements MotivoMermaService {
     @Override
     public PageImpl<MotivoMermaTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         return motivoRepository.listar(pageable, empresaId);
+    }
+
+    @Override
+    public List<MotivoMermaDto> listarTodos(Integer empresaId) {
+        return motivoJPARepository.findByEmpresaIdOrderByNombreAsc(empresaId)
+                .stream()
+                .map(motivoMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override

@@ -25,6 +25,7 @@ public class CreateProductoDto {
     private Boolean manejaInventario = true;
     private Boolean manejaLotes = false;
     private Boolean manejaSerial = false;
+    private Boolean permitirStockNegativo = false;
     private BigDecimal costo = BigDecimal.ZERO;
     private BigDecimal precio = BigDecimal.ZERO;
     private BigDecimal ivaPorcentaje = BigDecimal.ZERO;

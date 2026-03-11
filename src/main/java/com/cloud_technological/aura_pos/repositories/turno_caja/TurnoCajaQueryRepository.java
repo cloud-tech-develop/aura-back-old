@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.cloud_technological.aura_pos.dto.caja.ComisionResumenTurnoDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaTableDto;
 import com.cloud_technological.aura_pos.dto.caja.VentaCategoriaDto;
@@ -176,6 +177,47 @@ public class TurnoCajaQueryRepository {
         return jdbcTemplate.query(sql,
             new MapSqlParameterSource("turnoId", turnoId),
             new BeanPropertyRowMapper<>(VentaMetodoPagoDto.class));
+    }
+
+    // Comisiones agrupadas por técnico para el turno (incluye estado de liquidación)
+    public List<ComisionResumenTurnoDto> comisionesPorTurno(Long turnoId) {
+        String sql = """
+            SELECT
+                CONCAT(t.nombres, ' ', t.apellidos) AS tecnico_nombre,
+                COUNT(cv.id)::INT                   AS total_servicios,
+                SUM(cv.valor_tecnico)               AS total_comision,
+                CASE
+                    WHEN COUNT(CASE WHEN cv.liquidacion_id IS NULL THEN 1 END) > 0
+                        THEN 'SIN_LIQUIDAR'
+                    WHEN COUNT(CASE WHEN cl.estado = 'PENDIENTE' THEN 1 END) > 0
+                        THEN 'PENDIENTE'
+                    ELSE 'PAGADA'
+                END AS estado_liquidacion
+            FROM comision_venta cv
+            JOIN venta v    ON cv.venta_id    = v.id
+            JOIN usuario u  ON cv.tecnico_id  = u.id
+            JOIN tercero t  ON u.tercero_id   = t.id
+            LEFT JOIN comision_liquidacion cl ON cv.liquidacion_id = cl.id
+            WHERE v.turno_caja_id = :turnoId
+            GROUP BY u.id, t.nombres, t.apellidos
+            ORDER BY total_comision DESC
+            """;
+        return jdbcTemplate.query(sql,
+            new MapSqlParameterSource("turnoId", turnoId),
+            new BeanPropertyRowMapper<>(ComisionResumenTurnoDto.class));
+    }
+
+    // Suma total de comisiones del turno (para calcular totalEsperado)
+    public BigDecimal totalComisionesTurno(Long turnoId) {
+        String sql = """
+            SELECT COALESCE(SUM(cv.valor_tecnico), 0)
+            FROM comision_venta cv
+            JOIN venta v ON cv.venta_id = v.id
+            WHERE v.turno_caja_id = :turnoId
+            """;
+        BigDecimal total = jdbcTemplate.queryForObject(sql,
+            new MapSqlParameterSource("turnoId", turnoId), BigDecimal.class);
+        return total != null ? total : BigDecimal.ZERO;
     }
 
     // Totales generales del turno

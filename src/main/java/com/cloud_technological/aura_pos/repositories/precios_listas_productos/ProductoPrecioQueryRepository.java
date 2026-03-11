@@ -31,24 +31,26 @@ public class ProductoPrecioQueryRepository {
                 lp.nombre AS lista_precio_nombre,
                 pp.producto_presentacion_id,
                 pres.nombre AS producto_presentacion_nombre,
-                p.nombre AS producto_nombre,
+                COALESCE(p_pres.id, p_dir.id) AS producto_id,
+                COALESCE(p_pres.nombre, p_dir.nombre) AS producto_nombre,
                 pp.precio,
                 pp.utilidad_esperada,
                 COUNT(*) OVER() AS total_rows
             FROM producto_precio pp
             INNER JOIN lista_precios lp ON pp.lista_precio_id = lp.id
-            INNER JOIN producto_presentacion pres ON pp.producto_presentacion_id = pres.id
-            INNER JOIN producto p ON pres.producto_id = p.id
+            LEFT JOIN producto_presentacion pres ON pp.producto_presentacion_id = pres.id
+            LEFT JOIN producto p_pres ON pres.producto_id = p_pres.id AND p_pres.deleted_at IS NULL
+            LEFT JOIN producto p_dir ON pp.producto_id = p_dir.id AND p_dir.deleted_at IS NULL
             WHERE lp.empresa_id = :empresaId
             AND lp.activa = true
-            AND p.deleted_at IS NULL
+            AND (p_pres.id IS NOT NULL OR p_dir.id IS NOT NULL)
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
 
         if (!search.isEmpty()) {
             sql.append("""
-                AND (LOWER(p.nombre) LIKE :search
+                AND (LOWER(COALESCE(p_pres.nombre, p_dir.nombre)) LIKE :search
                 OR LOWER(lp.nombre) LIKE :search
                 OR LOWER(pres.nombre) LIKE :search)
             """);
@@ -74,15 +76,17 @@ public class ProductoPrecioQueryRepository {
                 lp.nombre AS lista_precio_nombre,
                 pp.producto_presentacion_id,
                 pres.nombre AS producto_presentacion_nombre,
-                p.nombre AS producto_nombre,
+                COALESCE(p_pres.id, p_dir.id) AS producto_id,
+                COALESCE(p_pres.nombre, p_dir.nombre) AS producto_nombre,
                 pp.precio,
                 pp.utilidad_esperada
             FROM producto_precio pp
             INNER JOIN lista_precios lp ON pp.lista_precio_id = lp.id
-            INNER JOIN producto_presentacion pres ON pp.producto_presentacion_id = pres.id
-            INNER JOIN producto p ON pres.producto_id = p.id
+            LEFT JOIN producto_presentacion pres ON pp.producto_presentacion_id = pres.id
+            LEFT JOIN producto p_pres ON pres.producto_id = p_pres.id AND p_pres.deleted_at IS NULL
+            LEFT JOIN producto p_dir ON pp.producto_id = p_dir.id AND p_dir.deleted_at IS NULL
             WHERE pp.lista_precio_id = :listaPrecioId
-            AND p.deleted_at IS NULL
+            AND (p_pres.id IS NOT NULL OR p_dir.id IS NOT NULL)
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("listaPrecioId", listaPrecioId);
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ProductoPrecioTableDto.class));

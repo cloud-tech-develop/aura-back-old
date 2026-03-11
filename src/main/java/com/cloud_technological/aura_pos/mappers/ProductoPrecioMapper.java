@@ -17,6 +17,7 @@ public interface ProductoPrecioMapper {
         @Mapping(target = "id", ignore = true),
         @Mapping(target = "listaPrecio", ignore = true),
         @Mapping(target = "productoPresentacion", ignore = true),
+        @Mapping(target = "producto", ignore = true),
     })
     ProductoPrecioEntity toEntity(CreateProductoPrecioDto dto);
 
@@ -25,7 +26,8 @@ public interface ProductoPrecioMapper {
         @Mapping(target = "listaPrecioNombre", source = "entity.listaPrecio.nombre"),
         @Mapping(target = "productoPresentacionId", source = "entity.productoPresentacion.id"),
         @Mapping(target = "productoPresentacionNombre", source = "entity.productoPresentacion.nombre"),
-        @Mapping(target = "productoNombre", source = "entity.productoPresentacion.producto.nombre"),
+        @Mapping(target = "productoId", expression = "java(entity.getProductoPresentacion() != null ? entity.getProductoPresentacion().getProducto().getId() : entity.getProducto().getId())"),
+        @Mapping(target = "productoNombre", expression = "java(entity.getProductoPresentacion() != null ? entity.getProductoPresentacion().getProducto().getNombre() : entity.getProducto().getNombre())"),
     })
     ProductoPrecioDto toDto(ProductoPrecioEntity entity);
 
@@ -33,6 +35,7 @@ public interface ProductoPrecioMapper {
         @Mapping(target = "id", ignore = true),
         @Mapping(target = "listaPrecio", ignore = true),
         @Mapping(target = "productoPresentacion", ignore = true),
+        @Mapping(target = "producto", ignore = true),
     })
     void updateEntityFromDto(UpdateProductoPrecioDto dto, @MappingTarget ProductoPrecioEntity entity);
 }
