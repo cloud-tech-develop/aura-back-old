@@ -156,6 +156,12 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.0.0</version>
         </dependency>
+        <!-- AWS SDK v2 S3 — Cloudflare R2 (S3-compatible) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.26.0</version>
+        </dependency>
 	</dependencies>
 
 	<build>

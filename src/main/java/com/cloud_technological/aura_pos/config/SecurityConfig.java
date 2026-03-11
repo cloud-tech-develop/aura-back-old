@@ -39,7 +39,9 @@ public class SecurityConfig {
             .cors(cors -> {})
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
+                .requestMatchers("/api/auth/forgot-password").permitAll()
+                .requestMatchers("/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/municipios/**").permitAll()
                 .requestMatchers("/api/platform/**").hasAuthority("PLATFORM_ADMIN")
                 .requestMatchers("/api/auth/register").hasAuthority("PLATFORM_ADMIN") 

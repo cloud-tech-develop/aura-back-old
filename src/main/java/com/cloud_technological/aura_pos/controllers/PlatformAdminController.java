@@ -21,6 +21,7 @@ import com.cloud_technological.aura_pos.dto.error_log.ErrorLogGrupoDto;
 import com.cloud_technological.aura_pos.dto.error_log.ErrorLogPageParamsDto;
 import com.cloud_technological.aura_pos.dto.error_log.ErrorLogTableDto;
 import com.cloud_technological.aura_pos.dto.super_admin.CreateEmpresaPlataformaDto;
+import com.cloud_technological.aura_pos.dto.super_admin.CreateEmpresaResponseDto;
 import com.cloud_technological.aura_pos.dto.super_admin.DashboardPlataformaDto;
 import com.cloud_technological.aura_pos.dto.super_admin.EmpresaPlataformaDto;
 import com.cloud_technological.aura_pos.dto.super_admin.EmpresaTableDto;
@@ -64,9 +65,9 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/empresas")
-    public ResponseEntity<ApiResponse<EmpresaPlataformaDto>> crear(
+    public ResponseEntity<ApiResponse<CreateEmpresaResponseDto>> crear(
             @Valid @RequestBody CreateEmpresaPlataformaDto dto) {
-        EmpresaPlataformaDto result = empresaService.crear(dto);
+        CreateEmpresaResponseDto result = empresaService.crear(dto);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Empresa creada exitosamente", false, result), HttpStatus.CREATED);
     }
 

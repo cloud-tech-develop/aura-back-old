@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.repositories.cuentas_cobrar;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,4 +11,7 @@ public interface CuentaCobrarJPARepository extends JpaRepository<CuentaCobrarEnt
     Optional<CuentaCobrarEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
     Optional<CuentaCobrarEntity> findByNumeroCuenta(String numeroCuenta);
     boolean existsByNumeroCuenta(String numeroCuenta);
+
+    List<CuentaCobrarEntity> findByTerceroIdAndEmpresaIdAndDeletedAtIsNullOrderByCreatedAtAsc(
+            Long terceroId, Integer empresaId);
 }

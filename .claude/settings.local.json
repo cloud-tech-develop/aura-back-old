@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./mvnw compile:*)",
+      "Bash(./mvnw test:*)",
+      "Read(//d/Proyectos Camilo/aura-post/**)",
+      "Read(//d/Proyectos Camilo/**)",
+      "Bash(npx tsc:*)",
+      "Bash(npx:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

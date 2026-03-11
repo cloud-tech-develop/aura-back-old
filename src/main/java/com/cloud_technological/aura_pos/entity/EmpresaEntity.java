@@ -43,6 +43,13 @@ public class EmpresaEntity {
     @Column(name = "logo_url")
     private String logoUrl;
 
+    private String telefono;
+
+    private String municipio;
+
+    @Column(name = "municipio_id")
+    private Integer municipioId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Object configuracion;

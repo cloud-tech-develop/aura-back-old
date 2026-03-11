@@ -24,6 +24,11 @@ public class CreateEmpresaPlataformaDto {
 
     private String dv;
 
+    private String logoUrl;
+    private String telefono;
+    private String municipio;
+    private Integer municipioId;
+
     // Datos del usuario SUPER_ADMIN de la empresa
     @NotBlank(message = "El email del administrador es obligatorio")
     @Email

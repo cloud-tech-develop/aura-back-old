@@ -3,7 +3,6 @@ package com.cloud_technological.aura_pos.mappers;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
-import org.mapstruct.Mappings;
 
 import com.cloud_technological.aura_pos.dto.usuarios.CreateUsuarioDto;
 import com.cloud_technological.aura_pos.dto.usuarios.UpdateUsuarioDto;
@@ -22,11 +21,14 @@ public interface UsuarioMapper {
     @Mapping(target = "sucursalesAsignadas", ignore = true)
     UsuarioEntity toEntity(CreateUsuarioDto dto);
 
+    
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "empresa", ignore = true)
     @Mapping(target = "tercero", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "username", source="dto.email")
     @Mapping(target = "sucursalesAsignadas", ignore = true)
+    @Mapping(target = "password", ignore = true)
     void updateEntityFromDto(UpdateUsuarioDto dto, @MappingTarget UsuarioEntity entity);
 
     @Mapping(target = "nombres", source = "tercero.nombres")

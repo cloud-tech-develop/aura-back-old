@@ -11,6 +11,7 @@ public class ProductoPrecioTableDto {
     private Long id;
     private Long listaPrecioId;
     private String listaPrecioNombre;
+    private Long productoId;
     private Long productoPresentacionId;
     private String productoPresentacionNombre;
     private String productoNombre;

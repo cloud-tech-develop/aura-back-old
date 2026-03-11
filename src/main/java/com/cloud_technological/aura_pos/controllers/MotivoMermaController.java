@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 import com.cloud_technological.aura_pos.dto.merma.CreateMotivoMermaDto;
 import com.cloud_technological.aura_pos.dto.merma.MotivoMermaDto;
 import com.cloud_technological.aura_pos.dto.merma.MotivoMermaTableDto;
@@ -34,6 +36,13 @@ public class MotivoMermaController {
 
     @Autowired
     private SecurityUtils securityUtils;
+
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponse<List<MotivoMermaDto>>> listarTodos() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<MotivoMermaDto> result = motivoService.listarTodos(empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
+    }
 
     @PostMapping("/page")
     public ResponseEntity<ApiResponse<PageImpl<MotivoMermaTableDto>>> listar(

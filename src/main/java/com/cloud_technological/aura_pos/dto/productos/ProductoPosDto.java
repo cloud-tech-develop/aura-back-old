@@ -20,6 +20,7 @@ public class ProductoPosDto {
     private Boolean manejaInventario;
     private Boolean manejaLotes;
     private Boolean manejaSerial;
+    private Boolean permitirStockNegativo;
     private BigDecimal precio;
     private BigDecimal costo;
     private BigDecimal ivaPorcentaje;

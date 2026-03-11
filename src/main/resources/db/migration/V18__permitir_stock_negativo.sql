@@ -1,0 +1,2 @@
+ALTER TABLE producto
+    ADD COLUMN IF NOT EXISTS permitir_stock_negativo BOOLEAN NOT NULL DEFAULT FALSE;

@@ -31,6 +31,10 @@ public class ProductoPrecioEntity {
     @JoinColumn(name = "producto_presentacion_id")
     private ProductoPresentacionEntity productoPresentacion;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "producto_id")
+    private ProductoEntity producto;
+
     private BigDecimal precio;
 
     @Column(name = "utilidad_esperada")

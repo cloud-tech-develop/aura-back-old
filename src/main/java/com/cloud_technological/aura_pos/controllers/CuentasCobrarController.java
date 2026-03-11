@@ -17,6 +17,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.cloud_technological.aura_pos.services.implementations.CuentaPdfService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
 
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.AbonoCobrarDto;
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.CuentaCobrarDto;
@@ -35,6 +39,9 @@ public class CuentasCobrarController {
 
     @Autowired
     private CuentaCobrarService cuentaCobrarService;
+
+    @Autowired
+    private CuentaPdfService cuentaPdfService;
 
     @Autowired
     private SecurityUtils securityUtils;
@@ -122,5 +129,26 @@ public class CuentasCobrarController {
         Integer empresaId = securityUtils.getEmpresaId();
         List<CuentaCobrarTableDto> vencidas = cuentaCobrarService.obtenerVencidas(empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Cuentas vencidas", false, vencidas), HttpStatus.OK);
+    }
+
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> descargarPdf(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        byte[] pdf = cuentaPdfService.generarFacturaCuentaCobrar(id, empresaId);
+        return respuestaPdf(pdf, "cuenta_cobrar_" + id + ".pdf");
+    }
+
+    @GetMapping("/abonos/{abonoId}/pdf")
+    public ResponseEntity<byte[]> descargarAbonoPdf(@PathVariable Long abonoId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        byte[] pdf = cuentaPdfService.generarReciboCajaCobrar(abonoId, empresaId);
+        return respuestaPdf(pdf, "recibo_caja_" + abonoId + ".pdf");
+    }
+
+    private ResponseEntity<byte[]> respuestaPdf(byte[] bytes, String filename) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.attachment().filename(filename).build());
+        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
     }
 }
