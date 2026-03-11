@@ -11,9 +11,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**") // Aplica a todos los endpoints
-                .allowedOrigins("http://localhost:4200", "https://aura-post.vercel.app/", "https://www.aura-pos.tech/","https://aura-pos.tech/") // Permite
-                                                                                                                        // el
-                                                                                                                        // frontend
+                .allowedOrigins("*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true) // Importante si manejas autenticación con cookies o tokens
