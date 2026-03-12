@@ -38,13 +38,14 @@ public class CierreContableQueryRepository {
               AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
             """, params);
 
-        // ── Compras ───────────────────────────────────────────
+        // ── Compras (solo RECIBIDA) ───────────────────────────
         Map<String, Object> compras = jdbc.queryForMap("""
             SELECT
                 COUNT(c.id)                    AS cantidad_compras,
                 COALESCE(SUM(c.total), 0)      AS total_compras_neto
             FROM compra c
             WHERE c.empresa_id = :empresaId
+              AND c.estado      = 'RECIBIDA'
               AND DATE(c.fecha) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
             """, params);
 
@@ -58,6 +59,32 @@ public class CierreContableQueryRepository {
             WHERE v.empresa_id   = :empresaId
               AND v.estado_venta = 'COMPLETADA'
               AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
+        // ── Mermas (solo APROBADA) ────────────────────────────
+        Map<String, Object> mermas = jdbc.queryForMap("""
+            SELECT
+                COUNT(m.id)                        AS cantidad_mermas,
+                COALESCE(SUM(m.costo_total), 0)    AS total_mermas
+            FROM merma m
+            WHERE m.empresa_id = :empresaId
+              AND m.estado      = 'APROBADA'
+              AND DATE(m.fecha) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
+        // ── Movimientos de caja (ingresos / egresos manuales) ─
+        Map<String, Object> movimientos = jdbc.queryForMap("""
+            SELECT
+                COALESCE(SUM(CASE WHEN mc.tipo = 'INGRESO' THEN mc.monto ELSE 0 END), 0) AS total_ingresos,
+                COALESCE(SUM(CASE WHEN mc.tipo = 'EGRESO'  THEN mc.monto ELSE 0 END), 0) AS total_egresos,
+                COUNT(CASE WHEN mc.tipo = 'INGRESO' THEN 1 END)                           AS cantidad_ingresos,
+                COUNT(CASE WHEN mc.tipo = 'EGRESO'  THEN 1 END)                           AS cantidad_egresos
+            FROM movimiento_caja mc
+            JOIN turno_caja tc ON mc.turno_caja_id = tc.id
+            JOIN caja       ca ON tc.caja_id       = ca.id
+            JOIN sucursal    s ON ca.sucursal_id    = s.id
+            WHERE s.empresa_id = :empresaId
+              AND DATE(mc.created_at) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
             """, params);
 
         // ── CxC snapshot (deudas de clientes pendientes) ──────
@@ -114,8 +141,9 @@ public class CierreContableQueryRepository {
         BigDecimal ventasNeto     = dto.getTotalVentasNeto();
         BigDecimal comprasNeto    = dto.getTotalComprasNeto();
         BigDecimal comisionesTec  = dto.getTotalComisionesTecnicos();
+        BigDecimal mermasTotal    = toBD(mermas.get("total_mermas"));
         BigDecimal utilBruta      = ventasNeto.subtract(comprasNeto);
-        BigDecimal utilNeta       = utilBruta.subtract(comisionesTec);
+        BigDecimal utilNeta       = utilBruta.subtract(comisionesTec).subtract(mermasTotal);
 
         dto.setUtilidadBruta(utilBruta);
         dto.setUtilidadNeta(utilNeta);
@@ -140,6 +168,16 @@ public class CierreContableQueryRepository {
 
         // Posición neta
         dto.setPosicionNeta(dto.getCxcSaldoPendiente().subtract(dto.getCxpSaldoPendiente()));
+
+        // Mermas
+        dto.setCantidadMermas(toInt(mermas.get("cantidad_mermas")));
+        dto.setTotalMermas(toBD(mermas.get("total_mermas")));
+
+        // Movimientos de caja
+        dto.setTotalIngresos(toBD(movimientos.get("total_ingresos")));
+        dto.setTotalEgresos(toBD(movimientos.get("total_egresos")));
+        dto.setCantidadIngresos(toInt(movimientos.get("cantidad_ingresos")));
+        dto.setCantidadEgresos(toInt(movimientos.get("cantidad_egresos")));
 
         return dto;
     }

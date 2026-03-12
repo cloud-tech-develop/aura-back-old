@@ -27,6 +27,10 @@ public class CierreContableDto {
     private Integer    cantidadComisiones;
     private BigDecimal totalComisionesTecnicos;
 
+    // ── Mermas del período ─────────────────────────────────
+    private Integer    cantidadMermas;
+    private BigDecimal totalMermas;
+
     // ── Resultados ─────────────────────────────────────────
     private BigDecimal utilidadBruta;      // ventas neto − compras
     private BigDecimal utilidadNeta;       // utilidad bruta − comisiones
@@ -47,4 +51,10 @@ public class CierreContableDto {
 
     // ── Posición neta (lo que te deben - lo que debes) ────
     private BigDecimal posicionNeta;
+
+    // ── Movimientos de caja del período ───────────────────
+    private BigDecimal totalIngresos;
+    private BigDecimal totalEgresos;
+    private Integer    cantidadIngresos;
+    private Integer    cantidadEgresos;
 }
