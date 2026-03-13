@@ -16,6 +16,7 @@ public class VentaDto {
     private String sucursalNombre;
     private Long clienteId;
     private String clienteNombre;
+    private String clienteDocumento;
     private Long usuarioId;
     private Long turnoCajaId;
     private String tipoDocumento;
