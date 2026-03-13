@@ -86,9 +86,11 @@ public class VentaQueryRepository {
                 vd.precio_unitario,
                 vd.monto_descuento,
                 vd.impuesto_valor,
-                vd.subtotal_linea
+                vd.subtotal_linea,
+                um.nombre AS unidad_medida_nombre
             FROM venta_detalle vd
             INNER JOIN producto p ON vd.producto_id = p.id
+            LEFT JOIN unidad_medida um ON p.unidad_medida_base_id = um.id
             LEFT JOIN producto_presentacion pp ON vd.producto_presentacion_id = pp.id
             LEFT JOIN lote l ON vd.lote_id = l.id
             WHERE vd.venta_id = :ventaId

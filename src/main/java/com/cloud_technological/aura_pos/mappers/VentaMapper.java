@@ -16,6 +16,7 @@ public interface VentaMapper {
         @Mapping(target = "sucursalNombre", source = "entity.sucursal.nombre"),
         @Mapping(target = "clienteId", source = "entity.cliente.id"),
         @Mapping(target = "clienteNombre", expression = "java(resolverNombreCliente(entity))"),
+        @Mapping(target = "clienteDocumento", expression = "java(resolverDocumentoCliente(entity))"),
         @Mapping(target = "usuarioId", source = "entity.usuario.id"),
         @Mapping(target = "turnoCajaId", source = "entity.turnoCaja.id"),
         @Mapping(target = "detalles", ignore = true),
@@ -28,5 +29,10 @@ public interface VentaMapper {
         String razonSocial = entity.getCliente().getRazonSocial();
         if (razonSocial != null && !razonSocial.isBlank()) return razonSocial;
         return entity.getCliente().getNombres() + " " + entity.getCliente().getApellidos();
+    }
+
+    default String resolverDocumentoCliente(VentaEntity entity) {
+        if (entity.getCliente() == null) return null;
+        return entity.getCliente().getNumeroDocumento();
     }
 }

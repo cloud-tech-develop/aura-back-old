@@ -21,4 +21,5 @@ public class VentaDetalleDto {
     private BigDecimal montoDescuento;
     private BigDecimal impuestoValor;
     private BigDecimal subtotalLinea;
+    private String unidadMedidaNombre;
 }
