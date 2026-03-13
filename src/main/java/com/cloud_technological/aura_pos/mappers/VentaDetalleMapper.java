@@ -31,6 +31,7 @@ public interface VentaDetalleMapper {
         @Mapping(target = "presentacionNombre", source = "entity.productoPresentacion.nombre"),
         @Mapping(target = "loteId", source = "entity.lote.id"),
         @Mapping(target = "codigoLote", source = "entity.lote.codigoLote"),
+        @Mapping(target = "unidadMedidaNombre", source = "entity.producto.unidadMedidaBase.nombre"),
     })
     VentaDetalleDto toDto(VentaDetalleEntity entity);
 }
