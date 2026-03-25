@@ -384,6 +384,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         resumen.setComisiones(comisionesList);
         resumen.setTotalComisiones(totalComisiones);
 
+        resumen.setDetalleEfectivo(turnoRepository.detalleEfectivoTurno(turnoId));
+
         return resumen;
     }
 

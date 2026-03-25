@@ -1,6 +1,8 @@
 package com.cloud_technological.aura_pos.dto.cierre_contable;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -57,4 +59,5 @@ public class CierreContableDto {
     private BigDecimal totalEgresos;
     private Integer    cantidadIngresos;
     private Integer    cantidadEgresos;
+    private List<MovimientoCierreDto> detalleMovimientos = new ArrayList<>();
 }
