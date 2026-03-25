@@ -43,6 +43,8 @@ import com.cloud_technological.aura_pos.repositories.inventario.SerialProductoJP
 import com.cloud_technological.aura_pos.repositories.movimiento_inventario.MovimientoInventarioJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos_composicion.ProductoComposicionJPARepository;
+import com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository;
+import com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity;
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
@@ -82,6 +84,7 @@ public class VentaServiceImpl implements VentaService{
     private final VentaDetalleMapper detalleMapper;
     private final VentaPagoMapper pagoMapper;
     private final ProductoComposicionJPARepository composicionJPARepository;
+    private final ProductoPresentacionJPARepository presentacionJPARepository;
     private final FacturaService facturaService;
     private final CuentaCobrarService cuentaCobrarService;
     private final ComisionService comisionService;
@@ -104,6 +107,7 @@ public class VentaServiceImpl implements VentaService{
             MovimientoInventarioJPARepository movimientoJPARepository,
             VentaMapper ventaMapper,
             ProductoComposicionJPARepository composicionJPARepository,
+            ProductoPresentacionJPARepository presentacionJPARepository,
             VentaDetalleMapper detalleMapper,
             VentaPagoMapper pagoMapper,
             FacturaService facturaService,
@@ -122,6 +126,7 @@ public class VentaServiceImpl implements VentaService{
         this.terceroJPARepository = terceroJPARepository;
         this.usuarioJPARepository = usuarioJPARepository;
         this.composicionJPARepository = composicionJPARepository;
+        this.presentacionJPARepository = presentacionJPARepository;
         this.empresaRepository = empresaRepository;
         this.sucursalJPARepository = sucursalJPARepository;
         this.movimientoJPARepository = movimientoJPARepository;
@@ -227,17 +232,31 @@ public class VentaServiceImpl implements VentaService{
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "Producto no encontrado: " + item.getProductoId()));
 
-            // REEMPLAZAR el bloque 4.1 por esto:
+            // Resolver presentación y calcular cantidad real a descontar del inventario base
+            ProductoPresentacionEntity presentacion = null;
+            BigDecimal cantidadBase = item.getCantidad(); // cantidad en unidades base por defecto
+
+            if (item.getProductoPresentacionId() != null) {
+                presentacion = presentacionJPARepository
+                    .findByIdAndProductoEmpresaId(item.getProductoPresentacionId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Presentación no encontrada: " + item.getProductoPresentacionId()));
+                // factorConversion = unidades base por presentación (ej: 1 caja = 12 unidades)
+                // ó unidades base que contiene 1 presentación (ej: 1 kg = 1/50 bulto → factor=50 → divide)
+                cantidadBase = item.getCantidad().divide(
+                    presentacion.getFactorConversion(), 6, java.math.RoundingMode.HALF_UP);
+            }
+
+            // Validación de stock (4.1)
             List<ProductoComposicionEntity> compValidacion =
                 composicionJPARepository.findByProductoPadreId(producto.getId());
 
             if (!compValidacion.isEmpty()) {
-                // Validar stock de cada componente
                 for (ProductoComposicionEntity comp : compValidacion) {
                     ProductoEntity hijo = comp.getProductoHijo();
                     if (!Boolean.TRUE.equals(hijo.getManejaInventario())) continue;
 
-                    BigDecimal cantidadRequerida = item.getCantidad().multiply(comp.getCantidad());
+                    BigDecimal cantidadRequerida = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
                         .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
@@ -252,17 +271,17 @@ public class VentaServiceImpl implements VentaService{
                             + " | Requerido: " + cantidadRequerida);
                 }
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
-                // Validación normal para producto simple
                 InventarioEntity inventario = inventarioJPARepository
                     .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                         "El producto " + producto.getNombre() + " no tiene inventario en esta sucursal"));
 
                 if (!Boolean.TRUE.equals(producto.getPermitirStockNegativo())
-                        && inventario.getStockActual().compareTo(item.getCantidad()) < 0)
+                        && inventario.getStockActual().compareTo(cantidadBase) < 0)
                     throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "Stock insuficiente para: " + producto.getNombre()
-                        + ". Disponible: " + inventario.getStockActual());
+                        + ". Disponible: " + inventario.getStockActual()
+                        + (presentacion != null ? " bultos (solicitado: " + cantidadBase + " bultos)" : ""));
             }
 
             // 4.2 Base neta (precio × cantidad − descuento)
@@ -284,13 +303,10 @@ public class VentaServiceImpl implements VentaService{
 
             detalle.setSubtotalLinea(subtotalLinea);
 
-            // Presentación opcional
-            // if (item.getProductoPresentacionId() != null) {
-            //     detalle.setProductoPresentacion(
-            //         productoJPARepository.findById(item.getProductoPresentacionId())
-            //             .map(p -> null)
-            //             .orElse(null));
-            // }
+            // Asignar presentación al detalle si aplica
+            if (presentacion != null) {
+                detalle.setProductoPresentacion(presentacion);
+            }
 
             // Lote opcional
             if (item.getLoteId() != null) {
@@ -329,34 +345,24 @@ public class VentaServiceImpl implements VentaService{
                 }
             }
 
-            // REEMPLAZAR el bloque 4.6 completo por esto:
-
-            // 4.6 Verificar si tiene composición
+            // 4.6 Descontar inventario (usa cantidadBase ya convertida por factorConversion)
             List<ProductoComposicionEntity> componentes =
                 composicionJPARepository.findByProductoPadreId(producto.getId());
 
             if (!componentes.isEmpty()) {
-                // ── Producto compuesto → descontar componentes SIN importar manejaInventario del padre
+                // Producto compuesto → descontar componentes
                 for (ProductoComposicionEntity comp : componentes) {
                     ProductoEntity hijo = comp.getProductoHijo();
-
                     if (!Boolean.TRUE.equals(hijo.getManejaInventario())) continue;
 
-                    BigDecimal cantidadDescontar = item.getCantidad().multiply(comp.getCantidad());
+                    BigDecimal cantidadDescontar = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
                         .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en esta sucursal"));
 
-                    if (!Boolean.TRUE.equals(hijo.getPermitirStockNegativo())
-                            && invHijo.getStockActual().compareTo(cantidadDescontar) < 0)
-                        throw new GlobalException(HttpStatus.BAD_REQUEST,
-                            "Stock insuficiente del componente: " + hijo.getNombre()
-                            + ". Disponible: " + invHijo.getStockActual()
-                            + " | Requerido: " + cantidadDescontar);
-
-                    BigDecimal saldoAnt  = invHijo.getStockActual();
+                    BigDecimal saldoAnt   = invHijo.getStockActual();
                     BigDecimal saldoNuevo = saldoAnt.subtract(cantidadDescontar);
 
                     invHijo.setStockActual(saldoNuevo);
@@ -370,20 +376,24 @@ public class VentaServiceImpl implements VentaService{
                 }
 
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
-                // ── Producto simple con inventario → comportamiento normal
+                // Producto simple → descontar cantidadBase (ya dividida por factorConversion si hay presentación)
                 InventarioEntity inventario = inventarioJPARepository
                     .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId()).get();
 
                 BigDecimal saldoAnterior = inventario.getStockActual();
-                BigDecimal saldoNuevo    = saldoAnterior.subtract(item.getCantidad());
+                BigDecimal saldoNuevo    = saldoAnterior.subtract(cantidadBase);
 
                 inventario.setStockActual(saldoNuevo);
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
 
+                String refMovimiento = presentacion != null
+                    ? "Venta #" + venta.getId() + " [presentación: " + presentacion.getNombre() + "]"
+                    : "Venta #" + venta.getId();
+
                 registrarMovimiento(sucursal, producto, detalle.getLote(),
-                    item.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    item.getPrecioUnitario(), "VENTA", "Venta #" + venta.getId());
+                    cantidadBase.negate(), saldoAnterior, saldoNuevo,
+                    item.getPrecioUnitario(), "VENTA", refMovimiento);
             }
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());

@@ -23,6 +23,13 @@ public class EmpresaDto {
     private String direccion;
     private String municipio;
     private Boolean facturaElectronica;
+    // Resolución de facturación electrónica
+    private String  resolucionNumero;
+    private String  resolucionPrefijo;
+    private Integer resolucionDesde;
+    private Integer resolucionHasta;
+    private String  resolucionFechaDesde;
+    private String  resolucionFechaHasta;
     private Integer sucursalId;
     private String sucursalNombre;
     private String sucursalDireccion;
