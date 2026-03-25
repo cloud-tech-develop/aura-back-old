@@ -101,7 +101,7 @@ public class VentaQueryRepository {
 
     public List<VentaPagoDto> obtenerPagos(Long ventaId) {
         String sql = """
-            SELECT id, metodo_pago, monto, referencia
+            SELECT id, metodo_pago, monto, monto_recibido, referencia
             FROM venta_pago
             WHERE venta_id = :ventaId
         """;

@@ -11,5 +11,6 @@ public class VentaPagoDto {
     private Long id;
     private String metodoPago;
     private BigDecimal monto;
+    private BigDecimal montoRecibido;
     private String referencia;
 }

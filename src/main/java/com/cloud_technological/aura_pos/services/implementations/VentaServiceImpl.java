@@ -420,9 +420,16 @@ public class VentaServiceImpl implements VentaService{
         }
 
         // 6. Guardar pagos
+        // monto         = lo que se aplica realmente a la venta (capped at saldo)
+        // montoRecibido = lo que entregó el cliente (para calcular cambio en tirilla)
+        BigDecimal saldo = totalFinal;
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             VentaPagoEntity pagoEntity = pagoMapper.toEntity(pago);
             pagoEntity.setVenta(venta);
+            pagoEntity.setMontoRecibido(pago.getMonto());                         // guarda lo tendido
+            BigDecimal montoEfectivo = pago.getMonto().min(saldo);               // cap al saldo restante
+            pagoEntity.setMonto(montoEfectivo);
+            saldo = saldo.subtract(montoEfectivo);
             pagoJPARepository.save(pagoEntity);
         }
 
