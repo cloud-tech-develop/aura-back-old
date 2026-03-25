@@ -263,6 +263,7 @@ public class ProductoQueryRepository {
     }
     private List<ProductoPosDto> getProductos(Integer empresaId, Long sucursalId) {
     String sql = """
+        -- Producto base (sin presentación)
         SELECT
             p.id,
             p.sku,
@@ -288,24 +289,66 @@ public class ProductoQueryRepository {
             um.nombre            AS unidadMedidaNombre,
             COALESCE(i.stock_actual, 0) AS stockActual,
             p.activo,
+            NULL                 AS presentacionId,
+            NULL                 AS presentacionNombre,
+            NULL                 AS presentacionCodigoBarras,
+            NULL                 AS presentacionPrecio,
+            NULL                 AS presentacionFactorConversion
+        FROM producto p
+        LEFT JOIN categoria c      ON p.categoria_id          = c.id
+        LEFT JOIN marca m          ON p.marca_id               = m.id
+        LEFT JOIN unidad_medida um ON p.unidad_medida_base_id  = um.id
+        LEFT JOIN inventario i     ON p.id = i.producto_id AND i.sucursal_id = :sucursalId
+        WHERE p.empresa_id   = :empresaId
+          AND p.deleted_at   IS NULL
+          AND p.visible_en_pos = true
+          AND p.activo       = true
+
+        UNION ALL
+
+        -- Una fila por cada presentación activa
+        SELECT
+            p.id,
+            p.sku,
+            p.codigo_barras      AS codigoBarras,
+            p.nombre,
+            p.descripcion,
+            p.imagen_url         AS imagenUrl,
+            p.tipo_producto      AS tipoProducto,
+            p.maneja_inventario          AS manejaInventario,
+            p.maneja_lotes               AS manejaLotes,
+            p.maneja_serial              AS manejaSerial,
+            p.permitir_stock_negativo    AS permitirStockNegativo,
+            p.precio,
+            p.costo,
+            p.iva_porcentaje     AS ivaPorcentaje,
+            p.visible_en_pos     AS visibleEnPos,
+            p.impoconsumo,
+            c.id                 AS categoriaId,
+            c.nombre             AS categoriaNombre,
+            m.id                 AS marcaId,
+            m.nombre             AS marcaNombre,
+            um.id                AS unidadMedidaId,
+            um.nombre            AS unidadMedidaNombre,
+            COALESCE(i.stock_actual, 0) * pres.factor_conversion AS stockActual,
+            p.activo,
             pres.id              AS presentacionId,
             pres.nombre          AS presentacionNombre,
             pres.codigo_barras   AS presentacionCodigoBarras,
             pres.precio          AS presentacionPrecio,
             pres.factor_conversion AS presentacionFactorConversion
         FROM producto p
-        LEFT JOIN categoria c  ON p.categoria_id        = c.id
-        LEFT JOIN marca m      ON p.marca_id             = m.id
-        LEFT JOIN unidad_medida um ON p.unidad_medida_base_id = um.id
-        LEFT JOIN inventario i ON p.id = i.producto_id AND i.sucursal_id = :sucursalId
-        LEFT JOIN producto_presentacion pres ON p.id = pres.producto_id 
-            AND pres.es_default_venta = true 
-            AND pres.activo = true
-        WHERE p.empresa_id  = :empresaId
-          AND p.deleted_at  IS NULL
+        LEFT JOIN categoria c      ON p.categoria_id          = c.id
+        LEFT JOIN marca m          ON p.marca_id               = m.id
+        LEFT JOIN unidad_medida um ON p.unidad_medida_base_id  = um.id
+        LEFT JOIN inventario i     ON p.id = i.producto_id AND i.sucursal_id = :sucursalId
+        JOIN  producto_presentacion pres ON pres.producto_id = p.id AND pres.activo = true
+        WHERE p.empresa_id   = :empresaId
+          AND p.deleted_at   IS NULL
           AND p.visible_en_pos = true
-          AND p.activo      = true
-        ORDER BY p.nombre ASC
+          AND p.activo       = true
+
+        ORDER BY nombre ASC, presentacionId ASC NULLS FIRST
         """;
 
     MapSqlParameterSource params = new MapSqlParameterSource();

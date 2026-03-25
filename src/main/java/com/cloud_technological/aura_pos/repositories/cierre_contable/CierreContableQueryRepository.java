@@ -2,14 +2,17 @@ package com.cloud_technological.aura_pos.repositories.cierre_contable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.cierre_contable.CierreContableDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.MovimientoCierreDto;
 
 @Repository
 public class CierreContableQueryRepository {
@@ -86,6 +89,25 @@ public class CierreContableQueryRepository {
             WHERE s.empresa_id = :empresaId
               AND DATE(mc.created_at) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
             """, params);
+
+        // ── Detalle individual de movimientos ─────────────
+        List<MovimientoCierreDto> detalleMovimientos = jdbc.query("""
+            SELECT
+                mc.tipo,
+                mc.concepto,
+                mc.monto,
+                mc.created_at::TEXT  AS fecha,
+                ca.nombre            AS caja_nombre,
+                u.username           AS usuario_nombre
+            FROM movimiento_caja mc
+            JOIN turno_caja tc ON mc.turno_caja_id = tc.id
+            JOIN caja       ca ON tc.caja_id       = ca.id
+            JOIN sucursal    s ON ca.sucursal_id    = s.id
+            JOIN usuario     u ON tc.usuario_id     = u.id
+            WHERE s.empresa_id = :empresaId
+              AND DATE(mc.created_at) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            ORDER BY mc.created_at
+            """, params, new BeanPropertyRowMapper<>(MovimientoCierreDto.class));
 
         // ── CxC snapshot (deudas de clientes pendientes) ──────
         Map<String, Object> cxc = jdbc.queryForMap("""
@@ -178,6 +200,7 @@ public class CierreContableQueryRepository {
         dto.setTotalEgresos(toBD(movimientos.get("total_egresos")));
         dto.setCantidadIngresos(toInt(movimientos.get("cantidad_ingresos")));
         dto.setCantidadEgresos(toInt(movimientos.get("cantidad_egresos")));
+        dto.setDetalleMovimientos(detalleMovimientos);
 
         return dto;
     }

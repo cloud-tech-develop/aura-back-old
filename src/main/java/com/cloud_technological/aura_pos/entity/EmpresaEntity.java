@@ -71,6 +71,24 @@ public class EmpresaEntity {
     @Column(name = "factus_password", length = 500)
     private String factusPassword;
 
+    @Column(name = "resolucion_numero", length = 50)
+    private String resolucionNumero;
+
+    @Column(name = "resolucion_prefijo", length = 20)
+    private String resolucionPrefijo;
+
+    @Column(name = "resolucion_desde")
+    private Integer resolucionDesde;
+
+    @Column(name = "resolucion_hasta")
+    private Integer resolucionHasta;
+
+    @Column(name = "resolucion_fecha_desde", length = 20)
+    private String resolucionFechaDesde;
+
+    @Column(name = "resolucion_fecha_hasta", length = 20)
+    private String resolucionFechaHasta;
+
     @Column(name = "factus_numbering_range_id")
     private Integer factusNumberingRangeId;
 

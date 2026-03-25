@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.caja.ComisionResumenTurnoDto;
+import com.cloud_technological.aura_pos.dto.caja.DetalleEfectivoDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaTableDto;
 import com.cloud_technological.aura_pos.dto.caja.VentaCategoriaDto;
@@ -205,6 +206,26 @@ public class TurnoCajaQueryRepository {
         return jdbcTemplate.query(sql,
             new MapSqlParameterSource("turnoId", turnoId),
             new BeanPropertyRowMapper<>(ComisionResumenTurnoDto.class));
+    }
+
+    // Detalle de cada pago en efectivo del turno (para diagnóstico de cuadre)
+    public List<DetalleEfectivoDto> detalleEfectivoTurno(Long turnoId) {
+        String sql = """
+            SELECT
+                v.id          AS venta_id,
+                v.consecutivo,
+                vp.monto      AS monto_efectivo,
+                v.total_pagar AS total_venta,
+                v.estado_venta
+            FROM venta_pago vp
+            JOIN venta v ON vp.venta_id = v.id
+            WHERE v.turno_caja_id = :turnoId
+              AND vp.metodo_pago  = 'EFECTIVO'
+            ORDER BY v.id
+            """;
+        return jdbcTemplate.query(sql,
+            new MapSqlParameterSource("turnoId", turnoId),
+            new BeanPropertyRowMapper<>(DetalleEfectivoDto.class));
     }
 
     // Suma total de comisiones del turno (para calcular totalEsperado)

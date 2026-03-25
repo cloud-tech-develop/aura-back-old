@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
+import com.cloud_technological.aura_pos.dto.caja.DetalleEfectivoDto;
 
 @Getter
 @Setter
@@ -47,4 +48,7 @@ public class ResumenTurnoDto {
     // Comisiones generadas en el turno
     private List<ComisionResumenTurnoDto> comisiones = new ArrayList<>();
     private BigDecimal totalComisiones = BigDecimal.ZERO;
+
+    // Diagnóstico: detalle de cada pago en efectivo del turno
+    private List<DetalleEfectivoDto> detalleEfectivo = new ArrayList<>();
 }
