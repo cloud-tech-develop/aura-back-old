@@ -14,6 +14,7 @@ public interface VentaPagoMapper {
     @Mappings({
         @Mapping(target = "id", ignore = true),
         @Mapping(target = "venta", ignore = true),
+        @Mapping(target = "montoRecibido", ignore = true),
     })
     VentaPagoEntity toEntity(CreateVentaPagoDto dto);
 

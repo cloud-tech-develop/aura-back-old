@@ -32,5 +32,9 @@ public class VentaPagoEntity {
     private String metodoPago;
 
     private BigDecimal monto;
+
+    @Column(name = "monto_recibido")
+    private BigDecimal montoRecibido;
+
     private String referencia;
 }
