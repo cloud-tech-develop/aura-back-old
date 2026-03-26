@@ -12,6 +12,7 @@ public class DashboardDto {
     private ResumenVentasDto ventasHoy;
     private ResumenVentasDto ventasMes;
     private BigDecimal totalComprasMes;
+    private BigDecimal totalInventarioCosto;
     private List<ProductoStockBajoDto> stockBajo;
     private List<LoteVencimientoDto> lotesProximosVencer;
     private List<VentaRecienteDto> ultimasVentas;

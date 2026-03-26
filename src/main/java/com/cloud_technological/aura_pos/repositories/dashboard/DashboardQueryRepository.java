@@ -178,6 +178,23 @@ public class DashboardQueryRepository {
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(MovimientoRecienteDto.class));
     }
 
+    public BigDecimal totalInventarioCosto(Integer empresaId) {
+        String sql = """
+            SELECT COALESCE(SUM(i.stock_actual * p.costo), 0)
+            FROM inventario i
+            INNER JOIN producto p ON i.producto_id = p.id
+            INNER JOIN sucursal s ON i.sucursal_id = s.id
+            WHERE s.empresa_id = :empresaId
+            AND p.deleted_at IS NULL
+            AND p.activo = true
+            AND p.costo IS NOT NULL
+            AND p.costo > 0
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        BigDecimal result = jdbcTemplate.queryForObject(sql, params, BigDecimal.class);
+        return result != null ? result : BigDecimal.ZERO;
+    }
+
     // Ventas por día de la semana actual (para gráfica)
     public List<Map<String, Object>> ventasPorDiaSemana(Integer empresaId) {
         String sql = """
