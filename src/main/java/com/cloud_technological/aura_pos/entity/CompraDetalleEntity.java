@@ -45,4 +45,19 @@ public class CompraDetalleEntity {
 
     @Column(name = "subtotal_linea")
     private BigDecimal subtotalLinea;
+
+    @Column(name = "descuento_pct")
+    private BigDecimal descuentoPct;
+
+    @Column(name = "descuento_valor")
+    private BigDecimal descuentoValor;
+
+    @Column(name = "precio_venta1")
+    private BigDecimal precioVenta1;
+
+    @Column(name = "precio_venta2")
+    private BigDecimal precioVenta2;
+
+    @Column(name = "precio_venta3")
+    private BigDecimal precioVenta3;
 }

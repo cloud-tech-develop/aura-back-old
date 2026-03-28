@@ -22,6 +22,8 @@ public class ProductoPosDto {
     private Boolean manejaSerial;
     private Boolean permitirStockNegativo;
     private BigDecimal precio;
+    private BigDecimal precio2;
+    private BigDecimal precio3;
     private BigDecimal costo;
     private BigDecimal ivaPorcentaje;
     private BigDecimal impoconsumo;

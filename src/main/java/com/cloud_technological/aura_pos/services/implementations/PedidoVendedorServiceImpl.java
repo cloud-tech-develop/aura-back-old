@@ -94,7 +94,7 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
 
         TerceroEntity cliente = null;
         if (dto.getClienteId() != null) {
-            cliente = terceroJPARepository.findById(dto.getClienteId())
+            cliente = terceroJPARepository.findById(dto.getClienteId().intValue())
                     .orElse(null);
         }
 

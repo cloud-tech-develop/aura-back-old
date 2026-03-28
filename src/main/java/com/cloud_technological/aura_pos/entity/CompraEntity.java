@@ -57,6 +57,39 @@ public class CompraEntity {
     private String observaciones;
     private String estado;
 
+    @Column(name = "retefuente_pct")
+    private BigDecimal retefuentePct;
+
+    @Column(name = "retefuente_valor")
+    private BigDecimal retefuenteValor;
+
+    @Column(name = "reteiva_pct")
+    private BigDecimal reteivaPct;
+
+    @Column(name = "reteiva_valor")
+    private BigDecimal reteivaValor;
+
+    @Column(name = "reteica_pct")
+    private BigDecimal reteicaPct;
+
+    @Column(name = "reteica_valor")
+    private BigDecimal reteicaValor;
+
+    @Column(name = "total_retenciones")
+    private BigDecimal totalRetenciones;
+
+    @Column(name = "neto_a_pagar")
+    private BigDecimal netaAPagar;
+
+    @Column(name = "forma_pago", length = 20)
+    private String formaPago;
+
+    @Column(name = "tipo_documento", length = 30)
+    private String tipoDocumento;
+
+    @Column(name = "fletes")
+    private BigDecimal fletes;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

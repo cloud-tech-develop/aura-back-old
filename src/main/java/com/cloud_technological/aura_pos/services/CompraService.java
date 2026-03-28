@@ -12,4 +12,5 @@ public interface CompraService {
     CompraDto obtenerPorId(Long id, Integer empresaId);
     CompraDto crear(CreateCompraDto dto, Integer empresaId, Long usuarioId);
     void anular(Long id, Integer empresaId);
+    CompraDto actualizar(Long id, CreateCompraDto dto, Integer empresaId, Long usuarioId);
 }

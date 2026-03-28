@@ -228,6 +228,20 @@ public class TurnoCajaQueryRepository {
             new BeanPropertyRowMapper<>(DetalleEfectivoDto.class));
     }
 
+    // Ventas a crédito del turno
+    public Map<String, Object> ventasCreditoTurno(Long turnoId) {
+        String sql = """
+            SELECT
+                COUNT(v.id)::INT            AS cantidad_ventas_credito,
+                COALESCE(SUM(v.total_pagar), 0) AS total_ventas_credito
+            FROM venta v
+            WHERE v.turno_caja_id = :turnoId
+              AND v.estado_venta  = 'COMPLETADA'
+              AND v.pago_parcial  = true
+            """;
+        return jdbcTemplate.queryForMap(sql, new MapSqlParameterSource("turnoId", turnoId));
+    }
+
     // Suma total de comisiones del turno (para calcular totalEsperado)
     public BigDecimal totalComisionesTurno(Long turnoId) {
         String sql = """
