@@ -37,4 +37,5 @@ public class CompraDto {
     private String tipoDocumento;
     private BigDecimal fletes;
     private List<CompraDetalleDto> detalles;
+    private List<CompraPagoDto> pagos;
 }

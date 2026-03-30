@@ -37,7 +37,12 @@ public class ComisionConfigEntity {
     @JoinColumn(name = "tecnico_id")
     private UsuarioEntity tecnico;
 
+    private String modalidad = "SERVICIO"; // SERVICIO | VENTA
+
     private String tipo; // PORCENTAJE | VALOR_FIJO
+
+    @Column(name = "categoria_id")
+    private Long categoriaId;
 
     @Column(name = "porcentaje_tecnico")
     private BigDecimal porcentajeTecnico;

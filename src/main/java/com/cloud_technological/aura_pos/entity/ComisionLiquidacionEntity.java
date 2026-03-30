@@ -54,6 +54,12 @@ public class ComisionLiquidacionEntity {
     @Column(name = "fecha_pago")
     private LocalDate fechaPago;
 
+    @Column(name = "metodo_pago")
+    private String metodoPago;
+
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

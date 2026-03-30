@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.compras.CompraDto;
+import com.cloud_technological.aura_pos.dto.compras.CompraPagoDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraTableDto;
 import com.cloud_technological.aura_pos.dto.compras.CreateCompraDetalleDto;
 import com.cloud_technological.aura_pos.dto.compras.CreateCompraDto;
@@ -42,6 +43,7 @@ import com.cloud_technological.aura_pos.repositories.movimiento_inventario.Movim
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.CompraService;
@@ -72,6 +74,7 @@ public class CompraServiceImpl implements CompraService {
     private final CuentaPagarService cuentaPagarService;
     private final TurnoCajaJPARepository turnoCajaJPARepository;
     private final MovimientoCajaJPARepository movimientoCajaJPARepository;
+    private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
     public CompraServiceImpl(CompraQueryRepository compraRepository,
@@ -91,7 +94,8 @@ public class CompraServiceImpl implements CompraService {
             NotaContableService notaContableService,
             CuentaPagarService cuentaPagarService,
             TurnoCajaJPARepository turnoCajaJPARepository,
-            MovimientoCajaJPARepository movimientoCajaJPARepository) {
+            MovimientoCajaJPARepository movimientoCajaJPARepository,
+            CuentaBancariaJPARepository cuentaBancariaJPARepository) {
         this.compraRepository = compraRepository;
         this.compraJPARepository = compraJPARepository;
         this.compraPagoJPARepository = compraPagoJPARepository;
@@ -110,6 +114,7 @@ public class CompraServiceImpl implements CompraService {
         this.cuentaPagarService = cuentaPagarService;
         this.turnoCajaJPARepository = turnoCajaJPARepository;
         this.movimientoCajaJPARepository = movimientoCajaJPARepository;
+        this.cuentaBancariaJPARepository = cuentaBancariaJPARepository;
     }
 
     @Override
@@ -124,6 +129,21 @@ public class CompraServiceImpl implements CompraService {
 
         CompraDto dto = compraMapper.toDto(entity);
         dto.setDetalles(compraRepository.obtenerDetalles(entity.getId()));
+
+        List<CompraPagoDto> pagos = compraPagoJPARepository
+                .findByCompraIdAndActivoTrue(entity.getId())
+                .stream()
+                .map(p -> {
+                    CompraPagoDto pd = new CompraPagoDto();
+                    pd.setId(p.getId());
+                    pd.setMetodoPago(p.getMetodoPago());
+                    pd.setMonto(p.getMonto());
+                    pd.setBanco(p.getBanco());
+                    return pd;
+                })
+                .toList();
+        dto.setPagos(pagos);
+
         return dto;
     }
 
@@ -247,7 +267,17 @@ public class CompraServiceImpl implements CompraService {
                 pagoEntity.setFechaPago(LocalDateTime.now());
                 pagoEntity.setUsuario(usuario);
                 pagoEntity.setActivo(true);
+                pagoEntity.setCuentaBancariaId(pagoDto.getCuentaBancariaId());
                 compraPagoJPARepository.save(pagoEntity);
+
+                // Descontar saldo de la cuenta bancaria si aplica
+                if (pagoDto.getCuentaBancariaId() != null) {
+                    cuentaBancariaJPARepository.findByIdAndEmpresaId(pagoDto.getCuentaBancariaId(), empresaId)
+                            .ifPresent(cuenta -> {
+                                cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(pagoDto.getMonto()));
+                                cuentaBancariaJPARepository.save(cuenta);
+                            });
+                }
 
                 montoPagado = montoPagado.add(pagoDto.getMonto());
 
@@ -491,24 +521,24 @@ public class CompraServiceImpl implements CompraService {
         productoJPARepository.save(producto);
     }
 
-    private LoteEntity resolverLote(ProductoEntity producto, SucursalEntity sucursal, CreateCompraDetalleDto item) {
-        if (!Boolean.TRUE.equals(producto.getManejaLotes()) || item.getCodigoLote() == null)
-            return null;
+    // private LoteEntity resolverLote(ProductoEntity producto, SucursalEntity sucursal, CreateCompraDetalleDto item) {
+    //     if (!Boolean.TRUE.equals(producto.getManejaLotes()) || item.getCodigoLote() == null)
+    //         return null;
 
-        return loteJPARepository
-                .findByProductoIdAndSucursalIdAndCodigoLote(producto.getId(), Long.valueOf(sucursal.getId()), item.getCodigoLote())
-                .orElseGet(() -> {
-                    LoteEntity nuevoLote = new LoteEntity();
-                    nuevoLote.setProducto(producto);
-                    nuevoLote.setSucursal(sucursal);
-                    nuevoLote.setCodigoLote(item.getCodigoLote());
-                    nuevoLote.setFechaVencimiento(item.getFechaVencimiento());
-                    nuevoLote.setStockActual(item.getCantidad());
-                    nuevoLote.setCostoUnitario(item.getCostoUnitario());
-                    nuevoLote.setActivo(true);
-                    return loteJPARepository.save(nuevoLote);
-                });
-    }
+    //     return loteJPARepository
+    //             .findByProductoIdAndSucursalIdAndCodigoLote(producto.getId(), Long.valueOf(sucursal.getId()), item.getCodigoLote())
+    //             .orElseGet(() -> {
+    //                 LoteEntity nuevoLote = new LoteEntity();
+    //                 nuevoLote.setProducto(producto);
+    //                 nuevoLote.setSucursal(sucursal);
+    //                 nuevoLote.setCodigoLote(item.getCodigoLote());
+    //                 nuevoLote.setFechaVencimiento(item.getFechaVencimiento());
+    //                 nuevoLote.setStockActual(item.getCantidad());
+    //                 nuevoLote.setCostoUnitario(item.getCostoUnitario());
+    //                 nuevoLote.setActivo(true);
+    //                 return loteJPARepository.save(nuevoLote);
+    //             });
+    // }
 
     private InventarioEntity resolverInventario(SucursalEntity sucursal, ProductoEntity producto) {
         return inventarioJPARepository

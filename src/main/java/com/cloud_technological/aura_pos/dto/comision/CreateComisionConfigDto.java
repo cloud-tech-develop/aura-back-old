@@ -13,21 +13,28 @@ import lombok.Setter;
 @Setter
 public class CreateComisionConfigDto {
 
-    @NotNull(message = "El productoId es requerido")
+    // SERVICIO | VENTA  (default: SERVICIO)
+    private String modalidad;
+
+    // Para SERVICIO: obligatorio. Para VENTA: obligatorio si categoriaId es null
     private Long productoId;
 
-    private Integer tecnicoId; // nullable = se asigna en caja
+    // Solo para VENTA: obligatorio si productoId es null
+    private Long categoriaId;
+
+    // Técnico (SERVICIO) o vendedor (VENTA) — ambos son usuario; opcional en ambos casos
+    private Integer tecnicoId;
 
     @NotNull(message = "El tipo es requerido")
     private String tipo; // PORCENTAJE | VALOR_FIJO
 
-    @NotNull(message = "El porcentaje del técnico es requerido")
+    @NotNull(message = "El porcentaje del técnico / vendedor es requerido")
     @DecimalMin(value = "0.01", message = "El porcentaje debe ser mayor a 0")
-    @DecimalMax(value = "99.99", message = "El porcentaje debe ser menor a 100")
+    @DecimalMax(value = "100", message = "El porcentaje no puede superar 100")
     private BigDecimal porcentajeTecnico;
 
-    @NotNull(message = "El porcentaje del negocio es requerido")
-    @DecimalMin(value = "0.01", message = "El porcentaje debe ser mayor a 0")
+    // Solo relevante para modalidad SERVICIO (se calcula automáticamente para VENTA)
+    @DecimalMin(value = "0", message = "El porcentaje del negocio no puede ser negativo")
     @DecimalMax(value = "99.99", message = "El porcentaje debe ser menor a 100")
     private BigDecimal porcentajeNegocio;
 
