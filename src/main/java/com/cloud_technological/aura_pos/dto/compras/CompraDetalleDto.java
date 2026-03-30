@@ -18,4 +18,9 @@ public class CompraDetalleDto {
     private BigDecimal costoUnitario;
     private BigDecimal impuestoValor;
     private BigDecimal subtotalLinea;
+    private BigDecimal descuentoPct;
+    private BigDecimal descuentoValor;
+    private BigDecimal precioVenta1;
+    private BigDecimal precioVenta2;
+    private BigDecimal precioVenta3;
 }

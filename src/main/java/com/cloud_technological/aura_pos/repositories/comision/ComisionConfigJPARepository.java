@@ -12,6 +12,15 @@ public interface ComisionConfigJPARepository extends JpaRepository<ComisionConfi
 
     Optional<ComisionConfigEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
 
-    // Busca la config activa para un producto y empresa (para calcular comisión al vender)
-    Optional<ComisionConfigEntity> findByProductoIdAndEmpresaIdAndActivoTrue(Long productoId, Integer empresaId);
+    // ── SERVICIO: busca config activa por producto (modalidad = SERVICIO) ──────
+    Optional<ComisionConfigEntity> findByProductoIdAndEmpresaIdAndModalidadAndActivoTrue(
+            Long productoId, Integer empresaId, String modalidad);
+
+    // ── VENTA: busca config activa por producto ────────────────────────────────
+    Optional<ComisionConfigEntity> findFirstByProductoIdAndEmpresaIdAndModalidadAndActivoTrue(
+            Long productoId, Integer empresaId, String modalidad);
+
+    // ── VENTA: busca config activa por categoría ───────────────────────────────
+    Optional<ComisionConfigEntity> findFirstByCategoriaIdAndEmpresaIdAndModalidadAndActivoTrue(
+            Long categoriaId, Integer empresaId, String modalidad);
 }

@@ -29,6 +29,7 @@ public class DashboardServiceImpl implements DashboardService{
         dashboard.setUltimasVentas(dashboardRepository.ultimasVentas(empresaId));
         dashboard.setTopProductos(dashboardRepository.topProductosMes(empresaId));
         dashboard.setUltimosMovimientos(dashboardRepository.ultimosMovimientos(empresaId));
+        dashboard.setTotalInventarioCosto(dashboardRepository.totalInventarioCosto(empresaId));
         return dashboard;
     }
 

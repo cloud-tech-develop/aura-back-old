@@ -37,4 +37,7 @@ public class VentaPagoEntity {
     private BigDecimal montoRecibido;
 
     private String referencia;
+
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
 }

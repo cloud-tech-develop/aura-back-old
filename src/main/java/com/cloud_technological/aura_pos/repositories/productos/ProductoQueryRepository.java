@@ -113,7 +113,11 @@ public class ProductoQueryRepository {
                 p.id,
                 p.sku,
                 p.nombre,
+                p.costo,
                 p.precio,
+                p.precio_2 AS precio2,
+                p.precio_3 AS precio3,
+                p.iva_porcentaje,
                 p.tipo_producto
             FROM producto p
             WHERE p.empresa_id = :empresaId
@@ -277,6 +281,8 @@ public class ProductoQueryRepository {
             p.maneja_serial              AS manejaSerial,
             p.permitir_stock_negativo    AS permitirStockNegativo,
             p.precio,
+            p.precio_2           AS precio2,
+            p.precio_3           AS precio3,
             p.costo,
             p.iva_porcentaje     AS ivaPorcentaje,
             p.visible_en_pos     AS visibleEnPos,
@@ -320,6 +326,8 @@ public class ProductoQueryRepository {
             p.maneja_serial              AS manejaSerial,
             p.permitir_stock_negativo    AS permitirStockNegativo,
             p.precio,
+            p.precio_2           AS precio2,
+            p.precio_3           AS precio3,
             p.costo,
             p.iva_porcentaje     AS ivaPorcentaje,
             p.visible_en_pos     AS visibleEnPos,

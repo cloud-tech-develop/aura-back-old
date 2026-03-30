@@ -49,6 +49,10 @@ public class ResumenTurnoDto {
     private List<ComisionResumenTurnoDto> comisiones = new ArrayList<>();
     private BigDecimal totalComisiones = BigDecimal.ZERO;
 
+    // Ventas a crédito del turno
+    private Integer    cantidadVentasCredito = 0;
+    private BigDecimal totalVentasCredito    = BigDecimal.ZERO;
+
     // Diagnóstico: detalle de cada pago en efectivo del turno
     private List<DetalleEfectivoDto> detalleEfectivo = new ArrayList<>();
 }
