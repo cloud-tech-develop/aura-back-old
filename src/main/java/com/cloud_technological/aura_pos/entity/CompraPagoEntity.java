@@ -44,5 +44,8 @@ public class CompraPagoEntity {
     @Column(length = 300)
     private String banco;
 
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
     private Boolean activo = true;
 }

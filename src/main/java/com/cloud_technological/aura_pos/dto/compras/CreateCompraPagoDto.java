@@ -12,9 +12,11 @@ import lombok.Setter;
 @Setter
 public class CreateCompraPagoDto {
     @NotBlank(message = "El método de pago es obligatorio")
-    private String metodoPago; // EFECTIVO, TARJETA, TRANSFERENCIA, CREDITO
+    private String metodoPago; // EFECTIVO, TARJETA, TRANSFERENCIA, NEQUI, CHEQUE
     @NotNull(message = "El monto es obligatorio")
     private BigDecimal monto;
     private String banco;
     private String referencia;
+    /** ID de la cuenta bancaria — requerido cuando metodoPago es TRANSFERENCIA, NEQUI, TARJETA o CHEQUE */
+    private Long cuentaBancariaId;
 }

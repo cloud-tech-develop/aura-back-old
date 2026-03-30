@@ -131,7 +131,7 @@ public class ComisionController {
             @PathVariable Long id,
             @Valid @RequestBody MarcarPagadaDto dto) {
         Integer empresaId = securityUtils.getEmpresaId();
-        comisionService.marcarPagada(id, dto.getFechaPago(), empresaId);
+        comisionService.marcarPagada(id, dto, empresaId);
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Liquidación marcada como pagada", false, null));
     }
 

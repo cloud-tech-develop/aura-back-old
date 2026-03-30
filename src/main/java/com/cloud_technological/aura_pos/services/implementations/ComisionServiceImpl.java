@@ -18,20 +18,25 @@ import com.cloud_technological.aura_pos.dto.comision.ComisionLiquidacionTableDto
 import com.cloud_technological.aura_pos.dto.comision.ComisionVentaDto;
 import com.cloud_technological.aura_pos.dto.comision.CreateComisionConfigDto;
 import com.cloud_technological.aura_pos.dto.comision.CreateLiquidacionDto;
+import com.cloud_technological.aura_pos.dto.comision.MarcarPagadaDto;
 import com.cloud_technological.aura_pos.dto.comision.TecnicoDto;
+import com.cloud_technological.aura_pos.entity.CategoriaEntity;
 import com.cloud_technological.aura_pos.entity.ComisionConfigEntity;
 import com.cloud_technological.aura_pos.entity.ComisionLiquidacionEntity;
 import com.cloud_technological.aura_pos.entity.ComisionVentaEntity;
+import com.cloud_technological.aura_pos.entity.CuentaBancariaEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.ProductoEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
 import com.cloud_technological.aura_pos.entity.VentaDetalleEntity;
+import com.cloud_technological.aura_pos.repositories.categorias.CategoriaJPARepository;
 import com.cloud_technological.aura_pos.repositories.comision.ComisionConfigJPARepository;
 import com.cloud_technological.aura_pos.repositories.comision.ComisionLiquidacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.comision.ComisionQueryRepository;
 import com.cloud_technological.aura_pos.repositories.comision.ComisionVentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -49,6 +54,8 @@ public class ComisionServiceImpl implements ComisionService {
     @Autowired private ProductoJPARepository productoRepo;
     @Autowired private UsuarioJPARepository usuarioRepo;
     @Autowired private EmpresaJPARepository empresaRepo;
+    @Autowired private CategoriaJPARepository categoriaRepo;
+    @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
 
     // ── Técnicos ──────────────────────────────────────────────
 
@@ -74,30 +81,49 @@ public class ComisionServiceImpl implements ComisionService {
     @Override
     @Transactional
     public ComisionConfigDto crearConfig(CreateComisionConfigDto dto, Integer empresaId) {
-        validarPorcentajes(dto.getPorcentajeTecnico(), dto.getPorcentajeNegocio());
+        String modalidad = dto.getModalidad() != null ? dto.getModalidad().toUpperCase() : "SERVICIO";
 
         EmpresaEntity empresa = empresaRepo.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
 
-        ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
-
-        if (!"SERVICIO".equals(producto.getTipoProducto())) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Solo se pueden configurar comisiones para productos de tipo SERVICIO");
-        }
-
         ComisionConfigEntity entity = new ComisionConfigEntity();
         entity.setEmpresa(empresa);
-        entity.setProducto(producto);
+        entity.setModalidad(modalidad);
         entity.setTipo(dto.getTipo());
-        entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
-        entity.setPorcentajeNegocio(dto.getPorcentajeNegocio());
         entity.setActivo(dto.getActivo() != null ? dto.getActivo() : true);
+
+        if ("SERVICIO".equals(modalidad)) {
+            if (dto.getProductoId() == null)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El producto es obligatorio para comisiones de tipo SERVICIO");
+            validarPorcentajes(dto.getPorcentajeTecnico(), dto.getPorcentajeNegocio());
+            ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+            if (!"SERVICIO".equals(producto.getTipoProducto()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Para comisiones SERVICIO el producto debe ser de tipo SERVICIO");
+            entity.setProducto(producto);
+            entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
+            entity.setPorcentajeNegocio(dto.getPorcentajeNegocio());
+
+        } else { // VENTA
+            if (dto.getProductoId() == null && dto.getCategoriaId() == null)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe especificar un producto o una categoría para comisiones de tipo VENTA");
+            if (dto.getProductoId() != null) {
+                ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+                entity.setProducto(producto);
+            }
+            if (dto.getCategoriaId() != null) {
+                categoriaRepo.findByIdAndEmpresaId(dto.getCategoriaId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Categoría no encontrada"));
+                entity.setCategoriaId(dto.getCategoriaId());
+            }
+            entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
+            entity.setPorcentajeNegocio(BigDecimal.ZERO);
+        }
 
         if (dto.getTecnicoId() != null) {
             UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
-                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Técnico no encontrado"));
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
             entity.setTecnico(tecnico);
         }
 
@@ -107,35 +133,46 @@ public class ComisionServiceImpl implements ComisionService {
     @Override
     @Transactional
     public ComisionConfigDto actualizarConfig(Long id, CreateComisionConfigDto dto, Integer empresaId) {
-        validarPorcentajes(dto.getPorcentajeTecnico(), dto.getPorcentajeNegocio());
-
         ComisionConfigEntity entity = configRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Configuración no encontrada"));
 
-        ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+        String modalidad = entity.getModalidad(); // No cambia la modalidad en edición
 
-        if (!"SERVICIO".equals(producto.getTipoProducto())) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Solo se pueden configurar comisiones para productos de tipo SERVICIO");
-        }
-
-        entity.setProducto(producto);
         entity.setTipo(dto.getTipo());
-        entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
-        entity.setPorcentajeNegocio(dto.getPorcentajeNegocio());
+        if (dto.getActivo() != null) entity.setActivo(dto.getActivo());
 
-        if (dto.getActivo() != null) {
-            entity.setActivo(dto.getActivo());
+        if ("SERVICIO".equals(modalidad)) {
+            validarPorcentajes(dto.getPorcentajeTecnico(), dto.getPorcentajeNegocio());
+            if (dto.getProductoId() != null) {
+                ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+                if (!"SERVICIO".equals(producto.getTipoProducto()))
+                    throw new GlobalException(HttpStatus.BAD_REQUEST, "Para comisiones SERVICIO el producto debe ser de tipo SERVICIO");
+                entity.setProducto(producto);
+            }
+            entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
+            entity.setPorcentajeNegocio(dto.getPorcentajeNegocio());
+
+        } else { // VENTA
+            if (dto.getProductoId() != null) {
+                ProductoEntity producto = productoRepo.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+                entity.setProducto(producto);
+                entity.setCategoriaId(null); // producto toma precedencia
+            } else if (dto.getCategoriaId() != null) {
+                categoriaRepo.findByIdAndEmpresaId(dto.getCategoriaId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Categoría no encontrada"));
+                entity.setCategoriaId(dto.getCategoriaId());
+                entity.setProducto(null);
+            }
+            entity.setPorcentajeTecnico(dto.getPorcentajeTecnico());
+            entity.setPorcentajeNegocio(BigDecimal.ZERO);
         }
 
-        if (dto.getTecnicoId() != null) {
-            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
-                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Técnico no encontrado"));
-            entity.setTecnico(tecnico);
-        } else {
-            entity.setTecnico(null);
-        }
+        entity.setTecnico(dto.getTecnicoId() != null
+                ? usuarioRepo.findById(dto.getTecnicoId())
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"))
+                : null);
 
         return toConfigDto(configRepo.save(entity));
     }
@@ -215,7 +252,7 @@ public class ComisionServiceImpl implements ComisionService {
 
     @Override
     @Transactional
-    public void marcarPagada(Long id, String fechaPago, Integer empresaId) {
+    public void marcarPagada(Long id, MarcarPagadaDto dto, Integer empresaId) {
         ComisionLiquidacionEntity entity = liquidacionRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Liquidación no encontrada"));
 
@@ -223,8 +260,23 @@ public class ComisionServiceImpl implements ComisionService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La liquidación ya fue marcada como pagada");
         }
 
+        // Descontar del banco si aplica
+        boolean requiereCuenta = dto.getMetodoPago() != null && !dto.getMetodoPago().equalsIgnoreCase("EFECTIVO");
+        if (requiereCuenta) {
+            if (dto.getCuentaBancariaId() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe seleccionar la cuenta bancaria para este método de pago");
+            }
+            CuentaBancariaEntity cuenta = cuentaBancariaRepo
+                    .findByIdAndEmpresaId(dto.getCuentaBancariaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta bancaria no encontrada"));
+            cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(entity.getValorTotal()));
+            cuentaBancariaRepo.save(cuenta);
+        }
+
         entity.setEstado("PAGADA");
-        entity.setFechaPago(LocalDate.parse(fechaPago));
+        entity.setFechaPago(LocalDate.parse(dto.getFechaPago()));
+        entity.setMetodoPago(dto.getMetodoPago());
+        entity.setCuentaBancariaId(dto.getCuentaBancariaId());
         liquidacionRepo.save(entity);
     }
 
@@ -241,18 +293,32 @@ public class ComisionServiceImpl implements ComisionService {
     public void procesarComisionVenta(VentaDetalleEntity detalle, Integer empresaId) {
         ProductoEntity producto = detalle.getProducto();
 
-        // Solo aplica a SERVICIO
-        if (!"SERVICIO".equals(producto.getTipoProducto())) return;
+        // 1. Comisión SERVICIO (taller): aplica al técnico configurado, no al cajero
+        if ("SERVICIO".equals(producto.getTipoProducto())) {
+            configRepo.findByProductoIdAndEmpresaIdAndModalidadAndActivoTrue(
+                    producto.getId(), empresaId, "SERVICIO")
+                .ifPresent(config -> registrarComisionServicio(detalle, config));
+        }
 
-        Optional<ComisionConfigEntity> configOpt = configRepo
-                .findByProductoIdAndEmpresaIdAndActivoTrue(producto.getId(), empresaId);
+        // 2. Comisión VENTA (vendedor): aplica al usuario logueado si NO es CAJERO
+        //    Prioridad: config de producto > config de categoría
+        UsuarioEntity vendedor = detalle.getVenta().getUsuario();
+        if ("CAJERO".equalsIgnoreCase(vendedor.getRol())) return; // cajeros no generan comisión VENTA
 
-        // Sin config activa → 100% negocio, no se registra nada
-        if (configOpt.isEmpty()) return;
+        Optional<ComisionConfigEntity> ventaConfig =
+            configRepo.findFirstByProductoIdAndEmpresaIdAndModalidadAndActivoTrue(
+                producto.getId(), empresaId, "VENTA");
 
-        ComisionConfigEntity config = configOpt.get();
+        if (ventaConfig.isEmpty() && producto.getCategoria() != null) {
+            ventaConfig = configRepo.findFirstByCategoriaIdAndEmpresaIdAndModalidadAndActivoTrue(
+                producto.getCategoria().getId(), empresaId, "VENTA");
+        }
 
-        // valorBase = precio_unitario × cantidad (sin impuestos ni descuentos — base del servicio)
+        ventaConfig.ifPresent(config -> registrarComisionVenta(detalle, config, vendedor));
+    }
+
+    /** Comisión SERVICIO: técnico cobra su %, el negocio el resto */
+    private void registrarComisionServicio(VentaDetalleEntity detalle, ComisionConfigEntity config) {
         BigDecimal valorBase = detalle.getPrecioUnitario()
                 .multiply(detalle.getCantidad())
                 .setScale(2, RoundingMode.HALF_UP);
@@ -261,23 +327,41 @@ public class ComisionServiceImpl implements ComisionService {
                 .multiply(config.getPorcentajeTecnico())
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-        BigDecimal valorNegocio = valorBase
-                .subtract(valorTecnico)
+        ComisionVentaEntity cv = new ComisionVentaEntity();
+        cv.setEmpresa(detalle.getVenta().getEmpresa());
+        cv.setVenta(detalle.getVenta());
+        cv.setVentaDetalle(detalle);
+        cv.setProducto(detalle.getProducto());
+        cv.setTecnico(config.getTecnico()); // técnico configurado (se asigna en caja)
+        cv.setValorTotal(valorBase);
+        cv.setPorcentajeTecnico(config.getPorcentajeTecnico());
+        cv.setPorcentajeNegocio(config.getPorcentajeNegocio());
+        cv.setValorTecnico(valorTecnico);
+        cv.setValorNegocio(valorBase.subtract(valorTecnico).setScale(2, RoundingMode.HALF_UP));
+        comisionVentaRepo.save(cv);
+    }
+
+    /** Comisión VENTA: el vendedor logueado cobra su % sobre la venta */
+    private void registrarComisionVenta(VentaDetalleEntity detalle, ComisionConfigEntity config, UsuarioEntity vendedor) {
+        BigDecimal valorBase = detalle.getPrecioUnitario()
+                .multiply(detalle.getCantidad())
                 .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal valorVendedor = valorBase
+                .multiply(config.getPorcentajeTecnico())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
         ComisionVentaEntity cv = new ComisionVentaEntity();
         cv.setEmpresa(detalle.getVenta().getEmpresa());
         cv.setVenta(detalle.getVenta());
         cv.setVentaDetalle(detalle);
-        cv.setProducto(producto);
-        cv.setTecnico(config.getTecnico()); // puede ser null si se asigna en caja
+        cv.setProducto(detalle.getProducto());
+        cv.setTecnico(vendedor); // siempre el usuario logueado, no el de la config
         cv.setValorTotal(valorBase);
         cv.setPorcentajeTecnico(config.getPorcentajeTecnico());
-        cv.setPorcentajeNegocio(config.getPorcentajeNegocio());
-        cv.setValorTecnico(valorTecnico);
-        cv.setValorNegocio(valorNegocio);
-        // liquidacion_id queda NULL → pendiente
-
+        cv.setPorcentajeNegocio(BigDecimal.ZERO);
+        cv.setValorTecnico(valorVendedor);
+        cv.setValorNegocio(BigDecimal.ZERO);
         comisionVentaRepo.save(cv);
     }
 
@@ -287,12 +371,20 @@ public class ComisionServiceImpl implements ComisionService {
         ComisionConfigDto dto = new ComisionConfigDto();
         dto.setId(e.getId());
         dto.setEmpresaId(e.getEmpresa().getId());
-        dto.setProductoId(e.getProducto().getId());
-        dto.setProductoNombre(e.getProducto().getNombre());
+        dto.setModalidad(e.getModalidad());
         dto.setTipo(e.getTipo());
         dto.setPorcentajeTecnico(e.getPorcentajeTecnico());
         dto.setPorcentajeNegocio(e.getPorcentajeNegocio());
         dto.setActivo(e.getActivo());
+        if (e.getProducto() != null) {
+            dto.setProductoId(e.getProducto().getId());
+            dto.setProductoNombre(e.getProducto().getNombre());
+        }
+        if (e.getCategoriaId() != null) {
+            dto.setCategoriaId(e.getCategoriaId());
+            categoriaRepo.findById(e.getCategoriaId())
+                    .ifPresent(c -> dto.setCategoriaNombre(c.getNombre()));
+        }
         if (e.getTecnico() != null) {
             dto.setTecnicoId(e.getTecnico().getId());
             dto.setTecnicoNombre(resolverNombreTecnico(e.getTecnico()));
