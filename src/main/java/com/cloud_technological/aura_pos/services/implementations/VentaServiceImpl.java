@@ -24,6 +24,7 @@ import com.cloud_technological.aura_pos.entity.LoteEntity;
 import com.cloud_technological.aura_pos.entity.MovimientoInventarioEntity;
 import com.cloud_technological.aura_pos.entity.ProductoComposicionEntity;
 import com.cloud_technological.aura_pos.entity.ProductoEntity;
+import com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity;
 import com.cloud_technological.aura_pos.entity.SerialProductoEntity;
 import com.cloud_technological.aura_pos.entity.SucursalEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
@@ -41,10 +42,9 @@ import com.cloud_technological.aura_pos.repositories.inventario.InventarioJPARep
 import com.cloud_technological.aura_pos.repositories.inventario.LoteJPARepository;
 import com.cloud_technological.aura_pos.repositories.inventario.SerialProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.movimiento_inventario.MovimientoInventarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos_composicion.ProductoComposicionJPARepository;
-import com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository;
-import com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity;
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
@@ -64,7 +64,8 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 import jakarta.transaction.Transactional;
 
 @Service
-public class VentaServiceImpl implements VentaService{
+public class VentaServiceImpl implements VentaService {
+
     private final VentaQueryRepository ventaRepository;
     private final VentaJPARepository ventaJPARepository;
     private final VentaDetalleJPARepository detalleJPARepository;
@@ -162,8 +163,9 @@ public class VentaServiceImpl implements VentaService{
         TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
 
-        if (!turno.getEstado().equals("ABIERTA"))
+        if (!turno.getEstado().equals("ABIERTA")) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+        }
 
         SucursalEntity sucursal = turno.getCaja().getSucursal();
 
@@ -181,9 +183,9 @@ public class VentaServiceImpl implements VentaService{
         // 2.1. Validar cliente obligatorio para ventas a crédito (HU-006)
         boolean tienePagoCredito = dto.getPagos().stream()
                 .anyMatch(p -> "credito".equalsIgnoreCase(p.getMetodoPago()));
-        
+
         if (tienePagoCredito && dto.getClienteId() == null) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, 
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Las ventas a crédito requieren un cliente asociado");
         }
 
@@ -203,13 +205,12 @@ public class VentaServiceImpl implements VentaService{
         venta.setTipoDocumento(dto.getTipoDocumento());
         venta.setPrefijo(sucursal.getPrefijoFacturacion());
         /**
-         * TODO: posible error al tratar de obtener el siguiente consecutivo
-         * * porque varias instancias de la aplicacion podrian estar usando el mismo
-         * * consecutivo
+         * TODO: posible error al tratar de obtener el siguiente consecutivo *
+         * porque varias instancias de la aplicacion podrian estar usando el
+         * mismo * consecutivo
          */
         venta.setConsecutivo(ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
         venta.setFechaEmision(LocalDateTime.now(ZoneId.of("America/Bogota")));
-        // venta.setFechaEmision(LocalDateTime.now(ZoneOffset.UTC)); TODO: revisar zona horaria
         venta.setObservaciones(dto.getObservaciones());
         venta.setEstadoVenta("COMPLETADA");
 
@@ -230,7 +231,7 @@ public class VentaServiceImpl implements VentaService{
         for (CreateVentaDetalleDto item : dto.getDetalles()) {
             ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "Producto no encontrado: " + item.getProductoId()));
+                    "Producto no encontrado: " + item.getProductoId()));
 
             // Resolver presentación y calcular cantidad real a descontar del inventario base
             ProductoPresentacionEntity presentacion = null;
@@ -238,57 +239,61 @@ public class VentaServiceImpl implements VentaService{
 
             if (item.getProductoPresentacionId() != null) {
                 presentacion = presentacionJPARepository
-                    .findByIdAndProductoEmpresaId(item.getProductoPresentacionId(), empresaId)
-                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        .findByIdAndProductoEmpresaId(item.getProductoPresentacionId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                         "Presentación no encontrada: " + item.getProductoPresentacionId()));
                 // factorConversion = unidades base por presentación (ej: 1 caja = 12 unidades)
                 // ó unidades base que contiene 1 presentación (ej: 1 kg = 1/50 bulto → factor=50 → divide)
                 cantidadBase = item.getCantidad().divide(
-                    presentacion.getFactorConversion(), 6, java.math.RoundingMode.HALF_UP);
+                        presentacion.getFactorConversion(), 6, java.math.RoundingMode.HALF_UP);
             }
 
             // Validación de stock (4.1)
-            List<ProductoComposicionEntity> compValidacion =
-                composicionJPARepository.findByProductoPadreId(producto.getId());
+            List<ProductoComposicionEntity> compValidacion
+                    = composicionJPARepository.findByProductoPadreId(producto.getId());
 
             if (!compValidacion.isEmpty()) {
                 for (ProductoComposicionEntity comp : compValidacion) {
                     ProductoEntity hijo = comp.getProductoHijo();
-                    if (!Boolean.TRUE.equals(hijo.getManejaInventario())) continue;
+                    if (!Boolean.TRUE.equals(hijo.getManejaInventario())) {
+                        continue;
+                    }
 
                     BigDecimal cantidadRequerida = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
-                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
+                            .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en esta sucursal"));
 
                     if (!Boolean.TRUE.equals(hijo.getPermitirStockNegativo())
-                            && invHijo.getStockActual().compareTo(cantidadRequerida) < 0)
+                            && invHijo.getStockActual().compareTo(cantidadRequerida) < 0) {
                         throw new GlobalException(HttpStatus.BAD_REQUEST,
-                            "Stock insuficiente del componente: " + hijo.getNombre()
-                            + ". Disponible: " + invHijo.getStockActual()
-                            + " | Requerido: " + cantidadRequerida);
+                                "Stock insuficiente del componente: " + hijo.getNombre()
+                                + ". Disponible: " + invHijo.getStockActual()
+                                + " | Requerido: " + cantidadRequerida);
+                    }
                 }
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
                 InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
-                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
+                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                         "El producto " + producto.getNombre() + " no tiene inventario en esta sucursal"));
 
                 if (!Boolean.TRUE.equals(producto.getPermitirStockNegativo())
-                        && inventario.getStockActual().compareTo(cantidadBase) < 0)
+                        && inventario.getStockActual().compareTo(cantidadBase) < 0) {
                     throw new GlobalException(HttpStatus.BAD_REQUEST,
-                        "Stock insuficiente para: " + producto.getNombre()
-                        + ". Disponible: " + inventario.getStockActual()
-                        + (presentacion != null ? " bultos (solicitado: " + cantidadBase + " bultos)" : ""));
+                            "Stock insuficiente para: " + producto.getNombre()
+                            + ". Disponible: " + inventario.getStockActual()
+                            + (presentacion != null ? " bultos (solicitado: " + cantidadBase + " bultos)" : ""));
+                }
             }
 
             // 4.2 Base neta (precio × cantidad − descuento)
             BigDecimal baseNetaOriginal = item.getPrecioUnitario()
-                .multiply(item.getCantidad())
-                .subtract(item.getDescuentoValor())
-                .setScale(2, RoundingMode.HALF_UP);
+                    .multiply(item.getCantidad())
+                    .subtract(item.getDescuentoValor())
+                    .setScale(2, RoundingMode.HALF_UP);
 
             BigDecimal impuestoLinea = item.getImpuestoValor().setScale(2, RoundingMode.HALF_UP);
 
@@ -299,7 +304,6 @@ public class VentaServiceImpl implements VentaService{
             detalle.setProducto(producto);
             detalle.setMontoDescuento(item.getDescuentoValor());
             detalle.setImpuestoValor(impuestoLinea);
-
 
             detalle.setSubtotalLinea(subtotalLinea);
 
@@ -329,11 +333,12 @@ public class VentaServiceImpl implements VentaService{
                 for (Long serialId : item.getSerialIds()) {
                     SerialProductoEntity serial = serialJPARepository.findById(serialId)
                             .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                                    "Serial no encontrado: " + serialId));
+                            "Serial no encontrado: " + serialId));
 
-                    if (!serial.getEstado().equals("DISPONIBLE"))
+                    if (!serial.getEstado().equals("DISPONIBLE")) {
                         throw new GlobalException(HttpStatus.BAD_REQUEST,
                                 "El serial " + serial.getSerial() + " no está disponible");
+                    }
 
                     serial.setEstado("VENDIDO");
                     serialJPARepository.save(serial);
@@ -346,23 +351,25 @@ public class VentaServiceImpl implements VentaService{
             }
 
             // 4.6 Descontar inventario (usa cantidadBase ya convertida por factorConversion)
-            List<ProductoComposicionEntity> componentes =
-                composicionJPARepository.findByProductoPadreId(producto.getId());
+            List<ProductoComposicionEntity> componentes
+                    = composicionJPARepository.findByProductoPadreId(producto.getId());
 
             if (!componentes.isEmpty()) {
                 // Producto compuesto → descontar componentes
                 for (ProductoComposicionEntity comp : componentes) {
                     ProductoEntity hijo = comp.getProductoHijo();
-                    if (!Boolean.TRUE.equals(hijo.getManejaInventario())) continue;
+                    if (!Boolean.TRUE.equals(hijo.getManejaInventario())) {
+                        continue;
+                    }
 
                     BigDecimal cantidadDescontar = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
-                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
+                            .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en esta sucursal"));
 
-                    BigDecimal saldoAnt   = invHijo.getStockActual();
+                    BigDecimal saldoAnt = invHijo.getStockActual();
                     BigDecimal saldoNuevo = saldoAnt.subtract(cantidadDescontar);
 
                     invHijo.setStockActual(saldoNuevo);
@@ -370,30 +377,30 @@ public class VentaServiceImpl implements VentaService{
                     inventarioJPARepository.save(invHijo);
 
                     registrarMovimiento(sucursal, hijo, null,
-                        cantidadDescontar.negate(), saldoAnt, saldoNuevo,
-                        item.getPrecioUnitario(), "VENTA",
-                        "Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                            cantidadDescontar.negate(), saldoAnt, saldoNuevo,
+                            item.getPrecioUnitario(), "VENTA",
+                            "Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
                 }
 
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
                 // Producto simple → descontar cantidadBase (ya dividida por factorConversion si hay presentación)
                 InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId()).get();
+                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId()).get();
 
                 BigDecimal saldoAnterior = inventario.getStockActual();
-                BigDecimal saldoNuevo    = saldoAnterior.subtract(cantidadBase);
+                BigDecimal saldoNuevo = saldoAnterior.subtract(cantidadBase);
 
                 inventario.setStockActual(saldoNuevo);
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
 
                 String refMovimiento = presentacion != null
-                    ? "Venta #" + venta.getId() + " [presentación: " + presentacion.getNombre() + "]"
-                    : "Venta #" + venta.getId();
+                        ? "Venta #" + venta.getId() + " [presentación: " + presentacion.getNombre() + "]"
+                        : "Venta #" + venta.getId();
 
                 registrarMovimiento(sucursal, producto, detalle.getLote(),
-                    cantidadBase.negate(), saldoAnterior, saldoNuevo,
-                    item.getPrecioUnitario(), "VENTA", refMovimiento);
+                        cantidadBase.negate(), saldoAnterior, saldoNuevo,
+                        item.getPrecioUnitario(), "VENTA", refMovimiento);
             }
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());
@@ -402,7 +409,7 @@ public class VentaServiceImpl implements VentaService{
 
         // 5. Validar que el pago cubra el total (excepto si hay método CREDITO)
         BigDecimal totalFinal = subtotalAcumulado.add(impuestosAcumulado).subtract(descGral).setScale(2, RoundingMode.HALF_UP);
-        
+
         // Detectar si es venta a crédito
         boolean hayCredito = false;
         for (CreateVentaPagoDto pago : dto.getPagos()) {
@@ -411,7 +418,7 @@ public class VentaServiceImpl implements VentaService{
                 break;
             }
         }
-        
+
         // Si no hay crédito, validar que el pago cubra el total (tolerancia de 1 peso por decimales)
         BigDecimal tolerancia = BigDecimal.ONE;
         if (!hayCredito && totalPagado.add(tolerancia).compareTo(totalFinal) < 0) {
@@ -437,7 +444,7 @@ public class VentaServiceImpl implements VentaService{
         // Detectar si es venta a crédito
         boolean esCredito = false;
         BigDecimal saldoPendiente = BigDecimal.ZERO;
-        
+
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             if ("CREDITO".equalsIgnoreCase(pago.getMetodoPago())) {
                 esCredito = true;
@@ -445,28 +452,27 @@ public class VentaServiceImpl implements VentaService{
                 break;
             }
         }
-        
+
         // Si no es crédito pero hay saldo pendiente, es pago parcial (tolerancia de 1 peso)
         boolean esPagoParcial = !esCredito && totalPagado.add(tolerancia).compareTo(totalFinal) < 0;
         if (esPagoParcial) {
             saldoPendiente = totalFinal.subtract(totalPagado);
         }
-        
+
         venta.setSubtotal(subtotalAcumulado);
         venta.setDescuentoTotal(descuentoAcumulado.add(descGral));
         venta.setImpuestosTotal(impuestosAcumulado);
         venta.setTotalPagar(totalFinal);
-        
+
         // Campos de pago parcial
         venta.setPagoParcial(esPagoParcial || esCredito);
         venta.setSaldoPendiente(saldoPendiente);
-        
+
         // Si es crédito o pago parcial, el estado sigue como PAGO_PARCIAL, sino COMPLETADA
         if (esPagoParcial || esCredito) {
             venta.setEstadoVenta("PAGO_PARCIAL");
         }
 
-        
         ventaJPARepository.save(venta);
 
         // 8. Crear cuenta por cobrar si es crédito o pago parcial (HU-014)
@@ -476,22 +482,22 @@ public class VentaServiceImpl implements VentaService{
             cuentaCobrarDto.setVentaId(venta.getId());
             cuentaCobrarDto.setTotalDeuda(totalFinal);
             cuentaCobrarDto.setFechaEmision(venta.getFechaEmision());
-            cuentaCobrarDto.setFechaVencimiento(dto.getFechaVencimiento() != null ? 
-                dto.getFechaVencimiento() : venta.getFechaEmision().plusDays(30));
-            cuentaCobrarDto.setObservaciones(esCredito ? 
-                "Venta #" + venta.getId() + " - Venta a crédito" : 
-                "Venta #" + venta.getId() + " - Pago parcial");
+            cuentaCobrarDto.setFechaVencimiento(dto.getFechaVencimiento() != null
+                    ? dto.getFechaVencimiento() : venta.getFechaEmision().plusDays(30));
+            cuentaCobrarDto.setObservaciones(esCredito
+                    ? "Venta #" + venta.getId() + " - Venta a crédito"
+                    : "Venta #" + venta.getId() + " - Pago parcial");
 
             cuentaCobrarService.crear(cuentaCobrarDto, empresaId, usuarioId);
         }
 
         // 9. Crear factura automáticamente desde la venta
         FacturaDto facturaDto = facturaService.crearDesdeVenta(venta.getId(), empresaId, usuarioId.intValue());
-        
+
         // 9. Obtener venta con factura asignada
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
         ventaDto.setFacturaId(facturaDto.getId());
-        
+
         return ventaDto;
     }
 
@@ -501,71 +507,74 @@ public class VentaServiceImpl implements VentaService{
         VentaEntity venta = ventaJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Venta no encontrada"));
 
-        if (venta.getEstadoVenta().equals("ANULADA"))
+        if (venta.getEstadoVenta().equals("ANULADA")) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La venta ya está anulada");
+        }
 
         List<VentaDetalleEntity> detalles = detalleJPARepository.findByVentaId(id);
 
         for (VentaDetalleEntity detalle : detalles) {
             ProductoEntity producto = detalle.getProducto();
 
-        // En anular(), reemplazar el bloque if (Boolean.TRUE.equals(producto.getManejaInventario()))
-        if (Boolean.TRUE.equals(producto.getManejaInventario())) {
+            // En anular(), reemplazar el bloque if (Boolean.TRUE.equals(producto.getManejaInventario()))
+            if (Boolean.TRUE.equals(producto.getManejaInventario())) {
 
-            List<ProductoComposicionEntity> componentes =
-                composicionJPARepository.findByProductoPadreId(producto.getId());
+                List<ProductoComposicionEntity> componentes
+                        = composicionJPARepository.findByProductoPadreId(producto.getId());
 
-            if (!componentes.isEmpty()) {
-                // Devolver cada componente al inventario
-                for (ProductoComposicionEntity comp : componentes) {
-                    ProductoEntity hijo = comp.getProductoHijo();
-                    if (!Boolean.TRUE.equals(hijo.getManejaInventario())) continue;
+                if (!componentes.isEmpty()) {
+                    // Devolver cada componente al inventario
+                    for (ProductoComposicionEntity comp : componentes) {
+                        ProductoEntity hijo = comp.getProductoHijo();
+                        if (!Boolean.TRUE.equals(hijo.getManejaInventario())) {
+                            continue;
+                        }
 
-                    BigDecimal cantidadDevolver = detalle.getCantidad().multiply(comp.getCantidad());
+                        BigDecimal cantidadDevolver = detalle.getCantidad().multiply(comp.getCantidad());
 
-                    InventarioEntity invHijo = inventarioJPARepository
-                        .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), hijo.getId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
-                            "Inventario no encontrado para componente: " + hijo.getNombre()));
+                        InventarioEntity invHijo = inventarioJPARepository
+                                .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), hijo.getId())
+                                .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Inventario no encontrado para componente: " + hijo.getNombre()));
 
-                    BigDecimal saldoAnt = invHijo.getStockActual();
-                    BigDecimal saldoNuevo = saldoAnt.add(cantidadDevolver);
+                        BigDecimal saldoAnt = invHijo.getStockActual();
+                        BigDecimal saldoNuevo = saldoAnt.add(cantidadDevolver);
 
-                    invHijo.setStockActual(saldoNuevo);
-                    invHijo.setUpdatedAt(LocalDateTime.now());
-                    inventarioJPARepository.save(invHijo);
+                        invHijo.setStockActual(saldoNuevo);
+                        invHijo.setUpdatedAt(LocalDateTime.now());
+                        inventarioJPARepository.save(invHijo);
 
-                    registrarMovimiento(venta.getSucursal(), hijo, null,
-                        cantidadDevolver, saldoAnt, saldoNuevo,
-                        detalle.getPrecioUnitario(), "ANULACION_VENTA",
-                        "Anulación Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                        registrarMovimiento(venta.getSucursal(), hijo, null,
+                                cantidadDevolver, saldoAnt, saldoNuevo,
+                                detalle.getPrecioUnitario(), "ANULACION_VENTA",
+                                "Anulación Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                    }
+                } else {
+                    // Producto simple — lógica actual sin cambios
+                    InventarioEntity inventario = inventarioJPARepository
+                            .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), producto.getId())
+                            .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Inventario no encontrado para: " + producto.getNombre()));
+
+                    BigDecimal saldoAnterior = inventario.getStockActual();
+                    BigDecimal saldoNuevo = saldoAnterior.add(detalle.getCantidad());
+
+                    inventario.setStockActual(saldoNuevo);
+                    inventario.setUpdatedAt(LocalDateTime.now());
+                    inventarioJPARepository.save(inventario);
+
+                    if (detalle.getLote() != null) {
+                        LoteEntity lote = detalle.getLote();
+                        lote.setStockActual(lote.getStockActual().add(detalle.getCantidad()));
+                        loteJPARepository.save(lote);
+                    }
+
+                    registrarMovimiento(venta.getSucursal(), producto, detalle.getLote(),
+                            detalle.getCantidad(), saldoAnterior, saldoNuevo,
+                            detalle.getPrecioUnitario(), "ANULACION_VENTA",
+                            "Anulación Venta #" + venta.getId());
                 }
-            } else {
-                // Producto simple — lógica actual sin cambios
-                InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), producto.getId())
-                    .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Inventario no encontrado para: " + producto.getNombre()));
-
-                BigDecimal saldoAnterior = inventario.getStockActual();
-                BigDecimal saldoNuevo = saldoAnterior.add(detalle.getCantidad());
-
-                inventario.setStockActual(saldoNuevo);
-                inventario.setUpdatedAt(LocalDateTime.now());
-                inventarioJPARepository.save(inventario);
-
-                if (detalle.getLote() != null) {
-                    LoteEntity lote = detalle.getLote();
-                    lote.setStockActual(lote.getStockActual().add(detalle.getCantidad()));
-                    loteJPARepository.save(lote);
-                }
-
-                registrarMovimiento(venta.getSucursal(), producto, detalle.getLote(),
-                    detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                    detalle.getPrecioUnitario(), "ANULACION_VENTA",
-                    "Anulación Venta #" + venta.getId());
             }
-        }
             // Devolver seriales a DISPONIBLE
             if (Boolean.TRUE.equals(producto.getManejaSerial())) {
                 serialJPARepository.findAll().stream()
@@ -582,7 +591,6 @@ public class VentaServiceImpl implements VentaService{
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
-
     private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
