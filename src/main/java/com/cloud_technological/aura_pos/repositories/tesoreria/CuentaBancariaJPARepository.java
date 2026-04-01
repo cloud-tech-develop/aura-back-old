@@ -10,4 +10,5 @@ import com.cloud_technological.aura_pos.entity.CuentaBancariaEntity;
 public interface CuentaBancariaJPARepository extends JpaRepository<CuentaBancariaEntity, Long> {
     List<CuentaBancariaEntity> findByEmpresaIdOrderByNombreAsc(Integer empresaId);
     Optional<CuentaBancariaEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
+    Optional<CuentaBancariaEntity> findFirstByEmpresaIdAndTipoAndActivaIsTrue(Integer empresaId, String tipo);
 }
