@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.cloud_technological.aura_pos.dto.tesoreria.ConciliacionResumenDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CreateMovimientoDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.TesoreriaMovimientoDto;
 import com.cloud_technological.aura_pos.services.TesoreriaService;
@@ -97,5 +98,22 @@ public class TesoreriaController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 tesoreriaService.listarParaConciliacion(empresaId, cuentaId, desde, hasta)));
+    }
+
+    @GetMapping("/conciliacion/resumen")
+    public ResponseEntity<ApiResponse<ConciliacionResumenDto>> getResumen(
+            @RequestParam Long cuentaId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                tesoreriaService.getResumen(empresaId, cuentaId, desde, hasta)));
+    }
+
+    @PatchMapping("/conciliacion/conciliar-lote")
+    public ResponseEntity<ApiResponse<Void>> conciliarLote(@RequestBody List<Long> ids) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        tesoreriaService.conciliarLote(ids, empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(200, "Movimientos conciliados", false, null));
     }
 }
