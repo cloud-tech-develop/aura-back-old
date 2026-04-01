@@ -18,5 +18,9 @@ public class MovimientoCajaDto {
     private String     cuentaNumero;
     /** Nombre del cliente (INGRESO) o proveedor (EGRESO) */
     private String     terceroNombre;
+    private String     metodoPago;
+    private String     entregadoA;
+    private Long       comprobanteId;
+    private String     numeroComprobante;
 }
 

@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.cloud_technological.aura_pos.dto.tesoreria.ConciliacionResumenDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CreateMovimientoDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.TesoreriaMovimientoDto;
 import com.cloud_technological.aura_pos.entity.CuentaBancariaEntity;
@@ -120,6 +122,63 @@ public class TesoreriaServiceImpl implements TesoreriaService {
         mov.setConciliado(!mov.getConciliado());
         mov.setFechaConciliacion(mov.getConciliado() ? LocalDate.now() : null);
         movRepo.save(mov);
+    }
+
+    @Override
+    @Transactional
+    public void conciliarLote(List<Long> ids, Integer empresaId) {
+        for (Long id : ids) {
+            TesoreriaMovimientoEntity mov = movRepo.findByIdAndEmpresaId(id, empresaId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Movimiento no encontrado: " + id));
+            if (!mov.getConciliado()) {
+                mov.setConciliado(true);
+                mov.setFechaConciliacion(LocalDate.now());
+                movRepo.save(mov);
+            }
+        }
+    }
+
+    @Override
+    public ConciliacionResumenDto getResumen(Integer empresaId, Long cuentaId, LocalDate desde, LocalDate hasta) {
+        CuentaBancariaEntity cuenta = getCuenta(cuentaId, empresaId);
+        List<TesoreriaMovimientoEntity> movs = movRepo.findParaConciliacion(empresaId, cuentaId, desde, hasta);
+
+        long total = movs.size();
+        long conciliados = movs.stream().filter(TesoreriaMovimientoEntity::getConciliado).count();
+        long pendientes = total - conciliados;
+
+        BigDecimal entradasConc = movs.stream()
+                .filter(m -> m.getConciliado() && isEntrada(m.getTipo()))
+                .map(TesoreriaMovimientoEntity::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal salidasConc = movs.stream()
+                .filter(m -> m.getConciliado() && !isEntrada(m.getTipo()))
+                .map(TesoreriaMovimientoEntity::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal entradasPend = movs.stream()
+                .filter(m -> !m.getConciliado() && isEntrada(m.getTipo()))
+                .map(TesoreriaMovimientoEntity::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal salidasPend = movs.stream()
+                .filter(m -> !m.getConciliado() && !isEntrada(m.getTipo()))
+                .map(TesoreriaMovimientoEntity::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal saldoContable = cuenta.getSaldoInicial()
+                .add(entradasConc).subtract(salidasConc);
+
+        ConciliacionResumenDto dto = new ConciliacionResumenDto();
+        dto.setCuentaId(cuentaId);
+        dto.setCuentaNombre(cuenta.getNombre());
+        dto.setSaldoContable(saldoContable);
+        dto.setTotalMovimientos(total);
+        dto.setMovimientosConciliados(conciliados);
+        dto.setMovimientosPendientes(pendientes);
+        dto.setTotalEntradasConciliadas(entradasConc);
+        dto.setTotalSalidasConciliadas(salidasConc);
+        dto.setTotalEntradasPendientes(entradasPend);
+        dto.setTotalSalidasPendientes(salidasPend);
+        return dto;
+    }
+
+    private boolean isEntrada(String tipo) {
+        return "RECAUDO".equals(tipo) || "TRANSFERENCIA_ENTRADA".equals(tipo);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
