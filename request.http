@@ -1,0 +1,186 @@
+@baseUrl = http://localhost:8000/api
+@token = {{auth.response.body.access_token}}
+
+#####################################################
+# EP-006: Sistema de Permisos de Módulos
+#####################################################
+
+#####################################################
+# HU-032: Endpoint Público de Permisos (SIN AUTH)
+#####################################################
+
+### Obtener permisos por NIT (Público)
+GET {{baseUrl}}/public/empresas/900123456/permisos
+
+### Empresa no encontrada
+GET {{baseUrl}}/public/empresas/999999999/permisos
+
+
+#####################################################
+# HU-027: Gestión de Módulos (PLATFORM_ADMIN)
+#####################################################
+
+### Listar todos los módulos
+GET {{baseUrl}}/platform/modulos
+Authorization: Bearer {{token}}
+
+### Crear módulo
+POST {{baseUrl}}/platform/modulos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Nueva funcionalidad",
+  "codigo": "nueva-funcionalidad",
+  "descripcion": "Descripción de la nueva funcionalidad",
+  "orden": 11,
+  "activo": true
+}
+
+### Obtener módulo por ID
+GET {{baseUrl}}/platform/modulos/1
+Authorization: Bearer {{token}}
+
+### Actualizar módulo
+PUT {{baseUrl}}/platform/modulos/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Catálogo Actualizado",
+  "orden": 5
+}
+
+### Eliminar módulo (sin submódulos)
+DELETE {{baseUrl}}/platform/modulos/11
+Authorization: Bearer {{token}}
+
+### Error al eliminar módulo con submódulos
+DELETE {{baseUrl}}/platform/modulos/1
+Authorization: Bearer {{token}}
+
+
+#####################################################
+# HU-028: Gestión de Submódulos (PLATFORM_ADMIN)
+#####################################################
+
+### Listar todos los submódulos
+GET {{baseUrl}}/platform/submodulos
+Authorization: Bearer {{token}}
+
+### Listar submódulos por módulo
+GET {{baseUrl}}/platform/submodulos/modulo/1
+Authorization: Bearer {{token}}
+
+### Crear submódulo
+POST {{baseUrl}}/platform/submodulos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "modulo_id": 1,
+  "nombre": "Nuevo Submódulo",
+  "codigo": "nuevo-submodulo",
+  "descripcion": "Descripción del nuevo submódulo",
+  "orden": 8,
+  "activo": true
+}
+
+### Obtener submódulo por ID
+GET {{baseUrl}}/platform/submodulos/1
+Authorization: Bearer {{token}}
+
+### Actualizar submódulo
+PUT {{baseUrl}}/platform/submodulos/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Productos Actualizado",
+  "orden": 10
+}
+
+### Eliminar submódulo
+DELETE {{baseUrl}}/platform/submodulos/50
+Authorization: Bearer {{token}}
+
+
+#####################################################
+# HU-029: Permisos de Módulos por Empresa
+#####################################################
+
+### Ver permisos de una empresa
+GET {{baseUrl}}/platform/empresas/1/permisos
+Authorization: Bearer {{token}}
+
+### Actualizar permisos de módulos
+PUT {{baseUrl}}/platform/empresas/1/permisos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "modulos": [
+    {
+      "modulo_id": 1,
+      "activo": true,
+      "submodulos": [
+        {
+          "submodulo_id": 1,
+          "activo": true
+        },
+        {
+          "submodulo_id": 2,
+          "activo": false
+        }
+      ]
+    },
+    {
+      "modulo_id": 2,
+      "activo": false
+    }
+  ]
+}
+
+### Error: activar submódulo con módulo padre desactivado
+PUT {{baseUrl}}/platform/empresas/1/permisos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "modulos": [
+    {
+      "modulo_id": 2,
+      "activo": false,
+      "submodulos": [
+        {
+          "submodulo_id": 8,
+          "activo": true
+        }
+      ]
+    }
+  ]
+}
+
+
+#####################################################
+# Autenticación de prueba
+#####################################################
+
+### Login para obtener token
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@aura.com",
+  "password": "password123"
+}
+
+### Response de auth (guardar token)
+# @name auth
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@aura.com",
+  "password": "password123"
+}
