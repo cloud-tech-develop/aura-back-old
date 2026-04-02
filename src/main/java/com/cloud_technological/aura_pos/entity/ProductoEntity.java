@@ -69,6 +69,12 @@ public class ProductoEntity {
     private BigDecimal costo;
     private BigDecimal precio;
 
+    @Column(name = "precio_2")
+    private BigDecimal precio2;
+
+    @Column(name = "precio_3")
+    private BigDecimal precio3;
+
     @Column(name = "iva_porcentaje")
     private BigDecimal ivaPorcentaje;
 

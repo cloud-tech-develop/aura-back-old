@@ -22,7 +22,21 @@ public class CreateCompraDto {
     private String observaciones;
     @NotEmpty(message = "Debe agregar al menos un producto")
     private List<CreateCompraDetalleDto> detalles;
-    
+
     // Pagos de la compra (opcional)
     private List<CreateCompraPagoDto> pagos;
+
+    // Retenciones (opcionales)
+    private java.math.BigDecimal retefuentePct;
+    private java.math.BigDecimal reteivaPct;
+    private java.math.BigDecimal reteicaPct;
+
+    // Forma de pago
+    private String formaPago; // CONTADO | CREDITO
+
+    // Tipo de documento
+    private String tipoDocumento; // FACTURA_COMPRA | NOTA_DEBITO | NOTA_CREDITO | RECIBO
+
+    // Fletes / transporte
+    private java.math.BigDecimal fletes;
 }

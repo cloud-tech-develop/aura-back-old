@@ -28,4 +28,10 @@ public class CreateMovimientoCajaDto {
     private Long cuentaCobrarId;
 
     private Long cuentaPagarId;
+
+    /** EFECTIVO | TRANSFERENCIA */
+    private String metodoPago;
+
+    /** Nombre de quien recibe o entrega el dinero (opcional) */
+    private String entregadoA;
 }

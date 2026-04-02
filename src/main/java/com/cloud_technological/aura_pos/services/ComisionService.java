@@ -11,6 +11,7 @@ import com.cloud_technological.aura_pos.dto.comision.ComisionLiquidacionTableDto
 import com.cloud_technological.aura_pos.dto.comision.ComisionVentaDto;
 import com.cloud_technological.aura_pos.dto.comision.CreateComisionConfigDto;
 import com.cloud_technological.aura_pos.dto.comision.CreateLiquidacionDto;
+import com.cloud_technological.aura_pos.dto.comision.MarcarPagadaDto;
 import com.cloud_technological.aura_pos.dto.comision.TecnicoDto;
 import com.cloud_technological.aura_pos.entity.VentaDetalleEntity;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -31,7 +32,7 @@ public interface ComisionService {
     PageImpl<ComisionLiquidacionTableDto> listarLiquidaciones(PageableDto<Object> pageable, Integer empresaId);
     ComisionLiquidacionDto obtenerLiquidacionPorId(Long id, Integer empresaId);
     ComisionLiquidacionDto crearLiquidacion(CreateLiquidacionDto dto, Integer empresaId);
-    void marcarPagada(Long id, String fechaPago, Integer empresaId);
+    void marcarPagada(Long id, MarcarPagadaDto dto, Integer empresaId);
 
     // ── Pendientes ────────────────────────────────────────────
     List<ComisionVentaDto> listarPendientesTecnico(Integer tecnicoId, Integer empresaId);

@@ -54,10 +54,16 @@ public class CierreContableDto {
     // ── Posición neta (lo que te deben - lo que debes) ────
     private BigDecimal posicionNeta;
 
-    // ── Movimientos de caja del período ───────────────────
+    // ── Movimientos de caja del período (egresos POS internos) ──
     private BigDecimal totalIngresos;
     private BigDecimal totalEgresos;
     private Integer    cantidadIngresos;
     private Integer    cantidadEgresos;
     private List<MovimientoCierreDto> detalleMovimientos = new ArrayList<>();
+
+    // ── Gastos del período ─────────────────────────────────
+    private Integer    cantidadGastos;
+    private BigDecimal totalGastosDeducibles;
+    private BigDecimal totalGastosNoDeducibles;
+    private BigDecimal totalGastos;
 }
