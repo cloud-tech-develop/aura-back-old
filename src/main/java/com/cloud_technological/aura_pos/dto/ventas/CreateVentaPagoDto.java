@@ -13,8 +13,9 @@ import lombok.Setter;
 @Setter
 public class CreateVentaPagoDto {
     @NotBlank(message = "El método de pago es obligatorio")
-    private String metodoPago; // EFECTIVO, TARJETA, NEQUI
+    private String metodoPago; // EFECTIVO, TARJETA, NEQUI, TRANSFERENCIA, DAVIPLATA, CREDITO
     @NotNull(message = "El monto es obligatorio")
     private BigDecimal monto;
     private String referencia;
+    private Long cuentaBancariaId;
 }

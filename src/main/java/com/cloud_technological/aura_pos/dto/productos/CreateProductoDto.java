@@ -28,6 +28,8 @@ public class CreateProductoDto {
     private Boolean permitirStockNegativo = false;
     private BigDecimal costo = BigDecimal.ZERO;
     private BigDecimal precio = BigDecimal.ZERO;
+    private BigDecimal precio2;
+    private BigDecimal precio3;
     private BigDecimal ivaPorcentaje = BigDecimal.ZERO;
     private BigDecimal impoconsumo = BigDecimal.ZERO;
     private Boolean activo = true;

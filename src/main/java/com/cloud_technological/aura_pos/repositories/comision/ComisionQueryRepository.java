@@ -48,7 +48,9 @@ public class ComisionQueryRepository {
         StringBuilder sql = new StringBuilder("""
             SELECT
                 cc.id,
-                p.nombre AS producto_nombre,
+                cc.modalidad,
+                p.nombre  AS producto_nombre,
+                cat.nombre AS categoria_nombre,
                 CASE WHEN u.id IS NOT NULL
                      THEN CONCAT(t.nombres, ' ', t.apellidos)
                      ELSE NULL END AS tecnico_nombre,
@@ -58,16 +60,24 @@ public class ComisionQueryRepository {
                 cc.activo,
                 COUNT(*) OVER() AS total_rows
             FROM comision_config cc
-            INNER JOIN producto p ON cc.producto_id = p.id
-            LEFT JOIN usuario u ON cc.tecnico_id = u.id
-            LEFT JOIN tercero t ON u.tercero_id = t.id
+            LEFT JOIN producto p   ON cc.producto_id   = p.id
+            LEFT JOIN categoria cat ON cc.categoria_id = cat.id
+            LEFT JOIN usuario u    ON cc.tecnico_id    = u.id
+            LEFT JOIN tercero t    ON u.tercero_id     = t.id
             WHERE cc.empresa_id = :empresaId
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
 
         if (!search.isEmpty()) {
-            sql.append(" AND (LOWER(p.nombre) LIKE :search OR LOWER(t.nombres) LIKE :search OR LOWER(t.apellidos) LIKE :search) ");
+            sql.append("""
+                AND (
+                    LOWER(COALESCE(p.nombre, ''))   LIKE :search
+                 OR LOWER(COALESCE(cat.nombre, '')) LIKE :search
+                 OR LOWER(COALESCE(t.nombres, ''))  LIKE :search
+                 OR LOWER(COALESCE(t.apellidos,'')) LIKE :search
+                )
+            """);
             params.addValue("search", "%" + search + "%");
         }
 

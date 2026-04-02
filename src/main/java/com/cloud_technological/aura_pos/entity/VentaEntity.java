@@ -89,4 +89,7 @@ public class VentaEntity {
 
     @Column(name = "factus_numero")
     private String factusNumero;
+
+    @Column(name = "estado_devolucion")
+    private String estadoDevolucion;
 }

@@ -14,4 +14,6 @@ public interface CuentaCobrarJPARepository extends JpaRepository<CuentaCobrarEnt
 
     List<CuentaCobrarEntity> findByTerceroIdAndEmpresaIdAndDeletedAtIsNullOrderByCreatedAtAsc(
             Long terceroId, Integer empresaId);
+
+    Optional<CuentaCobrarEntity> findByVentaIdAndEmpresaId(Long ventaId, Integer empresaId);
 }

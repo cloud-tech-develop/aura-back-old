@@ -47,6 +47,7 @@ import com.cloud_technological.aura_pos.repositories.productos.ProductoJPAReposi
 import com.cloud_technological.aura_pos.repositories.productos_composicion.ProductoComposicionJPARepository;
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.repositories.venta_detalle.VentaDetalleJPARepository;
@@ -54,6 +55,8 @@ import com.cloud_technological.aura_pos.repositories.venta_detalle_serial.VentaD
 import com.cloud_technological.aura_pos.repositories.venta_pago.VentaPagoJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository;
+import com.cloud_technological.aura_pos.dto.cartera.ValidacionCreditoDto;
+import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
 import com.cloud_technological.aura_pos.services.FacturaService;
@@ -89,6 +92,8 @@ public class VentaServiceImpl implements VentaService {
     private final FacturaService facturaService;
     private final CuentaCobrarService cuentaCobrarService;
     private final ComisionService comisionService;
+    private final CarteraService carteraService;
+    private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
     public VentaServiceImpl(VentaQueryRepository ventaRepository,
@@ -113,7 +118,9 @@ public class VentaServiceImpl implements VentaService {
             VentaPagoMapper pagoMapper,
             FacturaService facturaService,
             CuentaCobrarService cuentaCobrarService,
-            ComisionService comisionService) {
+            ComisionService comisionService,
+            CarteraService carteraService,
+            CuentaBancariaJPARepository cuentaBancariaJPARepository) {
         this.ventaRepository = ventaRepository;
         this.ventaJPARepository = ventaJPARepository;
         this.detalleJPARepository = detalleJPARepository;
@@ -137,6 +144,8 @@ public class VentaServiceImpl implements VentaService {
         this.facturaService = facturaService;
         this.cuentaCobrarService = cuentaCobrarService;
         this.comisionService = comisionService;
+        this.carteraService = carteraService;
+        this.cuentaBancariaJPARepository = cuentaBancariaJPARepository;
     }
 
     @Override
@@ -194,6 +203,22 @@ public class VentaServiceImpl implements VentaService {
         if (dto.getClienteId() != null) {
             cliente = terceroJPARepository.findByIdAndEmpresaId(dto.getClienteId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
+        }
+
+        // 2.3. Validar cupo de crédito disponible
+        if (tienePagoCredito && cliente != null) {
+            BigDecimal montoCredito = dto.getPagos().stream()
+                    .filter(p -> "CREDITO".equalsIgnoreCase(p.getMetodoPago()))
+                    .map(CreateVentaPagoDto::getMonto)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            ValidacionCreditoDto validacion = carteraService.validarVenta(cliente.getId(), montoCredito, empresaId);
+            if (!validacion.isPermitido()) {
+                String motivo = validacion.getMotivoBloqueo() != null
+                        ? validacion.getMotivoBloqueo()
+                        : "Crédito no permitido para este cliente";
+                throw new GlobalException(HttpStatus.BAD_REQUEST, motivo);
+            }
         }
 
         // 3. Crear cabecera
@@ -436,8 +461,18 @@ public class VentaServiceImpl implements VentaService {
             pagoEntity.setMontoRecibido(pago.getMonto());                         // guarda lo tendido
             BigDecimal montoEfectivo = pago.getMonto().min(saldo);               // cap al saldo restante
             pagoEntity.setMonto(montoEfectivo);
+            pagoEntity.setCuentaBancariaId(pago.getCuentaBancariaId());
             saldo = saldo.subtract(montoEfectivo);
             pagoJPARepository.save(pagoEntity);
+
+            // Acreditar saldo en cuenta bancaria si el pago va a una cuenta específica
+            if (pago.getCuentaBancariaId() != null) {
+                cuentaBancariaJPARepository.findByIdAndEmpresaId(pago.getCuentaBancariaId(), empresaId)
+                        .ifPresent(cuenta -> {
+                            cuenta.setSaldoActual(cuenta.getSaldoActual().add(montoEfectivo));
+                            cuentaBancariaJPARepository.save(cuenta);
+                        });
+            }
         }
 
         // 7. Actualizar totales y calcular pagos parciales (HU-004)

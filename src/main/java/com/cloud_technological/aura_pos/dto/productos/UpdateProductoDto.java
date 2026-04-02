@@ -29,6 +29,8 @@ public class UpdateProductoDto {
     private Boolean permitirStockNegativo;
     private BigDecimal costo;
     private BigDecimal precio;
+    private BigDecimal precio2;
+    private BigDecimal precio3;
     private BigDecimal ivaPorcentaje;
     private BigDecimal impoconsumo;
     private Boolean activo;

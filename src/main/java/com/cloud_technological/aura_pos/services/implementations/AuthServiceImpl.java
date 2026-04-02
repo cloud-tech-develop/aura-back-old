@@ -34,7 +34,8 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import jakarta.transaction.Transactional;
 
 @Service
-public class AuthServiceImpl implements AuthService{
+public class AuthServiceImpl implements AuthService {
+
     private final AuthenticationManager authenticationManager;
     private final UsuarioJPARepository usuarioJPARepository;
     private final AuthQueryRepository authQueryRepository;
@@ -47,14 +48,14 @@ public class AuthServiceImpl implements AuthService{
 
     @Autowired
     public AuthServiceImpl(AuthenticationManager authenticationManager,
-                           UsuarioJPARepository usuarioJPARepository,
-                           AuthQueryRepository authQueryRepository,
-                           PasswordEncoder passwordEncoder,
-                           EmpresaJPARepository empresaRepository,
-                           SucursalJPARepository sucursalRepository,
-                           TerceroJPARepository terceroRepository,
-                           UsuarioSucursalJPARepository usuarioSucursalRepository,
-                           JwtTokenProvider jwtTokenProvider) {
+            UsuarioJPARepository usuarioJPARepository,
+            AuthQueryRepository authQueryRepository,
+            PasswordEncoder passwordEncoder,
+            EmpresaJPARepository empresaRepository,
+            SucursalJPARepository sucursalRepository,
+            TerceroJPARepository terceroRepository,
+            UsuarioSucursalJPARepository usuarioSucursalRepository,
+            JwtTokenProvider jwtTokenProvider) {
         this.authenticationManager = authenticationManager;
         this.usuarioJPARepository = usuarioJPARepository;
         this.passwordEncoder = passwordEncoder;
@@ -65,10 +66,11 @@ public class AuthServiceImpl implements AuthService{
         this.authQueryRepository = authQueryRepository;
         this.jwtTokenProvider = jwtTokenProvider;
     }
+
     @Override
     @Transactional // ¡Crucial! Todo o nada.
     public boolean register(RegisterRequestDto dto) {
-        
+
         // 1. Validaciones previas
         if (empresaRepository.existsByNit(dto.getNit())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe una empresa con ese NIT");
@@ -138,6 +140,7 @@ public class AuthServiceImpl implements AuthService{
 
         return true;
     }
+
     @Override
     public LoginResponseDto login(LoginRequestDto loginDto) {
         try {
@@ -168,23 +171,22 @@ public class AuthServiceImpl implements AuthService{
                         .orElse(Long.valueOf(sucursales.get(0).getId()));
             } else {
                 if (!"SUPER_ADMIN".equals(usuario.getRol())
-                    && !"PLATFORM_ADMIN".equals(usuario.getRol())) { // ← AGREGAR
+                        && !"PLATFORM_ADMIN".equals(usuario.getRol())) { // ← AGREGAR
                     throw new GlobalException(HttpStatus.FORBIDDEN, "El usuario no tiene sucursales asignadas");
                 }
             }
             Integer empresaId = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
             // 5. Generar Token (Incluyendo ID de Empresa y Sucursal Actual)
             String token = jwtTokenProvider.generateToken(
-                
-                authentication, 
-                empresaId, 
-                sucursalActualId,
-                usuario.getRol(),
-                Long.valueOf(usuario.getId())
+                    authentication,
+                    empresaId,
+                    sucursalActualId,
+                    usuario.getRol(),
+                    Long.valueOf(usuario.getId())
             );
             // 6. Construir Respuesta
-            String nombreCompleto = (usuario.getTercero() != null) 
-                    ? usuario.getTercero().getNombres() + " " + usuario.getTercero().getApellidos() 
+            String nombreCompleto = (usuario.getTercero() != null)
+                    ? usuario.getTercero().getNombres() + " " + usuario.getTercero().getApellidos()
                     : usuario.getUsername();
 
             return LoginResponseDto.builder()
@@ -203,8 +205,10 @@ public class AuthServiceImpl implements AuthService{
             throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
         } catch (Exception e) {
             // Loguear error real en consola
-            e.printStackTrace(); 
-            if(e instanceof GlobalException) throw e;
+            e.printStackTrace();
+            if (e instanceof GlobalException) {
+                throw e;
+            }
             throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Error en el proceso de login");
         }
     }

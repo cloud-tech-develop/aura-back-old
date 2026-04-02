@@ -36,6 +36,7 @@ import com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoC
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
+import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.TurnoCajaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -55,6 +56,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     private final CuentaCobrarJPARepository cuentaCobrarRepository;
     private final CuentaPagarJPARepository cuentaPagarRepository;
     private final MovimientoCajaJPARepository movimientoCajaRepository;
+    private final ComprobanteCajaService comprobanteCajaService;
 
     @Autowired
     public TurnoCajaServiceImpl(TurnoCajaQueryRepository turnoRepository,
@@ -66,7 +68,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             AbonoPagarJPARepository abonoPagarRepository,
             CuentaCobrarJPARepository cuentaCobrarRepository,
             CuentaPagarJPARepository cuentaPagarRepository,
-            MovimientoCajaJPARepository movimientoCajaRepository) {
+            MovimientoCajaJPARepository movimientoCajaRepository,
+            ComprobanteCajaService comprobanteCajaService) {
         this.turnoRepository = turnoRepository;
         this.turnoJPARepository = turnoJPARepository;
         this.cajaJPARepository = cajaJPARepository;
@@ -77,6 +80,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.cuentaPagarRepository = cuentaPagarRepository;
         this.movimientoCajaRepository = movimientoCajaRepository;
+        this.comprobanteCajaService = comprobanteCajaService;
     }
 
     @Override
@@ -134,13 +138,26 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         if (turno.getEstado().equals("CERRADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno ya está cerrado");
 
-        BigDecimal totalSistema  = turnoRepository.calcularTotalEfectivoSistema(id);
-        BigDecimal sumIngresos   = abonoCobrarRepository.sumMontoByTurnoCajaId(id);
-        BigDecimal sumEgresos    = abonoPagarRepository.sumMontoByTurnoCajaId(id);
-        BigDecimal ingresos      = sumIngresos != null ? sumIngresos : BigDecimal.ZERO;
-        BigDecimal egresos       = sumEgresos  != null ? sumEgresos  : BigDecimal.ZERO;
-        BigDecimal comisiones    = turnoRepository.totalComisionesTurno(id);
-        BigDecimal totalEsperado = turno.getBaseInicial().add(totalSistema).add(ingresos).subtract(egresos).subtract(comisiones);
+        BigDecimal totalSistema = turnoRepository.calcularTotalEfectivoSistema(id);
+        BigDecimal sumIngresos  = abonoCobrarRepository.sumMontoByTurnoCajaId(id);
+        BigDecimal sumEgresos   = abonoPagarRepository.sumMontoByTurnoCajaId(id);
+        BigDecimal ingresos     = sumIngresos != null ? sumIngresos : BigDecimal.ZERO;
+        BigDecimal egresos      = sumEgresos  != null ? sumEgresos  : BigDecimal.ZERO;
+        BigDecimal comisiones   = turnoRepository.totalComisionesTurno(id);
+
+        // Incluir movimientos genéricos de caja (ej: devoluciones en efectivo)
+        BigDecimal movIngreso = BigDecimal.ZERO;
+        BigDecimal movEgreso  = BigDecimal.ZERO;
+        for (MovimientoCajaEntity m : movimientoCajaRepository.findByTurnoCajaIdOrderByCreatedAtAsc(id)) {
+            if ("INGRESO".equals(m.getTipo()))      movIngreso = movIngreso.add(m.getMonto());
+            else if ("EGRESO".equals(m.getTipo()))  movEgreso  = movEgreso.add(m.getMonto());
+        }
+
+        BigDecimal totalEsperado = turno.getBaseInicial()
+                .add(totalSistema)
+                .add(ingresos).add(movIngreso)
+                .subtract(egresos).subtract(movEgreso)
+                .subtract(comisiones);
 
         turno.setFechaCierre(LocalDateTime.now());
         turno.setTotalEfectivoSistema(totalSistema);
@@ -197,6 +214,15 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             }
             cuentaCobrarRepository.save(cuenta);
 
+            Integer empId = turno.getCaja().getSucursal().getEmpresa().getId();
+            String terceroNombreCxC = resolverNombreTercero(cuenta.getTercero());
+            comprobanteCajaService.generar(
+                empId, usuarioId.intValue(),
+                "INGRESO", dto.getConcepto(), dto.getMonto(),
+                "EFECTIVO", terceroNombreCxC,
+                "ABONO_CXC", saved.getId(), turnoId
+            );
+
             return abonoCobrarToDto(saved);
         }
 
@@ -226,6 +252,15 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             }
             cuentaPagarRepository.save(cuenta);
 
+            Integer empId = turno.getCaja().getSucursal().getEmpresa().getId();
+            String terceroNombreCxP = resolverNombreTercero(cuenta.getTercero());
+            comprobanteCajaService.generar(
+                empId, usuarioId.intValue(),
+                "EGRESO", dto.getConcepto(), dto.getMonto(),
+                "EFECTIVO", terceroNombreCxP,
+                "ABONO_CXP", saved.getId(), turnoId
+            );
+
             return abonoPagarToDto(saved);
         }
 
@@ -237,6 +272,15 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 .monto(dto.getMonto())
                 .build();
         MovimientoCajaEntity saved = movimientoCajaRepository.save(movimiento);
+
+        Integer empId = turno.getCaja().getSucursal().getEmpresa().getId();
+        comprobanteCajaService.generar(
+            empId, usuarioId.intValue(),
+            dto.getTipo(), dto.getConcepto(), dto.getMonto(),
+            dto.getMetodoPago(), dto.getEntregadoA(),
+            "MANUAL", saved.getId(), turnoId
+        );
+
         return movimientoCajaToDto(saved);
     }
 
@@ -385,6 +429,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         resumen.setTotalComisiones(totalComisiones);
 
         resumen.setDetalleEfectivo(turnoRepository.detalleEfectivoTurno(turnoId));
+
+        var credito = turnoRepository.ventasCreditoTurno(turnoId);
+        resumen.setCantidadVentasCredito(toInt(credito.get("cantidad_ventas_credito")));
+        resumen.setTotalVentasCredito(toBD(credito.get("total_ventas_credito")));
 
         return resumen;
     }

@@ -25,5 +25,17 @@ public class CompraDto {
     private BigDecimal total;
     private String observaciones;
     private String estado;
+    private BigDecimal retefuentePct;
+    private BigDecimal retefuenteValor;
+    private BigDecimal reteivaPct;
+    private BigDecimal reteivaValor;
+    private BigDecimal reteicaPct;
+    private BigDecimal reteicaValor;
+    private BigDecimal totalRetenciones;
+    private BigDecimal netaAPagar;
+    private String formaPago;
+    private String tipoDocumento;
+    private BigDecimal fletes;
     private List<CompraDetalleDto> detalles;
+    private List<CompraPagoDto> pagos;
 }

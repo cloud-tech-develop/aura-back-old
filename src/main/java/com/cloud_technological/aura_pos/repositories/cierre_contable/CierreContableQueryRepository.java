@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.cierre_contable.CierreContableDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.MovimientoCierreDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.ReporteIvaDto;
 
 @Repository
 public class CierreContableQueryRepository {
@@ -109,6 +110,19 @@ public class CierreContableQueryRepository {
             ORDER BY mc.created_at
             """, params, new BeanPropertyRowMapper<>(MovimientoCierreDto.class));
 
+        // ── Gastos del período ────────────────────────────────
+        Map<String, Object> gastos = jdbc.queryForMap("""
+            SELECT
+                COUNT(g.id)                                                     AS cantidad_gastos,
+                COALESCE(SUM(CASE WHEN g.deducible THEN g.monto ELSE 0 END), 0) AS total_gastos_deducibles,
+                COALESCE(SUM(CASE WHEN NOT g.deducible THEN g.monto ELSE 0 END), 0) AS total_gastos_no_deducibles,
+                COALESCE(SUM(g.monto), 0)                                       AS total_gastos
+            FROM gasto g
+            WHERE g.empresa_id = :empresaId
+              AND g.estado = 'ACTIVO'
+              AND g.fecha BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
         // ── CxC snapshot (deudas de clientes pendientes) ──────
         Map<String, Object> cxc = jdbc.queryForMap("""
             SELECT
@@ -202,6 +216,52 @@ public class CierreContableQueryRepository {
         dto.setCantidadEgresos(toInt(movimientos.get("cantidad_egresos")));
         dto.setDetalleMovimientos(detalleMovimientos);
 
+        // Gastos
+        dto.setCantidadGastos(toInt(gastos.get("cantidad_gastos")));
+        dto.setTotalGastosDeducibles(toBD(gastos.get("total_gastos_deducibles")));
+        dto.setTotalGastosNoDeducibles(toBD(gastos.get("total_gastos_no_deducibles")));
+        dto.setTotalGastos(toBD(gastos.get("total_gastos")));
+
+        return dto;
+    }
+
+    public ReporteIvaDto reporteIva(Integer empresaId, String fechaDesde, String fechaHasta) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("fechaDesde", fechaDesde)
+                .addValue("fechaHasta", fechaHasta);
+
+        Map<String, Object> ventas = jdbc.queryForMap("""
+            SELECT
+                COALESCE(SUM(v.impuestos_total), 0) AS iva_ventas,
+                CAST(COUNT(v.id) AS INT)             AS cantidad_ventas
+            FROM venta v
+            WHERE v.empresa_id = :empresaId
+              AND v.estado_venta = 'COMPLETADA'
+              AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
+        Map<String, Object> compras = jdbc.queryForMap("""
+            SELECT
+                COALESCE(SUM(c.impuestos_total), 0) AS iva_compras,
+                CAST(COUNT(c.id) AS INT)             AS cantidad_compras
+            FROM compra c
+            WHERE c.empresa_id = :empresaId
+              AND c.estado = 'RECIBIDA'
+              AND DATE(c.fecha) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
+        BigDecimal ivaVentas  = toBD(ventas.get("iva_ventas"));
+        BigDecimal ivaCompras = toBD(compras.get("iva_compras"));
+
+        ReporteIvaDto dto = new ReporteIvaDto();
+        dto.setFechaDesde(fechaDesde);
+        dto.setFechaHasta(fechaHasta);
+        dto.setIvaVentas(ivaVentas);
+        dto.setCantidadVentas(toInt(ventas.get("cantidad_ventas")));
+        dto.setIvaCompras(ivaCompras);
+        dto.setCantidadCompras(toInt(compras.get("cantidad_compras")));
+        dto.setIvaADeclararOPagarAlEstado(ivaVentas.subtract(ivaCompras));
         return dto;
     }
 

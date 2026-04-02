@@ -69,15 +69,17 @@ public class CompraQueryRepository {
                 cd.producto_id,
                 p.nombre AS producto_nombre,
                 p.sku AS producto_sku,
-                cd.lote_id,
-                l.codigo_lote,
                 cd.cantidad,
                 cd.costo_unitario,
                 cd.impuesto_valor,
-                cd.subtotal_linea
+                cd.subtotal_linea,
+                cd.descuento_pct,
+                cd.descuento_valor,
+                cd.precio_venta1,
+                cd.precio_venta2,
+                cd.precio_venta3
             FROM compra_detalle cd
             INNER JOIN producto p ON cd.producto_id = p.id
-            LEFT JOIN lote l ON cd.lote_id = l.id
             WHERE cd.compra_id = :compraId
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("compraId", compraId);

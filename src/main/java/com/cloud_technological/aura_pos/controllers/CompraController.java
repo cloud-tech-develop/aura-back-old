@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,6 +57,16 @@ public class CompraController {
         Long usuarioId = securityUtils.getUsuarioId();
         CompraDto result = compraService.crear(dto, empresaId, usuarioId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Compra registrada exitosamente", false, result), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<CompraDto>> actualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateCompraDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        CompraDto result = compraService.actualizar(id, dto, empresaId, usuarioId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Compra actualizada correctamente", false, result), HttpStatus.OK);
     }
 
     @PatchMapping("/{id}/anular")

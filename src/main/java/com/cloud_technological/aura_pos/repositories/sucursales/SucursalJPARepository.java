@@ -8,4 +8,5 @@ import com.cloud_technological.aura_pos.entity.SucursalEntity;
 
 public interface SucursalJPARepository extends JpaRepository<SucursalEntity, Integer> {
     Optional<SucursalEntity> findByIdAndEmpresaId(Integer id, Integer empresaId);
+    Optional<SucursalEntity> findFirstByEmpresaIdOrderByIdAsc(Integer empresaId);
 }
