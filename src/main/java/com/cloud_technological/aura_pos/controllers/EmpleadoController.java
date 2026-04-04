@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
@@ -78,6 +80,15 @@ public class EmpleadoController {
         empleadoService.retirar(id, empresaId);
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Empleado retirado correctamente", false, null),
+                HttpStatus.OK);
+    }
+
+    @GetMapping("/vendedores")
+    public ResponseEntity<ApiResponse<List<EmpleadoDto>>> listarVendedores() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<EmpleadoDto> result = empleadoService.listarVendedores(empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Vendedores obtenidos", false, result),
                 HttpStatus.OK);
     }
 }

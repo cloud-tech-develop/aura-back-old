@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.dto.locales.AsignarVendedorDto;
 import com.cloud_technological.aura_pos.dto.locales.CreateLocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalTableDto;
@@ -192,12 +193,39 @@ public class LocalService {
         localRepository.save(entity);
     }
 
+    @Transactional
+    public LocalDto asignarVendedor(Long localId, Long vendedorId, Integer empresaId) {
+        LocalEntity entity = localRepository.findById(localId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado"));
+
+        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado");
+        }
+
+        // Si ya tiene vendedor actual, moverlo a anterior
+        if (entity.getVendedorActual() != null) {
+            entity.setVendedorAnterior(entity.getVendedorActual());
+        }
+
+        // Buscar y asignar el nuevo vendedor
+        EmpleadoEntity nuevoVendedor = empleadoRepository.findByIdAndEmpresaId(vendedorId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Vendedor no encontrado"));
+
+        entity.setVendedorActual(nuevoVendedor);
+        entity.setUpdatedAt(LocalDateTime.now());
+
+        return toDto(localRepository.save(entity));
+    }
+
     private LocalDto toDto(LocalEntity entity) {
         LocalDto dto = new LocalDto();
         dto.setId(entity.getId());
         dto.setEmpresaId(entity.getEmpresa().getId().longValue());
         dto.setNombre(entity.getNombre());
         dto.setDireccion(entity.getDireccion());
+        dto.setCiudad(entity.getCiudad());
+        dto.setCiudadId(entity.getCiudadId());
+        dto.setBarrio(entity.getBarrio());
         dto.setLatitud(entity.getLatitud());
         dto.setLongitud(entity.getLongitud());
         dto.setImagenFachada(entity.getImagenFachada());

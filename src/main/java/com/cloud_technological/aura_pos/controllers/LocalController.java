@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.dto.locales.AsignarVendedorDto;
 import com.cloud_technological.aura_pos.dto.locales.CreateLocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalTableDto;
@@ -70,5 +71,14 @@ public class LocalController {
         Integer empresaId = securityUtils.getEmpresaId();
         localService.delete(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local eliminado", false, true), HttpStatus.OK);
+    }
+
+    @PostMapping("/{id}/asignar-vendedor")
+    public ResponseEntity<ApiResponse<LocalDto>> asignarVendedor(
+            @PathVariable Long id,
+            @RequestBody AsignarVendedorDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        LocalDto local = localService.asignarVendedor(id, dto.getVendedorId(), empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Vendedor asignado", false, local), HttpStatus.OK);
     }
 }

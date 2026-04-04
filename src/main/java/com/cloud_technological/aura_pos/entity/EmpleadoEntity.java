@@ -35,10 +35,6 @@ public class EmpleadoEntity {
     @JoinColumn(name = "empresa_id")
     private EmpresaEntity empresa;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tipo_empleado_id")
-    private TipoEmpleadoEntity tipoEmpleado;
-
     @Column(name = "nombres", length = 100, nullable = false)
     private String nombres;
 

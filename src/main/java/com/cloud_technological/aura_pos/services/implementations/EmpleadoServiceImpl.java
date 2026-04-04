@@ -3,6 +3,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -34,6 +35,14 @@ public class EmpleadoServiceImpl implements EmpleadoService {
     @Override
     public PageImpl<EmpleadoTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         return empleadoQueryRepo.listar(pageable, empresaId);
+    }
+
+    @Override
+    public List<EmpleadoDto> listarVendedores(Integer empresaId) {
+        List<EmpleadoEntity> vendedores = empleadoRepo.findByEmpresaIdAndActivoTrueAndCargoIgnoreCase(empresaId, "VENDEDOR");
+        return vendedores.stream()
+                .map(this::toDto)
+                .toList();
     }
 
     @Override

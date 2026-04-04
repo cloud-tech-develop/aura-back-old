@@ -28,8 +28,12 @@ public class TipoEmpleadoController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<TipoEmpleadoDto>>> findAll() {
-        List<TipoEmpleadoDto> tipos = tipoEmpleadoService.findAll();
-        return ResponseEntity.ok(new ApiResponse<>(200, "Tipos de empleado obtenidos", false, tipos));
+        try {
+            List<TipoEmpleadoDto> tipos = tipoEmpleadoService.findAll();
+            return ResponseEntity.ok(new ApiResponse<>(200, "Tipos de empleado obtenidos", false, tipos));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(new ApiResponse<>(500, "Error al obtener tipos de empleado: " + e.getMessage(), true, null));
+        }
     }
 
     @GetMapping("/{id}")

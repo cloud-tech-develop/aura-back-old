@@ -24,6 +24,16 @@ public class EmpleadoQueryRepository {
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
         String search = pageable.getSearch() != null ? pageable.getSearch().trim().toLowerCase() : "";
 
+        // Extraer filtro de cargo desde params
+        String cargo = null;
+        if (pageable.getParams() != null && pageable.getParams() instanceof java.util.Map) {
+            java.util.Map<String, Object> paramMap = (java.util.Map<String, Object>) pageable.getParams();
+            Object cargoObj = paramMap.get("cargo");
+            if (cargoObj != null) {
+                cargo = cargoObj.toString().trim().toLowerCase();
+            }
+        }
+
         StringBuilder sql = new StringBuilder("""
             SELECT
                 e.id,
@@ -54,6 +64,11 @@ public class EmpleadoQueryRepository {
                 )
             """);
             params.addValue("search", "%" + search + "%");
+        }
+
+        if (cargo != null && !cargo.isEmpty()) {
+            sql.append(" AND LOWER(e.cargo) LIKE :cargo");
+            params.addValue("cargo", "%" + cargo + "%");
         }
 
         sql.append(" ORDER BY e.id DESC OFFSET :offset LIMIT :limit ");

@@ -32,10 +32,13 @@ public class TipoEmpleadoService {
 
     public List<TipoEmpleadoDto> findAll() {
         Integer empresaId = securityUtils.getEmpresaId();
-        return tipoEmpleadoRepository.findByEmpresaIdAndActivoTrue(empresaId.longValue())
+        List<TipoEmpleadoDto> list = tipoEmpleadoRepository.findByEmpresaIdAndActivoTrue(empresaId.longValue())
                 .stream()
                 .map(this::toDto)
                 .toList();
+
+        return list;
+
     }
 
     public TipoEmpleadoDto findById(Long id) {
