@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.rutas.CreateRutaDto;
@@ -38,16 +41,21 @@ public class RutaController {
             @RequestBody PageableDto<Object> pageable) {
         Integer empresaId = securityUtils.getEmpresaId();
         PageImpl<RutaTableDto> result = rutaService.listar(pageable, empresaId);
-        if (result.isEmpty())
+        if (result.isEmpty()) {
             throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron rutas");
+        }
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Rutas obtenidas", false, result), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<RutaDto>> obtenerPorId(@PathVariable Long id) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        RutaDto ruta = rutaService.findById(id, empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Ruta obtenida", false, ruta), HttpStatus.OK);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            RutaDto ruta = rutaService.findById(id, empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Ruta obtenida", false, ruta), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
     }
 
     @PostMapping("/create")
@@ -69,5 +77,29 @@ public class RutaController {
         Integer empresaId = securityUtils.getEmpresaId();
         rutaService.delete(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Ruta eliminada", false, true), HttpStatus.OK);
+    }
+
+    @GetMapping("/vendedor/{vendedorId}")
+    public ResponseEntity<ApiResponse<List<RutaDto>>> listarPorVendedor(@PathVariable Long vendedorId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<RutaDto> rutas = rutaService.findByVendedorAndActivas(vendedorId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Rutas del vendedor obtenidas", false, rutas), HttpStatus.OK);
+    }
+
+    @GetMapping("/validar")
+    public ResponseEntity<ApiResponse<RutaDto>> validar(
+            @RequestParam Long vendedorId,
+            @RequestParam Long localId,
+            @RequestParam Integer diaSemana) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RutaDto ruta = rutaService.findByVendedorLocalAndDia(vendedorId, localId, diaSemana, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Validación de ruta", false, ruta), HttpStatus.OK);
+    }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<RutaDto>>> listarActivas() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<RutaDto> rutas = rutaService.findAllActivas(empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Rutas activas obtenidas", false, rutas), HttpStatus.OK);
     }
 }

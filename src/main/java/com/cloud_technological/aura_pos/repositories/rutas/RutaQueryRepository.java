@@ -21,7 +21,7 @@ public class RutaQueryRepository {
         StringBuilder sql = new StringBuilder();
         sql.append("""
             SELECT 
-                r.id, r.nombre,
+                r.id, r.nombre, r.descripcion, r.dia_semana,
                 CONCAT(e.nombres, ' ', e.apellidos) AS vendedor_nombre,
                 (SELECT COUNT(*) FROM rutas_locales WHERE ruta_id = r.id) AS cantidad_locales,
                 r.activo,

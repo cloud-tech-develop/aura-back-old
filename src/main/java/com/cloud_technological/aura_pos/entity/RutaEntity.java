@@ -42,6 +42,9 @@ public class RutaEntity {
     @Column(name = "descripcion", length = 500)
     private String descripcion;
 
+    @Column(name = "dia_semana", nullable = false)
+    private Integer diaSemana;
+
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 

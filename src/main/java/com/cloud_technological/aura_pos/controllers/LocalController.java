@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
@@ -34,51 +36,82 @@ public class LocalController {
     @Autowired
     private SecurityUtils securityUtils;
 
+    @GetMapping()
+    public ResponseEntity<ApiResponse<List<LocalDto>>> listarActivos() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<LocalDto> locales = localService.findAllActivosByEmpresa(empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Locales activos obtenidos", false, locales), HttpStatus.OK);
+    }
+
     @PostMapping("/page")
     public ResponseEntity<ApiResponse<PageImpl<LocalTableDto>>> listar(
             @RequestBody PageableDto<Object> pageable) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        PageImpl<LocalTableDto> result = localService.listar(pageable, empresaId);
-        if (result.isEmpty()) {
-            throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron locales");
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            PageImpl<LocalTableDto> result = localService.listar(pageable, empresaId);
+            if (result.isEmpty()) {
+                throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron locales");
+            }
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Locales obtenidos", false, result), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Locales no encontrados");
         }
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Locales obtenidos", false, result), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<LocalDto>> obtenerPorId(@PathVariable Long id) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        LocalDto local = localService.findById(id, empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local obtenido", false, local), HttpStatus.OK);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            LocalDto local = localService.findById(id, empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local obtenido", false, local), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado " + e.getMessage());
+        }
     }
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<LocalDto>> crear(@RequestBody CreateLocalDto dto) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        LocalDto local = localService.create(dto, empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Local creado", false, local), HttpStatus.CREATED);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            LocalDto local = localService.create(dto, empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Local creado", false, local), HttpStatus.CREATED);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Error al crear el local");
+        }
     }
 
     @PutMapping("/update/{id}")
     public ResponseEntity<ApiResponse<LocalDto>> actualizar(@PathVariable Long id, @RequestBody UpdateLocalDto dto) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        LocalDto local = localService.update(id, dto, empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local actualizado", false, local), HttpStatus.OK);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            LocalDto local = localService.update(id, dto, empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local actualizado", false, local), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Error al actualizar el local");
+        }
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Boolean>> eliminar(@PathVariable Long id) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        localService.delete(id, empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local eliminado", false, true), HttpStatus.OK);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            localService.delete(id, empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Local eliminado", false, true), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Error al eliminar el local");
+        }
     }
 
     @PostMapping("/{id}/asignar-vendedor")
     public ResponseEntity<ApiResponse<LocalDto>> asignarVendedor(
             @PathVariable Long id,
             @RequestBody AsignarVendedorDto dto) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        LocalDto local = localService.asignarVendedor(id, dto.getVendedorId(), empresaId);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Vendedor asignado", false, local), HttpStatus.OK);
+        try {
+            Integer empresaId = securityUtils.getEmpresaId();
+            LocalDto local = localService.asignarVendedor(id, dto.getVendedorId(), empresaId);
+            return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Vendedor asignado", false, local), HttpStatus.OK);
+        } catch (Exception e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Error al asignar el vendedor");
+        }
     }
 }

@@ -27,7 +27,7 @@ import com.cloud_technological.aura_pos.repositories.visitas.VisitaQueryReposito
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
-
+import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaConfirmadaDto;
 
 @Service
 public class VisitaService {
@@ -62,40 +62,40 @@ public class VisitaService {
         if (params != null) {
             if (params instanceof java.util.Map) {
                 java.util.Map<String, Object> paramMap = (java.util.Map<String, Object>) params;
-                vendedorId = paramMap.get("vendedorId") != null 
-                    ? Long.valueOf(paramMap.get("vendedorId").toString()) 
-                    : null;
-                fechaDesde = paramMap.get("fechaDesde") != null 
-                    ? LocalDate.parse(paramMap.get("fechaDesde").toString()) 
-                    : null;
-                fechaHasta = paramMap.get("fechaHasta") != null 
-                    ? LocalDate.parse(paramMap.get("fechaHasta").toString()) 
-                    : null;
-                estado = paramMap.get("estado") != null 
-                    ? paramMap.get("estado").toString() 
-                    : null;
+                vendedorId = paramMap.get("vendedorId") != null
+                        ? Long.valueOf(paramMap.get("vendedorId").toString())
+                        : null;
+                fechaDesde = paramMap.get("fechaDesde") != null
+                        ? LocalDate.parse(paramMap.get("fechaDesde").toString())
+                        : null;
+                fechaHasta = paramMap.get("fechaHasta") != null
+                        ? LocalDate.parse(paramMap.get("fechaHasta").toString())
+                        : null;
+                estado = paramMap.get("estado") != null
+                        ? paramMap.get("estado").toString()
+                        : null;
             }
         }
 
         List<VisitaTableDto> visitas = visitaQueryRepository.page(
-            empresaId, 
-            pageable.getPage().intValue(), 
-            pageable.getRows().intValue(), 
-            vendedorId, 
-            fechaDesde, 
-            fechaHasta, 
-            estado, 
-            search
+                empresaId,
+                pageable.getPage().intValue(),
+                pageable.getRows().intValue(),
+                vendedorId,
+                fechaDesde,
+                fechaHasta,
+                estado,
+                search
         );
 
         int totalRows = visitas.isEmpty() ? 0 : visitas.get(0).getTotalRows();
 
-        return new PageImpl<>(visitas, 
-            org.springframework.data.domain.PageRequest.of(
-                pageable.getPage().intValue(), 
-                pageable.getRows().intValue()
-            ), 
-            totalRows);
+        return new PageImpl<>(visitas,
+                org.springframework.data.domain.PageRequest.of(
+                        pageable.getPage().intValue(),
+                        pageable.getRows().intValue()
+                ),
+                totalRows);
     }
 
     public List<VisitaTableDto> getVisitasDelDia(Integer empresaId) {
@@ -130,15 +130,91 @@ public class VisitaService {
         LocalEntity local = localRepository.findById(dto.getLocalId())
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
-        if (local.getVendedorActual() == null) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El local no tiene un vendedor asignado");
+        LocalDateTime fechaProgramada;
+        try {
+            fechaProgramada = LocalDateTime.parse(dto.getFechaProgramada());
+        } catch (Exception e) {
+            // Try parsing as date only (yyyy-MM-dd)
+            fechaProgramada = java.time.LocalDate.parse(dto.getFechaProgramada()).atStartOfDay();
         }
-
-        LocalDateTime fechaProgramada = LocalDateTime.parse(dto.getFechaProgramada());
 
         if (visitaRepository.existsByLocalIdAndFechaProgramadaAndEstadoNot(
                 dto.getLocalId(), fechaProgramada, VisitaEntity.Estado.CANCELADA)) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe una visita para este local en la fecha especificada");
+        }
+
+        EmpresaEntity empresa = new EmpresaEntity();
+        empresa.setId(empresaId);
+
+        EmpleadoEntity vendedor;
+        RutaEntity ruta = null;
+
+        if (dto.getRutaId() != null) {
+            // Si viene ruta, obtener vendedor de la ruta
+            ruta = rutaRepository.findById(dto.getRutaId())
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Ruta no encontrada"));
+            vendedor = ruta.getVendedor();
+        } else if (dto.getVendedorId() != null) {
+            // Si no viene ruta pero viene vendedor, usar ese vendedor
+            vendedor = empleadoRepository.findByIdAndEmpresaId(dto.getVendedorId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Vendedor no encontrado"));
+        } else {
+            // Si no viene ninguno, usar el vendedor actual del local
+            if (local.getVendedorActual() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El local no tiene un vendedor asignado");
+            }
+            vendedor = local.getVendedorActual();
+        }
+
+        VisitaEntity visita = new VisitaEntity();
+        visita.setEmpresa(empresa);
+        visita.setLocal(local);
+        visita.setVendedor(vendedor);
+        visita.setRuta(ruta);
+        visita.setFechaProgramada(fechaProgramada);
+        
+        // Parsear horaProgramada (soporta HH:mm o datetime completo ISO)
+        String horaProgramada = dto.getHoraProgramada();
+        if (horaProgramada != null) {
+            try {
+                // Replace ISO format with timezone to parse
+                horaProgramada = horaProgramada.replace("Z", "").replace("T", " ");
+                // Try parsing as datetime and extract time
+                horaProgramada = java.time.LocalDateTime.parse(horaProgramada).toLocalTime().toString();
+            } catch (Exception e) {
+                try {
+                    // Try parsing as time only (HH:mm)
+                    horaProgramada = java.time.LocalTime.parse(horaProgramada).toString();
+                } catch (Exception ex) {
+                    // Keep original value if all fails
+                }
+            }
+            visita.setHoraProgramada(horaProgramada);
+        }
+        
+        if (dto.getObservaciones() != null && !dto.getObservaciones().isBlank()) {
+            visita.setObservaciones(dto.getObservaciones());
+        }
+        visita.setEstado(VisitaEntity.Estado.PROGRAMADA);
+        visita.setCreatedAt(LocalDateTime.now());
+
+        return toDto(visitaRepository.save(visita));
+    }
+
+    @Transactional
+    public VisitaDto createConfirmada(CreateVisitaConfirmadaDto dto, Integer empresaId) {
+        LocalEntity local = localRepository.findById(dto.getLocalId())
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
+
+        if (local.getVendedorActual() == null && dto.getVendedorId() == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El local no tiene un vendedor asignado o no se especificó uno");
+        }
+
+        LocalDateTime fechaProgramada;
+        try {
+            fechaProgramada = LocalDateTime.parse(dto.getFechaProgramada());
+        } catch (Exception e) {
+            fechaProgramada = java.time.LocalDate.parse(dto.getFechaProgramada()).atStartOfDay();
         }
 
         EmpresaEntity empresa = new EmpresaEntity();
@@ -159,7 +235,19 @@ public class VisitaService {
         visita.setRuta(ruta);
         visita.setFechaProgramada(fechaProgramada);
         visita.setHoraProgramada(dto.getHoraProgramada());
-        visita.setEstado(VisitaEntity.Estado.PROGRAMADA);
+        if (dto.getObservaciones() != null && !dto.getObservaciones().isBlank()) {
+            visita.setObservaciones(dto.getObservaciones());
+        }
+        if (dto.getVendedorId() != null) {
+            visita.setVendedor(empleadoRepository.findById(dto.getVendedorId())
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Vendedor no encontrado")));
+        }
+
+        // Confirmar llegada inmediata
+        visita.setFechaReal(LocalDateTime.now());
+        visita.setLatitudLlegada(dto.getLatitudLlegada());
+        visita.setLongitudLlegada(dto.getLongitudLlegada());
+        visita.setEstado(VisitaEntity.Estado.COMPLETADA);
         visita.setCreatedAt(LocalDateTime.now());
 
         return toDto(visitaRepository.save(visita));
@@ -170,7 +258,7 @@ public class VisitaService {
         VisitaEntity entity = visitaRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada");
         }
 

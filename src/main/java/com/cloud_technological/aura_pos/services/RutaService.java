@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.cloud_technological.aura_pos.dto.rutas.CreateRutaDto;
 import com.cloud_technological.aura_pos.dto.rutas.RutaDto;
-import com.cloud_technological.aura_pos.dto.rutas.RutaLocalDto;
 import com.cloud_technological.aura_pos.dto.rutas.RutaTableDto;
 import com.cloud_technological.aura_pos.dto.rutas.UpdateRutaDto;
 import com.cloud_technological.aura_pos.entity.EmpleadoEntity;
@@ -83,8 +82,8 @@ public class RutaService {
         RutaEntity entity = rutaRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
-            throw new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada");
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Ruta no permitida");
         }
 
         return toDto(entity);
@@ -100,7 +99,7 @@ public class RutaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe una ruta con este nombre");
         }
 
-        if (dto.getLocales() == null || dto.getLocales().isEmpty()) {
+        if (dto.getLocalIds() == null || dto.getLocalIds().isEmpty()) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe agregar al menos un local a la ruta");
         }
 
@@ -115,20 +114,22 @@ public class RutaService {
         ruta.setVendedor(vendedor);
         ruta.setNombre(dto.getNombre());
         ruta.setDescripcion(dto.getDescripcion());
+        ruta.setDiaSemana(dto.getDiaSemana());
         ruta.setActivo(true);
         ruta.setCreatedAt(LocalDateTime.now());
 
         ruta = rutaRepository.save(ruta);
 
         List<RutaLocalEntity> locales = new ArrayList<>();
-        for (RutaLocalDto localDto : dto.getLocales()) {
-            LocalEntity local = localRepository.findById(localDto.getLocalId())
+        int orden = 1;
+        for (Long localId : dto.getLocalIds()) {
+            LocalEntity local = localRepository.findById(localId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
             RutaLocalEntity rutaLocal = new RutaLocalEntity();
             rutaLocal.setRuta(ruta);
             rutaLocal.setLocal(local);
-            rutaLocal.setOrden(localDto.getOrden());
+            rutaLocal.setOrden(orden++);
             rutaLocal.setCreatedAt(LocalDateTime.now());
             locales.add(rutaLocal);
         }
@@ -157,6 +158,9 @@ public class RutaService {
         if (dto.getDescripcion() != null) {
             entity.setDescripcion(dto.getDescripcion());
         }
+        if (dto.getDiaSemana() != null) {
+            entity.setDiaSemana(dto.getDiaSemana());
+        }
         if (dto.getActivo() != null) {
             entity.setActivo(dto.getActivo());
         }
@@ -167,18 +171,19 @@ public class RutaService {
             entity.setVendedor(vendedor);
         }
 
-        if (dto.getLocales() != null) {
+        if (dto.getLocalIds() != null) {
             rutaLocalRepository.deleteByRutaId(id);
 
             List<RutaLocalEntity> locales = new ArrayList<>();
-            for (RutaLocalDto localDto : dto.getLocales()) {
-                LocalEntity local = localRepository.findById(localDto.getLocalId())
+            int orden = 1;
+            for (Long localId : dto.getLocalIds()) {
+                LocalEntity local = localRepository.findById(localId)
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
                 RutaLocalEntity rutaLocal = new RutaLocalEntity();
                 rutaLocal.setRuta(entity);
                 rutaLocal.setLocal(local);
-                rutaLocal.setOrden(localDto.getOrden());
+                rutaLocal.setOrden(orden++);
                 rutaLocal.setCreatedAt(LocalDateTime.now());
                 locales.add(rutaLocal);
             }
@@ -209,6 +214,38 @@ public class RutaService {
         rutaRepository.save(entity);
     }
 
+    public List<RutaDto> findByVendedorAndActivas(Long vendedorId, Integer empresaId) {
+        return rutaRepository.findByVendedorIdAndActivoTrue(vendedorId)
+                .stream()
+                .map(this::toDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    public List<RutaDto> findAllActivas(Integer empresaId) {
+        return rutaRepository.findByEmpresaIdAndActivoTrueOrderByDiaSemanaAsc(empresaId.longValue())
+                .stream()
+                .map(this::toDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    public RutaDto findByVendedorLocalAndDia(Long vendedorId, Long localId, Integer diaSemana, Integer empresaId) {
+        RutaEntity entity = rutaRepository.findByVendedorIdAndDiaSemanaAndActivoTrue(vendedorId, diaSemana)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "No existe ruta para este vendedor en el día especificado"));
+        
+        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada");
+        }
+
+        boolean tieneLocal = entity.getLocales().stream()
+                .anyMatch(rl -> rl.getLocal().getId().equals(localId));
+        
+        if (!tieneLocal) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El local no está asociado a esta ruta");
+        }
+
+        return toDto(entity);
+    }
+
     private RutaDto toDto(RutaEntity entity) {
         RutaDto dto = new RutaDto();
         dto.setId(entity.getId());
@@ -217,7 +254,14 @@ public class RutaService {
         dto.setVendedorNombre(entity.getVendedor().getNombres() + " " + entity.getVendedor().getApellidos());
         dto.setNombre(entity.getNombre());
         dto.setDescripcion(entity.getDescripcion());
+        dto.setDiaSemana(entity.getDiaSemana());
         dto.setActivo(entity.getActivo());
+        
+        List<Long> localIds = entity.getLocales().stream()
+                .map(rl -> rl.getLocal().getId())
+                .collect(java.util.stream.Collectors.toList());
+        dto.setLocalIds(localIds);
+        
         return dto;
     }
 }

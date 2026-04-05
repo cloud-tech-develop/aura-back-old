@@ -6,6 +6,8 @@ import lombok.Data;
 public class RutaTableDto {
     private Long id;
     private String nombre;
+    private String descripcion;
+    private Integer diaSemana;
     private String vendedorNombre;
     private Integer cantidadLocales;
     private Boolean activo;

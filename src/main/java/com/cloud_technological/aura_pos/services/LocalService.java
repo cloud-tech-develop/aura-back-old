@@ -9,7 +9,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.cloud_technological.aura_pos.dto.locales.AsignarVendedorDto;
 import com.cloud_technological.aura_pos.dto.locales.CreateLocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalDto;
 import com.cloud_technological.aura_pos.dto.locales.LocalTableDto;
@@ -198,8 +197,8 @@ public class LocalService {
         LocalEntity entity = localRepository.findById(localId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
-            throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado");
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
+            throw new GlobalException(HttpStatus.NOT_FOUND, "Local no permitido");
         }
 
         // Si ya tiene vendedor actual, moverlo a anterior
@@ -215,6 +214,13 @@ public class LocalService {
         entity.setUpdatedAt(LocalDateTime.now());
 
         return toDto(localRepository.save(entity));
+    }
+
+    public List<LocalDto> findAllActivosByEmpresa(Integer empresaId) {
+        return localRepository.findByEmpresaIdAndActivoTrueOrderByNombre(empresaId.longValue())
+                .stream()
+                .map(this::toDto)
+                .collect(java.util.stream.Collectors.toList());
     }
 
     private LocalDto toDto(LocalEntity entity) {

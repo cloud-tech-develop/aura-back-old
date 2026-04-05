@@ -6,9 +6,10 @@ import lombok.Data;
 
 @Data
 public class UpdateRutaDto {
-    private Long vendedorId;
     private String nombre;
     private String descripcion;
-    private List<RutaLocalDto> locales;
+    private Integer diaSemana;
+    private Long vendedorId;
+    private List<Long> localIds;
     private Boolean activo;
 }

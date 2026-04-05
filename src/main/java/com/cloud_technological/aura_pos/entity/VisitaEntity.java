@@ -51,7 +51,7 @@ public class VisitaEntity {
     @Column(name = "fecha_programada", nullable = false)
     private LocalDateTime fechaProgramada;
 
-    @Column(name = "hora_programada", length = 5)
+    @Column(name = "hora_programada", length = 10)
     private String horaProgramada; // HH:mm
 
     @Column(name = "fecha_real")

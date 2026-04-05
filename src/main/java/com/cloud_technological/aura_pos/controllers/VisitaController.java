@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.visitas.ConfirmarLlegadaDto;
+import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaConfirmadaDto;
 import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaDto;
 import com.cloud_technological.aura_pos.dto.visitas.VisitaDto;
 import com.cloud_technological.aura_pos.dto.visitas.VisitaTableDto;
@@ -63,6 +64,13 @@ public class VisitaController {
         Integer empresaId = securityUtils.getEmpresaId();
         VisitaDto visita = visitaService.create(dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Visita creada", false, visita), HttpStatus.CREATED);
+    }
+
+    @PostMapping("/create-confirmada")
+    public ResponseEntity<ApiResponse<VisitaDto>> crearConfirmada(@RequestBody CreateVisitaConfirmadaDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        VisitaDto visita = visitaService.createConfirmada(dto, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Visita creada y confirmada", false, visita), HttpStatus.CREATED);
     }
 
     @PostMapping("/{id}/confirmar")
