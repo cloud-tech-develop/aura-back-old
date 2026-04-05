@@ -21,4 +21,7 @@ public class EmpleadoTableDto {
     private String tipoContrato;
     private Boolean activo;
     private long totalRows;
+    
+    // ID del usuario vinculado (nullable)
+    private Integer usuarioId;
 }

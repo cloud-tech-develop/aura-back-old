@@ -148,6 +148,7 @@ public class AuthServiceImpl implements AuthService {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(loginDto.getUsername(), loginDto.getPassword())
             );
+
             SecurityContextHolder.getContext().setAuthentication(authentication);
             // 2. Obtener Entidad Usuario (JPA) para datos críticos
             UsuarioEntity usuario = usuarioJPARepository.findByUsername(loginDto.getUsername())
@@ -189,10 +190,14 @@ public class AuthServiceImpl implements AuthService {
                     ? usuario.getTercero().getNombres() + " " + usuario.getTercero().getApellidos()
                     : usuario.getUsername();
 
+            // Obtener el ID del empleado vinculado (puede ser null)
+            Long empleadoId = usuario.getEmpleado() != null ? usuario.getEmpleado().getId() : null;
+
             return LoginResponseDto.builder()
                     .token(token)
                     .tipoToken("Bearer")
                     .usuarioId(usuario.getId())
+                    .empleadoId(empleadoId)
                     .username(usuario.getUsername())
                     .nombreCompleto(nombreCompleto)
                     .logo_url(empresa.getLogoUrl())

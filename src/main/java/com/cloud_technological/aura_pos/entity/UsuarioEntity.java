@@ -41,6 +41,16 @@ public class UsuarioEntity {
     @JoinColumn(name = "tercero_id", nullable = true)
     private TerceroEntity tercero;
 
+    // Relación con el empleado (nullable - un usuario puede no estar vinculado a un empleado)
+    @OneToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "empleado_id", nullable = true)
+    private EmpleadoEntity empleado;
+
+    // Relación con el cargo del empleado (para el rol)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "tipo_empleado_id", nullable = true)
+    private TipoEmpleadoEntity tipoEmpleado;
+
     @Column(nullable = false, unique = true)
     private String username;
 

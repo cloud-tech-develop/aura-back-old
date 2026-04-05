@@ -16,4 +16,12 @@ public interface EmpleadoService {
     EmpleadoDto crear(CreateEmpleadoDto dto, Integer empresaId);
     EmpleadoDto actualizar(Long id, CreateEmpleadoDto dto, Integer empresaId);
     void retirar(Long id, Integer empresaId);
+    
+    /**
+     * Sincroniza los datos del empleado con el usuario vinculado.
+     * Actualiza el rol basándose en el cargo del empleado.
+     * @param id ID del empleado
+     * @param empresaId ID de la empresa
+     */
+    void sincronizarConUsuario(Long id, Integer empresaId);
 }

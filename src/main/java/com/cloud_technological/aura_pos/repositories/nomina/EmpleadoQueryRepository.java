@@ -47,8 +47,10 @@ public class EmpleadoQueryRepository {
                 e.salario_base,
                 e.tipo_contrato,
                 e.activo,
-                COUNT(*) OVER() AS total_rows
+                COUNT(*) OVER() AS total_rows,
+                u.id AS usuario_id
             FROM empleados e
+            LEFT JOIN usuario u ON u.empleado_id = e.id
             WHERE e.empresa_id = :empresaId
         """);
 
