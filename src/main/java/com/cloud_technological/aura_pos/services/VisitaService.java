@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.cloud_technological.aura_pos.dto.visitas.ConfirmarLlegadaDto;
+import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaConfirmadaDto;
 import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaDto;
 import com.cloud_technological.aura_pos.dto.visitas.VisitaDto;
 import com.cloud_technological.aura_pos.dto.visitas.VisitaTableDto;
@@ -27,7 +28,6 @@ import com.cloud_technological.aura_pos.repositories.visitas.VisitaQueryReposito
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
-import com.cloud_technological.aura_pos.dto.visitas.CreateVisitaConfirmadaDto;
 
 @Service
 public class VisitaService {
@@ -118,7 +118,7 @@ public class VisitaService {
         VisitaEntity entity = visitaRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada");
         }
 
@@ -172,7 +172,7 @@ public class VisitaService {
         visita.setVendedor(vendedor);
         visita.setRuta(ruta);
         visita.setFechaProgramada(fechaProgramada);
-        
+
         // Parsear horaProgramada (soporta HH:mm o datetime completo ISO)
         String horaProgramada = dto.getHoraProgramada();
         if (horaProgramada != null) {
@@ -191,7 +191,7 @@ public class VisitaService {
             }
             visita.setHoraProgramada(horaProgramada);
         }
-        
+
         if (dto.getObservaciones() != null && !dto.getObservaciones().isBlank()) {
             visita.setObservaciones(dto.getObservaciones());
         }
@@ -294,7 +294,7 @@ public class VisitaService {
         VisitaEntity entity = visitaRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Visita no encontrada");
         }
 
@@ -325,6 +325,8 @@ public class VisitaService {
         dto.setLocalId(entity.getLocal().getId());
         dto.setLocalNombre(entity.getLocal().getNombre());
         dto.setLocalDireccion(entity.getLocal().getDireccion());
+        dto.setLocalLatitud(entity.getLocal().getLatitud());
+        dto.setLocalLongitud(entity.getLocal().getLongitud());
         dto.setVendedorId(entity.getVendedor().getId());
         dto.setVendedorNombre(entity.getVendedor().getNombres() + " " + entity.getVendedor().getApellidos());
 

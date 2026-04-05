@@ -28,10 +28,26 @@ public class VisitaQueryRepository {
                 v.id,
                 l.nombre AS local_nombre,
                 l.direccion AS local_direccion,
+                l.latitud AS local_latitud,
+                l.longitud AS local_longitud,
                 CONCAT(e.nombres, ' ', e.apellidos) AS vendedor_nombre,
                 r.nombre AS ruta_nombre,
                 v.fecha_programada,
                 v.hora_programada,
+                v.fecha_real,
+                v.latitud_llegada,
+                v.longitud_llegada,
+                CASE 
+                    WHEN v.latitud_llegada IS NOT NULL AND l.latitud IS NOT NULL AND v.longitud_llegada IS NOT NULL AND l.longitud IS NOT NULL
+                    THEN (
+                        6371000 * acos(
+                            cos(radians(l.latitud)) * cos(radians(v.latitud_llegada)) * 
+                            cos(radians(v.longitud_llegada) - radians(l.longitud)) + 
+                            sin(radians(l.latitud)) * sin(radians(v.latitud_llegada))
+                        )
+                    )::INTEGER
+                    ELSE NULL
+                END AS distancia_metros,
                 v.estado,
                 COUNT(*) OVER() AS total_rows
             FROM visitas v
@@ -78,10 +94,26 @@ public class VisitaQueryRepository {
                 v.id,
                 l.nombre AS local_nombre,
                 l.direccion AS local_direccion,
+                l.latitud AS local_latitud,
+                l.longitud AS local_longitud,
                 CONCAT(e.nombres, ' ', e.apellidos) AS vendedor_nombre,
                 r.nombre AS ruta_nombre,
                 v.fecha_programada,
                 v.hora_programada,
+                v.fecha_real,
+                v.latitud_llegada,
+                v.longitud_llegada,
+                CASE 
+                    WHEN v.latitud_llegada IS NOT NULL AND l.latitud IS NOT NULL AND v.longitud_llegada IS NOT NULL AND l.longitud IS NOT NULL
+                    THEN (
+                        6371000 * acos(
+                            cos(radians(l.latitud)) * cos(radians(v.latitud_llegada)) * 
+                            cos(radians(v.longitud_llegada) - radians(l.longitud)) + 
+                            sin(radians(l.latitud)) * sin(radians(v.latitud_llegada))
+                        )
+                    )::INTEGER
+                    ELSE NULL
+                END AS distancia_metros,
                 v.estado,
                 0 AS total_rows
             FROM visitas v

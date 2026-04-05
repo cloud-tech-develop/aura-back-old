@@ -79,7 +79,7 @@ public class LocalService {
         LocalEntity entity = localRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado");
         }
 
@@ -124,7 +124,7 @@ public class LocalService {
         LocalEntity entity = localRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado");
         }
 
@@ -179,7 +179,7 @@ public class LocalService {
         LocalEntity entity = localRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Local no encontrado");
         }
 

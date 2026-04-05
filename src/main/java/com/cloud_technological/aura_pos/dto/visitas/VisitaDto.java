@@ -11,6 +11,8 @@ public class VisitaDto {
     private Long localId;
     private String localNombre;
     private String localDireccion;
+    private Double localLatitud;
+    private Double localLongitud;
     private Long vendedorId;
     private String vendedorNombre;
     private Long rutaId;

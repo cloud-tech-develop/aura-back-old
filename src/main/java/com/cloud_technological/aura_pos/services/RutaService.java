@@ -144,7 +144,7 @@ public class RutaService {
         RutaEntity entity = rutaRepository.findById(id)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada"));
 
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada");
         }
 
@@ -231,14 +231,14 @@ public class RutaService {
     public RutaDto findByVendedorLocalAndDia(Long vendedorId, Long localId, Integer diaSemana, Integer empresaId) {
         RutaEntity entity = rutaRepository.findByVendedorIdAndDiaSemanaAndActivoTrue(vendedorId, diaSemana)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "No existe ruta para este vendedor en el día especificado"));
-        
-        if (!entity.getEmpresa().getId().equals(empresaId.longValue())) {
+
+        if (!entity.getEmpresa().getId().equals(empresaId)) {
             throw new GlobalException(HttpStatus.NOT_FOUND, "Ruta no encontrada");
         }
 
         boolean tieneLocal = entity.getLocales().stream()
                 .anyMatch(rl -> rl.getLocal().getId().equals(localId));
-        
+
         if (!tieneLocal) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El local no está asociado a esta ruta");
         }
@@ -256,12 +256,12 @@ public class RutaService {
         dto.setDescripcion(entity.getDescripcion());
         dto.setDiaSemana(entity.getDiaSemana());
         dto.setActivo(entity.getActivo());
-        
+
         List<Long> localIds = entity.getLocales().stream()
                 .map(rl -> rl.getLocal().getId())
                 .collect(java.util.stream.Collectors.toList());
         dto.setLocalIds(localIds);
-        
+
         return dto;
     }
 }
