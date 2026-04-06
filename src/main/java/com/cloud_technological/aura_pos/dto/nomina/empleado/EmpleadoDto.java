@@ -28,4 +28,7 @@ public class EmpleadoDto {
     private BigDecimal porcentajeArl;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    
+    // ID del usuario vinculado (nullable)
+    private Integer usuarioId;
 }
