@@ -59,6 +59,29 @@ public class TerceroEntity {
     @Column(name = "responsabilidad_fiscal")
     private String responsabilidadFiscal;
 
+    // ── Campos fiscales (V52) ───────────────────────────────────
+    @Column(name = "tipo_persona")
+    private String tipoPersona;
+
+    private String regimen;
+
+    @Column(name = "gran_contribuyente")
+    private Boolean granContribuyente;
+
+    @Column(name = "auto_retenedor")
+    private Boolean autoRetenedor;
+
+    @Column(name = "codigo_ciiu")
+    private String codigoCIIU;
+
+    @Column(name = "actividad_economica")
+    private String actividadEconomica;
+
+    private String pais;
+
+    @Column(name = "codigo_pais")
+    private String codigoPais;
+
     @Column(name = "es_cliente")
     private Boolean esCliente;
 
