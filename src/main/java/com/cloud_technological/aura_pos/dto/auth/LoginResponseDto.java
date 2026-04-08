@@ -17,6 +17,7 @@ public class LoginResponseDto {
     private String token;
     private String tipoToken; // "Bearer"
     private Integer usuarioId;
+    private Long empleadoId; // ID del empleado vinculado (nullable)
     private String username;
     private String nombreCompleto;
     private boolean facturaElectronica;

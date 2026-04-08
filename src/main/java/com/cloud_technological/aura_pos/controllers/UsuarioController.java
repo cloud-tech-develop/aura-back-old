@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.usuarios.CreateUsuarioDto;
+import com.cloud_technological.aura_pos.dto.usuarios.CreateUsuarioFromEmpleadoDto;
 import com.cloud_technological.aura_pos.dto.usuarios.UpdateUsuarioDto;
 import com.cloud_technological.aura_pos.dto.usuarios.UsuarioDto;
 import com.cloud_technological.aura_pos.dto.usuarios.UsuarioTableDto;
@@ -57,6 +58,19 @@ public class UsuarioController {
         Integer empresaId = securityUtils.getEmpresaId();
         UsuarioDto result = usuarioService.crear(dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Usuario creado exitosamente", false, result), HttpStatus.CREATED);
+    }
+
+    /**
+     * Crea un usuario vinculado a un empleado existente.
+     * El cargo del empleado se usa para determinar el rol.
+     * @param dto DTO con empleadoId, username y password
+     * @return UsuarioDto con los datos creados
+     */
+    @PostMapping("/create-from-empleado")
+    public ResponseEntity<ApiResponse<UsuarioDto>> crearDesdeEmpleado(@Valid @RequestBody CreateUsuarioFromEmpleadoDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        UsuarioDto result = usuarioService.crearDesdeEmpleado(dto, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Usuario creado exitosamente desde empleado", false, result), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
