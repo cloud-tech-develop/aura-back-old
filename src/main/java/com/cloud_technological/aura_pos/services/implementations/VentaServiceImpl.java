@@ -168,15 +168,24 @@ public class VentaServiceImpl implements VentaService {
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
 
-        // 1. Validar turno abierto
-        TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+        // 1. Validar turno (opcional para vendedores sin caja)
+        TurnoCajaEntity turno = null;
+        SucursalEntity sucursal;
 
-        if (!turno.getEstado().equals("ABIERTA")) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+        if (dto.getTurnoCajaId() != null) {
+            turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+            if (!turno.getEstado().equals("ABIERTA")) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+            }
+            sucursal = turno.getCaja().getSucursal();
+        } else {
+            if (dto.getSucursalId() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe indicar la sucursal para realizar la venta");
+            }
+            sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
         }
-
-        SucursalEntity sucursal = turno.getCaja().getSucursal();
 
         EmpresaEntity empresa = empresaRepository.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
@@ -226,7 +235,7 @@ public class VentaServiceImpl implements VentaService {
         venta.setEmpresa(empresa);
         venta.setSucursal(sucursal);
         venta.setUsuario(usuario);
-        venta.setTurnoCaja(turno);
+        if (turno != null) venta.setTurnoCaja(turno);
         venta.setTipoDocumento(dto.getTipoDocumento());
         venta.setPrefijo(sucursal.getPrefijoFacturacion());
         /**
