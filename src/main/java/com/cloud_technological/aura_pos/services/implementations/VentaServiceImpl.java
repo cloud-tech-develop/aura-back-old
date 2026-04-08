@@ -248,6 +248,12 @@ public class VentaServiceImpl implements VentaService{
         BigDecimal subtotalAcumulado = BigDecimal.ZERO;
         BigDecimal descuentoAcumulado = BigDecimal.ZERO;
         BigDecimal impuestosAcumulado = BigDecimal.ZERO;
+        // Acumuladores desglose IVA (V53)
+        BigDecimal ivaBase0Acum  = BigDecimal.ZERO;
+        BigDecimal ivaBase5Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor5Acum = BigDecimal.ZERO;
+        BigDecimal ivaBase19Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor19Acum = BigDecimal.ZERO;
 
         BigDecimal descGral = dto.getDescuentoGeneral() != null ? dto.getDescuentoGeneral() : BigDecimal.ZERO;
 
@@ -423,6 +429,21 @@ public class VentaServiceImpl implements VentaService{
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());
             impuestosAcumulado = impuestosAcumulado.add(impuestoLinea);
+
+            // Desglose IVA por tarifa (V53)
+            BigDecimal tarifa = producto.getIvaPorcentaje() != null
+                    ? producto.getIvaPorcentaje()
+                    : BigDecimal.ZERO;
+            int tarifaInt = tarifa.setScale(0, RoundingMode.HALF_UP).intValue();
+            if (tarifaInt == 5) {
+                ivaBase5Acum  = ivaBase5Acum.add(baseNetaOriginal);
+                ivaValor5Acum = ivaValor5Acum.add(impuestoLinea);
+            } else if (tarifaInt == 19) {
+                ivaBase19Acum  = ivaBase19Acum.add(baseNetaOriginal);
+                ivaValor19Acum = ivaValor19Acum.add(impuestoLinea);
+            } else {
+                ivaBase0Acum = ivaBase0Acum.add(baseNetaOriginal);
+            }
         }
 
         // 5. Validar que el pago cubra el total (excepto si hay método CREDITO)
@@ -491,6 +512,12 @@ public class VentaServiceImpl implements VentaService{
         venta.setDescuentoTotal(descuentoAcumulado.add(descGral));
         venta.setImpuestosTotal(impuestosAcumulado);
         venta.setTotalPagar(totalFinal);
+        // Desglose IVA (V53)
+        venta.setIvaBase0(ivaBase0Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase5(ivaBase5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor5(ivaValor5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase19(ivaBase19Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor19(ivaValor19Acum.setScale(2, RoundingMode.HALF_UP));
         
         // Campos de pago parcial
         venta.setPagoParcial(esPagoParcial || esCredito);

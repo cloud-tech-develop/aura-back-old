@@ -1,0 +1,16 @@
+ALTER TABLE gasto
+  ADD COLUMN tercero_id          BIGINT REFERENCES tercero(id),
+  ADD COLUMN cuenta_contable_id  BIGINT REFERENCES plan_cuenta(id),
+  ADD COLUMN centro_costo_id     BIGINT REFERENCES centros_costos(id),
+  ADD COLUMN base_iva            NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN tarifa_iva          NUMERIC(5,2)  NOT NULL DEFAULT 0,
+  ADD COLUMN valor_iva           NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN base_retefuente     NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN tarifa_retefuente   NUMERIC(5,2)  NOT NULL DEFAULT 0,
+  ADD COLUMN valor_retefuente    NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN base_reteica        NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN tarifa_reteica      NUMERIC(5,2)  NOT NULL DEFAULT 0,
+  ADD COLUMN valor_reteica       NUMERIC(18,2) NOT NULL DEFAULT 0,
+  ADD COLUMN tipo_doc_soporte    VARCHAR(20),
+  ADD COLUMN numero_doc_soporte  VARCHAR(50),
+  ADD COLUMN periodo_contable_id BIGINT REFERENCES periodo_contable(id);

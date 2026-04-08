@@ -36,4 +36,10 @@ public class VentaDto {
     private String qrData;
     private String estadoDian;
     private String factusUrl;   // URL pública del documento en Factus
+    // Desglose IVA por tarifa (V53)
+    private BigDecimal ivaBase0;
+    private BigDecimal ivaBase5;
+    private BigDecimal ivaValor5;
+    private BigDecimal ivaBase19;
+    private BigDecimal ivaValor19;
 }

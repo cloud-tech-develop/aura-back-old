@@ -128,6 +128,12 @@ public class FacturaServiceImpl implements FacturaService {
         factura.setUsuario(usuario);
         factura.setVenta(venta);
         factura.setCreatedAt(LocalDateTime.now());
+        // Propagar desglose IVA desde la venta (V53)
+        factura.setIvaBase0(venta.getIvaBase0() != null ? venta.getIvaBase0() : BigDecimal.ZERO);
+        factura.setIvaBase5(venta.getIvaBase5() != null ? venta.getIvaBase5() : BigDecimal.ZERO);
+        factura.setIvaValor5(venta.getIvaValor5() != null ? venta.getIvaValor5() : BigDecimal.ZERO);
+        factura.setIvaBase19(venta.getIvaBase19() != null ? venta.getIvaBase19() : BigDecimal.ZERO);
+        factura.setIvaValor19(venta.getIvaValor19() != null ? venta.getIvaValor19() : BigDecimal.ZERO);
 
         // Determinar método de pago principal desde los pagos de la venta
         List<VentaPagoEntity> pagosVenta = ventaPagoJPARepository.findByVentaId(ventaId);

@@ -30,4 +30,20 @@ public class CreateGastoDto {
 
     @NotNull(message = "Debe indicar si el gasto es deducible")
     private Boolean deducible;
+    // Campos tributarios (V54)
+    private Long terceroId;
+    private Long cuentaContableId;
+    private Long centroCostoId;
+    private Long periodoContableId;
+    private BigDecimal baseIva        = BigDecimal.ZERO;
+    private BigDecimal tarifaIva      = BigDecimal.ZERO;
+    private BigDecimal valorIva       = BigDecimal.ZERO;
+    private BigDecimal baseRetefuente = BigDecimal.ZERO;
+    private BigDecimal tarifaRetefuente = BigDecimal.ZERO;
+    private BigDecimal valorRetefuente  = BigDecimal.ZERO;
+    private BigDecimal baseReteica    = BigDecimal.ZERO;
+    private BigDecimal tarifaReteica  = BigDecimal.ZERO;
+    private BigDecimal valorReteica   = BigDecimal.ZERO;
+    private String tipoDocSoporte;
+    private String numeroDocSoporte;
 }
