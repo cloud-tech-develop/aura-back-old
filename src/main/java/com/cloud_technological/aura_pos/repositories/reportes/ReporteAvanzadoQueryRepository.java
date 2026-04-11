@@ -13,7 +13,9 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.cloud_technological.aura_pos.dto.reportes.ReporteLineaMovimientoCajaDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteMargenesProductoDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteMovimientosCajaDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteResumenAvanzadoDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteRotacionInventarioDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteTopProductoDto;
@@ -390,5 +392,57 @@ public class ReporteAvanzadoQueryRepository {
         dto.setVentasPorMetodoPago(porMetodo);
 
         return dto;
+    }
+
+    // ── Resumen movimientos de caja ───────────────────────────────────────────
+
+    public ReporteMovimientosCajaDto resumenMovimientosCaja(Integer empresaId,
+            LocalDate desde, LocalDate hasta) {
+        String sql = """
+                SELECT
+                    TO_CHAR(mc.created_at, 'YYYY-MM-DD HH24:MI') AS fecha,
+                    mc.tipo,
+                    mc.concepto,
+                    mc.monto,
+                    c.nombre AS caja_nombre,
+                    COALESCE(
+                        t.razon_social,
+                        TRIM(COALESCE(t.nombres, '') || ' ' || COALESCE(t.apellidos, '')),
+                        u.username
+                    ) AS usuario_nombre
+                FROM movimiento_caja mc
+                INNER JOIN turno_caja tc ON mc.turno_caja_id = tc.id
+                INNER JOIN caja c ON tc.caja_id = c.id
+                INNER JOIN sucursal s ON c.sucursal_id = s.id
+                INNER JOIN usuario u ON mc.usuario_id = u.id
+                LEFT JOIN tercero t ON u.tercero_id = t.id
+                WHERE s.empresa_id = :empresaId
+                  AND mc.created_at::date BETWEEN :desde AND :hasta
+                ORDER BY mc.created_at ASC
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("desde", desde)
+                .addValue("hasta", hasta);
+
+        List<ReporteLineaMovimientoCajaDto> movimientos =
+                jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteLineaMovimientoCajaDto.class));
+
+        BigDecimal totalIngresos = movimientos.stream()
+                .filter(m -> "INGRESO".equals(m.getTipo()))
+                .map(ReporteLineaMovimientoCajaDto::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalEgresos = movimientos.stream()
+                .filter(m -> "EGRESO".equals(m.getTipo()))
+                .map(ReporteLineaMovimientoCajaDto::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return ReporteMovimientosCajaDto.builder()
+                .totalIngresos(totalIngresos)
+                .totalEgresos(totalEgresos)
+                .saldoNeto(totalIngresos.subtract(totalEgresos))
+                .movimientos(movimientos)
+                .build();
     }
 }

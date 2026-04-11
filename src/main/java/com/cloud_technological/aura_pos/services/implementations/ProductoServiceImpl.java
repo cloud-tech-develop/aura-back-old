@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -76,40 +77,41 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public ProductoDto crear(CreateProductoDto dto, Integer empresaId) {
-        // Validar código de barras duplicado
+
         if (dto.getCodigoBarras() != null && !dto.getCodigoBarras().isBlank() &&
-                productoRepository.existeCodigoBarras(dto.getCodigoBarras(), empresaId))
+                productoRepository.existeCodigoBarras(dto.getCodigoBarras(), empresaId)) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está registrado");
-
-        ProductoEntity entity = productoMapper.toEntity(dto);
-
-        // Empresa
-        EmpresaEntity empresa = empresaRepository.findById(empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
-        entity.setEmpresa(empresa);
-
-        // Categoría (opcional)
-        if (dto.getCategoriaId() != null) {
-            CategoriaEntity categoria = categoriaJPARepository.findByIdAndEmpresaId(dto.getCategoriaId(), empresaId)
-                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Categoría no encontrada"));
-            entity.setCategoria(categoria);
         }
 
-        // Marca (opcional)
-        if (dto.getMarcaId() != null) {
-            MarcaEntity marca = marcaJPARepository.findByIdAndEmpresaId(dto.getMarcaId(), empresaId)
-                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Marca no encontrada"));
-            entity.setMarca(marca);
+        try {
+            ProductoEntity entity = productoMapper.toEntity(dto);
+
+            EmpresaEntity empresa = empresaRepository.findById(empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
+            entity.setEmpresa(empresa);
+
+            if (dto.getCategoriaId() != null) {
+                CategoriaEntity categoria = categoriaJPARepository.findByIdAndEmpresaId(dto.getCategoriaId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Categoría no encontrada"));
+                entity.setCategoria(categoria);
+            }
+
+            if (dto.getMarcaId() != null) {
+                MarcaEntity marca = marcaJPARepository.findByIdAndEmpresaId(dto.getMarcaId(), empresaId)
+                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Marca no encontrada"));
+                entity.setMarca(marca);
+            }
+
+            UnidadMedidaEntity unidad = unidadMedidaRepository.findById(dto.getUnidadMedidaBaseId())
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Unidad de medida no encontrada"));
+            entity.setUnidadMedidaBase(unidad);
+
+            return productoMapper.toDto(productoJPARepository.save(entity));
+
+        } catch (DataIntegrityViolationException e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está registrado");
         }
-
-        // Unidad de medida (obligatoria)
-        UnidadMedidaEntity unidad = unidadMedidaRepository.findById(dto.getUnidadMedidaBaseId())
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Unidad de medida no encontrada"));
-        entity.setUnidadMedidaBase(unidad);
-
-        return productoMapper.toDto(productoJPARepository.save(entity));
     }
-
     @Override
     @Transactional
     public ProductoDto actualizar(Long id, UpdateProductoDto dto, Integer empresaId) {
