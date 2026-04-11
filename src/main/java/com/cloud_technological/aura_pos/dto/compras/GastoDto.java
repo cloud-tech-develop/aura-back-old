@@ -23,4 +23,22 @@ public class GastoDto {
     private Boolean deducible;
     private String estado;
     private LocalDateTime createdAt;
+    // Campos tributarios (V54)
+    private Long terceroId;
+    private String terceroNombre;
+    private Long cuentaContableId;
+    private String cuentaContableNombre;
+    private Long centroCostoId;
+    private Long periodoContableId;
+    private BigDecimal baseIva;
+    private BigDecimal tarifaIva;
+    private BigDecimal valorIva;
+    private BigDecimal baseRetefuente;
+    private BigDecimal tarifaRetefuente;
+    private BigDecimal valorRetefuente;
+    private BigDecimal baseReteica;
+    private BigDecimal tarifaReteica;
+    private BigDecimal valorReteica;
+    private String tipoDocSoporte;
+    private String numeroDocSoporte;
 }

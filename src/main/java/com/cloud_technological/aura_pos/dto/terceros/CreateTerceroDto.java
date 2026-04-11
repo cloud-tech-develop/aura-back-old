@@ -26,4 +26,13 @@ public class CreateTerceroDto {
     private Boolean esEmpleado = false;
     private Long municipioId;
     private Boolean activo = true;
+    // Campos fiscales (V52)
+    private String tipoPersona = "NATURAL";
+    private String regimen = "NO_RESPONSABLE_IVA";
+    private Boolean granContribuyente = false;
+    private Boolean autoRetenedor = false;
+    private String codigoCIIU;
+    private String actividadEconomica;
+    private String pais = "Colombia";
+    private String codigoPais = "CO";
 }

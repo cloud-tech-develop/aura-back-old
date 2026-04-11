@@ -23,4 +23,13 @@ public class UpdateTerceroDto {
     private Boolean esEmpleado;
     private Long municipioId;
     private Boolean activo;
+    // Campos fiscales (V52)
+    private String tipoPersona;
+    private String regimen;
+    private Boolean granContribuyente;
+    private Boolean autoRetenedor;
+    private String codigoCIIU;
+    private String actividadEconomica;
+    private String pais;
+    private String codigoPais;
 }

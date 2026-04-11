@@ -168,15 +168,24 @@ public class VentaServiceImpl implements VentaService {
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
 
-        // 1. Validar turno abierto
-        TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+        // 1. Validar turno (opcional para vendedores sin caja)
+        TurnoCajaEntity turno = null;
+        SucursalEntity sucursal;
 
-        if (!turno.getEstado().equals("ABIERTA")) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+        if (dto.getTurnoCajaId() != null) {
+            turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+            if (!turno.getEstado().equals("ABIERTA")) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+            }
+            sucursal = turno.getCaja().getSucursal();
+        } else {
+            if (dto.getSucursalId() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe indicar la sucursal para realizar la venta");
+            }
+            sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
         }
-
-        SucursalEntity sucursal = turno.getCaja().getSucursal();
 
         EmpresaEntity empresa = empresaRepository.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
@@ -226,7 +235,7 @@ public class VentaServiceImpl implements VentaService {
         venta.setEmpresa(empresa);
         venta.setSucursal(sucursal);
         venta.setUsuario(usuario);
-        venta.setTurnoCaja(turno);
+        if (turno != null) venta.setTurnoCaja(turno);
         venta.setTipoDocumento(dto.getTipoDocumento());
         venta.setPrefijo(sucursal.getPrefijoFacturacion());
         /**
@@ -249,6 +258,12 @@ public class VentaServiceImpl implements VentaService {
         BigDecimal subtotalAcumulado = BigDecimal.ZERO;
         BigDecimal descuentoAcumulado = BigDecimal.ZERO;
         BigDecimal impuestosAcumulado = BigDecimal.ZERO;
+        // Acumuladores desglose IVA (V53)
+        BigDecimal ivaBase0Acum  = BigDecimal.ZERO;
+        BigDecimal ivaBase5Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor5Acum = BigDecimal.ZERO;
+        BigDecimal ivaBase19Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor19Acum = BigDecimal.ZERO;
 
         BigDecimal descGral = dto.getDescuentoGeneral() != null ? dto.getDescuentoGeneral() : BigDecimal.ZERO;
 
@@ -430,6 +445,21 @@ public class VentaServiceImpl implements VentaService {
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());
             impuestosAcumulado = impuestosAcumulado.add(impuestoLinea);
+
+            // Desglose IVA por tarifa (V53)
+            BigDecimal tarifa = producto.getIvaPorcentaje() != null
+                    ? producto.getIvaPorcentaje()
+                    : BigDecimal.ZERO;
+            int tarifaInt = tarifa.setScale(0, RoundingMode.HALF_UP).intValue();
+            if (tarifaInt == 5) {
+                ivaBase5Acum  = ivaBase5Acum.add(baseNetaOriginal);
+                ivaValor5Acum = ivaValor5Acum.add(impuestoLinea);
+            } else if (tarifaInt == 19) {
+                ivaBase19Acum  = ivaBase19Acum.add(baseNetaOriginal);
+                ivaValor19Acum = ivaValor19Acum.add(impuestoLinea);
+            } else {
+                ivaBase0Acum = ivaBase0Acum.add(baseNetaOriginal);
+            }
         }
 
         // 5. Validar que el pago cubra el total (excepto si hay método CREDITO)
@@ -498,6 +528,13 @@ public class VentaServiceImpl implements VentaService {
         venta.setDescuentoTotal(descuentoAcumulado.add(descGral));
         venta.setImpuestosTotal(impuestosAcumulado);
         venta.setTotalPagar(totalFinal);
+        // Desglose IVA (V53)
+        venta.setIvaBase0(ivaBase0Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase5(ivaBase5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor5(ivaValor5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase19(ivaBase19Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor19(ivaValor19Acum.setScale(2, RoundingMode.HALF_UP));
+        
 
         // Campos de pago parcial
         venta.setPagoParcial(esPagoParcial || esCredito);

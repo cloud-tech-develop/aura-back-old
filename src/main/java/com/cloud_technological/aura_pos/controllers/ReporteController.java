@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.reportes.ReporteMargenesProductoDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteMovimientosCajaDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteResumenAvanzadoDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteRotacionInventarioDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteTopProductoDto;
@@ -143,6 +144,17 @@ public class ReporteController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 reporteAvanzadoService.rotacionInventario(empresaId)));
+    }
+
+    @GetMapping("/avanzado/movimientos-caja")
+    public ResponseEntity<ApiResponse<ReporteMovimientosCajaDto>> movimientosCaja(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        LocalDate d = desde != null ? desde : LocalDate.now().withDayOfMonth(1);
+        LocalDate h = hasta != null ? hasta : LocalDate.now();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                reporteAvanzadoService.resumenMovimientosCaja(empresaId, d, h)));
     }
 
     // ── Helper ───────────────────────────────────────────────
