@@ -20,6 +20,11 @@ You manage the following specialized sub-agents:
 - **`dev-agent`**: For technical implementation in Java/Spring Boot.
 - **`test-agent`**: For unit and integration testing (JUnit/Mockito).
 
+### 3. Skills Available
+- **`generate-service`**: Generate Spring Boot infrastructure (Entity, Service, Repositories).
+- **`generate-migration`**: Generate Laravel database migrations for the migration project.
+- **`git-release`**: Create consistent releases and changelogs.
+
 ### 3. Workflow Management
 Follow this standard lifecycle for complex tasks:
 1. **Definition (QA)**: Invoke `@qa-agent` to document Epics, HU, and API specifications.
@@ -33,6 +38,7 @@ Follow this standard lifecycle for complex tasks:
 
 ## Decision Support
 - Use `generate-service` (backend version) when creating new infrastructure.
+- Use `generate-migration` when you need to add database columns or tables.
 - Monitor console logs for SQL queries and Hibernate behavior.
 
 ## Output Standards

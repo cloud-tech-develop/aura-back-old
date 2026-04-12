@@ -13,5 +13,11 @@ public class UsuarioTableDto {
     private String numeroDocumento;
     private String telefono;
     private Boolean activo;
+    
+    // Información del empleado vinculado
+    private Long empleadoId;
+    private Long tipoEmpleadoId;
+    private String tipoEmpleadoNombre;
+    
     private Long totalRows;
 }

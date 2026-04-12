@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoDetalleDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.BalanceComprobacionLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaProyeccionDto;
@@ -79,14 +80,20 @@ public class AsientoContableQueryRepository {
             SELECT
                 ad.id,
                 ad.cuenta_id,
-                pc.codigo AS cuenta_codigo,
-                pc.nombre AS cuenta_nombre,
-                pc.tipo   AS cuenta_tipo,
+                pc.codigo  AS cuenta_codigo,
+                pc.nombre  AS cuenta_nombre,
+                pc.tipo    AS cuenta_tipo,
                 ad.descripcion,
                 ad.debito,
-                ad.credito
+                ad.credito,
+                ad.tercero_id,
+                t.nombre   AS tercero_nombre,
+                ad.centro_costo_id,
+                cc.nombre  AS centro_costo_nombre
             FROM asiento_detalle ad
             JOIN plan_cuenta pc ON pc.id = ad.cuenta_id
+            LEFT JOIN tercero        t  ON t.id  = ad.tercero_id
+            LEFT JOIN centros_costos cc ON cc.id = ad.centro_costo_id
             WHERE ad.asiento_id = :asientoId
             ORDER BY ad.id
             """;
@@ -100,6 +107,10 @@ public class AsientoContableQueryRepository {
             dto.setDescripcion(rs.getString("descripcion"));
             dto.setDebito(rs.getBigDecimal("debito"));
             dto.setCredito(rs.getBigDecimal("credito"));
+            dto.setTerceroId(rs.getObject("tercero_id") != null ? rs.getLong("tercero_id") : null);
+            dto.setTerceroNombre(rs.getString("tercero_nombre"));
+            dto.setCentroCostoId(rs.getObject("centro_costo_id") != null ? rs.getLong("centro_costo_id") : null);
+            dto.setCentroCostoNombre(rs.getString("centro_costo_nombre"));
             return dto;
         });
     }
@@ -309,5 +320,48 @@ public class AsientoContableQueryRepository {
                 dto.setSaldoAcumulado(rs.getBigDecimal("saldo_acumulado"));
                 return dto;
             });
+    }
+
+    // ── Balance de Comprobación por período ──────────────────────────────────
+
+    public List<BalanceComprobacionLineaDto> balanceComprobacion(Long periodoId, Integer empresaId) {
+        String sql = """
+            SELECT
+                pc.id            AS cuenta_id,
+                pc.codigo,
+                pc.nombre,
+                pc.tipo,
+                pc.naturaleza,
+                COALESCE(SUM(ad.debito),  0) AS total_debito,
+                COALESCE(SUM(ad.credito), 0) AS total_credito,
+                CASE pc.naturaleza
+                    WHEN 'DEBITO'  THEN COALESCE(SUM(ad.debito), 0) - COALESCE(SUM(ad.credito), 0)
+                    WHEN 'CREDITO' THEN COALESCE(SUM(ad.credito), 0) - COALESCE(SUM(ad.debito), 0)
+                    ELSE COALESCE(SUM(ad.debito), 0) - COALESCE(SUM(ad.credito), 0)
+                END AS saldo
+            FROM asiento_detalle ad
+            JOIN asiento_contable  a  ON a.id  = ad.asiento_id
+            JOIN plan_cuenta       pc ON pc.id = ad.cuenta_id
+            WHERE a.periodo_contable_id = :periodoId
+              AND a.empresa_id          = :empresaId
+              AND a.estado              = 'CONTABILIZADO'
+            GROUP BY pc.id, pc.codigo, pc.nombre, pc.tipo, pc.naturaleza
+            ORDER BY pc.codigo
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("periodoId", periodoId)
+                .addValue("empresaId", empresaId);
+        return jdbc.query(sql, params, (rs, i) -> {
+            BalanceComprobacionLineaDto dto = new BalanceComprobacionLineaDto();
+            dto.setCuentaId(rs.getLong("cuenta_id"));
+            dto.setCodigo(rs.getString("codigo"));
+            dto.setNombre(rs.getString("nombre"));
+            dto.setTipo(rs.getString("tipo"));
+            dto.setNaturaleza(rs.getString("naturaleza"));
+            dto.setTotalDebito(rs.getBigDecimal("total_debito"));
+            dto.setTotalCredito(rs.getBigDecimal("total_credito"));
+            dto.setSaldo(rs.getBigDecimal("saldo"));
+            return dto;
+        });
     }
 }

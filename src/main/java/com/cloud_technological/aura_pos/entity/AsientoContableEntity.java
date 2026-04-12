@@ -58,6 +58,9 @@ public class AsientoContableEntity {
     @Column(name = "usuario_id")
     private Integer usuarioId;
 
+    @Column(name = "periodo_contable_id")
+    private Long periodoContableId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

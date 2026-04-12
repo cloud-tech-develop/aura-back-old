@@ -16,6 +16,8 @@ public interface UsuarioMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "empresa", ignore = true)
     @Mapping(target = "tercero", ignore = true)
+    @Mapping(target = "empleado", ignore = true)
+    @Mapping(target = "tipoEmpleado", ignore = true)
     @Mapping(target = "activo", constant = "true")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "sucursalesAsignadas", ignore = true)
@@ -25,6 +27,8 @@ public interface UsuarioMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "empresa", ignore = true)
     @Mapping(target = "tercero", ignore = true)
+    @Mapping(target = "empleado", ignore = true)
+    @Mapping(target = "tipoEmpleado", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "username", source="dto.email")
     @Mapping(target = "sucursalesAsignadas", ignore = true)
@@ -38,6 +42,9 @@ public interface UsuarioMapper {
     @Mapping(target = "telefono", source = "tercero.telefono")
     @Mapping(target = "email", source = "tercero.email")
     @Mapping(target = "sucursales", ignore = true)
+    @Mapping(target = "empleadoId", expression = "java(entity.getEmpleado() != null ? entity.getEmpleado().getId() : null)")
+    @Mapping(target = "tipoEmpleadoId", expression = "java(entity.getTipoEmpleado() != null ? entity.getTipoEmpleado().getId() : null)")
+    @Mapping(target = "tipoEmpleadoNombre", expression = "java(entity.getTipoEmpleado() != null ? entity.getTipoEmpleado().getNombre() : null)")
     UsuarioDto toDto(UsuarioEntity entity);
 
     default TerceroEntity mapTerceroFromCreateDto(CreateUsuarioDto dto) {

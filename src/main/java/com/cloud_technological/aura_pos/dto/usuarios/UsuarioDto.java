@@ -15,6 +15,13 @@ public class UsuarioDto {
     private Boolean activo;
     private LocalDateTime createdAt;
 
+    // ID del empleado vinculado (nullable)
+    private Long empleadoId;
+
+    // ID del cargo (tipo empleado) vinculado
+    private Long tipoEmpleadoId;
+    private String tipoEmpleadoNombre; // Nombre del cargo para mostrar
+
     // Datos personales del tercero
     private String nombres;
     private String apellidos;

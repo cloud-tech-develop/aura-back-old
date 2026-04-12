@@ -1,0 +1,21 @@
+CREATE TABLE centros_costos (
+    id BIGSERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL,
+    sucursal_id BIGINT,
+    codigo VARCHAR(20) NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    descripcion TEXT,
+    centro_costo_padre_id BIGINT REFERENCES centros_costos(id),
+    tipo VARCHAR(50) CHECK (tipo IN ('OPERATIVO','ADMINISTRATIVO','VENTAS','PRODUCCION','FINANCIERO')),
+    nivel INT,
+    permite_movimientos BOOLEAN DEFAULT TRUE,
+    presupuesto_asignado NUMERIC(15,2),
+    responsable_id BIGINT,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
+    deleted_at TIMESTAMP,
+    usuario_creacion BIGINT,
+    usuario_modificacion BIGINT,
+    CONSTRAINT uq_cc_empresa_codigo UNIQUE (empresa_id, codigo)
+);

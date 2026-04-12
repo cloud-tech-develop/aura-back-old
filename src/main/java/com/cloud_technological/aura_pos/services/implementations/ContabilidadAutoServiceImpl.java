@@ -15,12 +15,14 @@ import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto
 import com.cloud_technological.aura_pos.entity.AsientoContableEntity;
 import com.cloud_technological.aura_pos.entity.AsientoDetalleEntity;
 import com.cloud_technological.aura_pos.entity.CompraEntity;
+import com.cloud_technological.aura_pos.entity.PeriodoContableEntity;
 import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
 import com.cloud_technological.aura_pos.entity.VentaEntity;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.compras.CompraJPARepository;
+import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
 
@@ -32,6 +34,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private PlanCuentaJPARepository planRepo;
     @Autowired private AsientoContableJPARepository asientoRepo;
     @Autowired private AsientoContableQueryRepository queryRepo;
+    @Autowired private PeriodoContableJPARepository periodoRepo;
 
     // ────────────────────────────────────────────────────────────────────────
     //  Prefijos de comprobante (Regla 1)
@@ -58,6 +61,11 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     "Ya existe un asiento contable para la venta #" + ventaId);
         }
 
+        // Validar período contable abierto
+        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
+
         VentaEntity venta = ventaRepo.findByIdAndEmpresaId(ventaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Venta no encontrada"));
@@ -66,11 +74,14 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         BigDecimal impuestos     = venta.getImpuestosTotal() != null ? venta.getImpuestosTotal() : BigDecimal.ZERO;
         BigDecimal subtotal      = venta.getSubtotal() != null ? venta.getSubtotal() : BigDecimal.ZERO;
 
+        // Tercero: cliente de la venta (puede ser null en ventas de mostrador)
+        Long clienteId = venta.getCliente() != null ? venta.getCliente().getId() : null;
+
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
-        // DB: Clientes (1305) = totalVenta
+        // DB: Clientes (1305) = totalVenta — identificado con el tercero
         cuentaPorCodigo(empresaId, COD_CLIENTES).ifPresent(c ->
-            detalles.add(linea(c.getId(), "Venta factura", totalVenta, BigDecimal.ZERO)));
+            detalles.add(linea(c.getId(), "Venta factura", totalVenta, BigDecimal.ZERO, clienteId)));
 
         // CR: Ingresos por ventas (4135) = subtotal
         cuentaPorCodigo(empresaId, COD_INGRESOS_VENTAS).ifPresent(c ->
@@ -94,7 +105,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 venta.getFechaEmision().toLocalDate(), comprobante,
                 "Venta #" + ventaId + (venta.getConsecutivo() != null
                         ? " — " + venta.getPrefijo() + "-" + venta.getConsecutivo() : ""),
-                "VENTA", ventaId, detalles);
+                "VENTA", ventaId, periodo.getId(), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
@@ -112,6 +123,11 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     "Ya existe un asiento contable para la compra #" + compraId);
         }
 
+        // Validar período contable abierto
+        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
+
         CompraEntity compra = compraRepo.findByIdAndEmpresaId(compraId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Compra no encontrada"));
@@ -120,6 +136,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 ? compra.getNetaAPagar() : compra.getTotal();
         BigDecimal subtotal   = compra.getSubtotal() != null ? compra.getSubtotal() : BigDecimal.ZERO;
         BigDecimal impuestos  = compra.getImpuestosTotal() != null ? compra.getImpuestosTotal() : BigDecimal.ZERO;
+
+        // Tercero: proveedor de la compra
+        Long proveedorId = compra.getProveedor() != null ? compra.getProveedor().getId() : null;
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
@@ -133,9 +152,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 detalles.add(linea(c.getId(), "IVA compra (descontable)", impuestos, BigDecimal.ZERO)));
         }
 
-        // CR: Proveedores (2205) = netaAPagar
+        // CR: Proveedores (2205) = netaAPagar — identificado con el tercero
         cuentaPorCodigo(empresaId, COD_PROVEEDORES).ifPresent(c ->
-            detalles.add(linea(c.getId(), "Cuentas por pagar proveedor", BigDecimal.ZERO, netaAPagar)));
+            detalles.add(linea(c.getId(), "Cuentas por pagar proveedor", BigDecimal.ZERO, netaAPagar, proveedorId)));
 
         if (detalles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -148,7 +167,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 compra.getFecha().toLocalDate(), comprobante,
                 "Compra #" + compraId + (compra.getNumeroCompra() != null
                         ? " — " + compra.getNumeroCompra() : ""),
-                "COMPRA", compraId, detalles);
+                "COMPRA", compraId, periodo.getId(), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
@@ -167,17 +186,24 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
     private AsientoDetalleEntity linea(Long cuentaId, String desc,
             BigDecimal debito, BigDecimal credito) {
+        return linea(cuentaId, desc, debito, credito, null);
+    }
+
+    private AsientoDetalleEntity linea(Long cuentaId, String desc,
+            BigDecimal debito, BigDecimal credito, Long terceroId) {
         return AsientoDetalleEntity.builder()
                 .cuentaId(cuentaId)
                 .descripcion(desc)
                 .debito(debito)
                 .credito(credito)
+                .terceroId(terceroId)
                 .build();
     }
 
     private AsientoContableEntity buildAsiento(Integer empresaId, Integer usuarioId,
             java.time.LocalDate fecha, String comprobante, String descripcion,
-            String tipoOrigen, Long origenId, List<AsientoDetalleEntity> detalles) {
+            String tipoOrigen, Long origenId, Long periodoId,
+            List<AsientoDetalleEntity> detalles) {
 
         BigDecimal totalDb = detalles.stream().map(AsientoDetalleEntity::getDebito)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -190,6 +216,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 .descripcion(descripcion)
                 .tipoOrigen(tipoOrigen)
                 .origenId(origenId)
+                .periodoContableId(periodoId)
                 .numeroComprobante(comprobante)
                 .totalDebito(totalDb)
                 .totalCredito(totalCr)

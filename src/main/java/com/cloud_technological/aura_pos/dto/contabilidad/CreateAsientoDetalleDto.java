@@ -18,4 +18,10 @@ public class CreateAsientoDetalleDto {
 
     @NotNull
     private BigDecimal credito = BigDecimal.ZERO;
+
+    /** Tercero asociado a esta línea (cliente, proveedor, empleado…) — opcional */
+    private Long terceroId;
+
+    /** Centro de costo al que se imputa esta línea — opcional */
+    private Long centroCostoId;
 }

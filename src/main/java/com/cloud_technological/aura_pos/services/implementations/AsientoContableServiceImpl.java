@@ -23,8 +23,10 @@ import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaProyeccionDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.LibroMayorLineaDto;
 import com.cloud_technological.aura_pos.entity.AsientoContableEntity;
 import com.cloud_technological.aura_pos.entity.AsientoDetalleEntity;
+import com.cloud_technological.aura_pos.entity.PeriodoContableEntity;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
+import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
 
 @Service
@@ -35,6 +37,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @Autowired
     private AsientoContableQueryRepository queryRepo;
+
+    @Autowired
+    private PeriodoContableJPARepository periodoRepo;
 
     @Override
     public List<AsientoContableTableDto> listar(Integer empresaId, String desde, String hasta,
@@ -66,12 +71,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     "El asiento no está cuadrado: débito=" + totalDebito + " crédito=" + totalCredito);
         }
 
+        // Validar período contable abierto
+        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No hay un período contable ABIERTO. Abra un período antes de registrar asientos."));
+
         List<AsientoDetalleEntity> detalles = dto.getDetalles().stream()
                 .map(d -> AsientoDetalleEntity.builder()
                         .cuentaId(d.getCuentaId())
                         .descripcion(d.getDescripcion())
                         .debito(d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO)
                         .credito(d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
+                        .terceroId(d.getTerceroId())
+                        .centroCostoId(d.getCentroCostoId())
                         .build())
                 .collect(Collectors.toList());
 
@@ -82,6 +94,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .fecha(dto.getFecha())
                 .descripcion(dto.getDescripcion().trim())
                 .tipoOrigen("MANUAL")
+                .periodoContableId(periodo.getId())
                 .numeroComprobante(comprobante)
                 .totalDebito(totalDebito)
                 .totalCredito(totalCredito)

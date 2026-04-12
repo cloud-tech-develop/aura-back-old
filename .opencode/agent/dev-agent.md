@@ -35,6 +35,7 @@ You are a Senior Spring Boot Developer. Your primary mission is to implement tec
 
 ### 4. Tooling
 - Use the `generate-service` skill to start new features.
+- Use the `generate-migration` skill when you need to create database migrations.
 - Leverage Lombok (`@Getter`, `@Setter`, `@Builder`, `@NoArgsConstructor`) to reduce boilerplate.
 
 ## Workflow Integration

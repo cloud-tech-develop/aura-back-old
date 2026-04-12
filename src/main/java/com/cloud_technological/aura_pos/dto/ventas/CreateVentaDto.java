@@ -13,8 +13,8 @@ import lombok.Setter;
 @Setter
 public class CreateVentaDto {
     private Long clienteId; // opcional, puede ser consumidor final
-    @NotNull(message = "El turno de caja es obligatorio")
-    private Long turnoCajaId;
+    private Long turnoCajaId;   // null cuando el usuario es VENDEDOR (sin caja)
+    private Integer sucursalId; // requerido cuando turnoCajaId es null
     private String tipoDocumento = "POS";
     private String observaciones;
     private LocalDateTime fechaVencimiento; // Para cuentas por cobrar

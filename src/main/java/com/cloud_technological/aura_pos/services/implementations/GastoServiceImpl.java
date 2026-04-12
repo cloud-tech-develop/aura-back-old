@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -56,6 +57,7 @@ public class GastoServiceImpl implements GastoService {
         gasto.setDeducible(dto.getDeducible());
         gasto.setEstado("ACTIVO");
         gasto.setCreatedAt(LocalDateTime.now());
+        mapCamposTributarios(dto, gasto);
 
         gasto = gastoJPARepository.save(gasto);
         return toDto(gasto);
@@ -76,6 +78,7 @@ public class GastoServiceImpl implements GastoService {
         gasto.setMonto(dto.getMonto());
         if (dto.getFecha() != null) gasto.setFecha(dto.getFecha());
         gasto.setDeducible(dto.getDeducible());
+        mapCamposTributarios(dto, gasto);
 
         gasto = gastoJPARepository.save(gasto);
         return toDto(gasto);
@@ -95,6 +98,30 @@ public class GastoServiceImpl implements GastoService {
         return gastoQueryRepository.listar(pageable, empresaId);
     }
 
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private void mapCamposTributarios(CreateGastoDto dto, GastoEntity gasto) {
+        gasto.setTerceroId(dto.getTerceroId());
+        gasto.setCuentaContableId(dto.getCuentaContableId());
+        gasto.setCentroCostoId(dto.getCentroCostoId());
+        gasto.setPeriodoContableId(dto.getPeriodoContableId());
+        gasto.setBaseIva(nvl(dto.getBaseIva()));
+        gasto.setTarifaIva(nvl(dto.getTarifaIva()));
+        gasto.setValorIva(nvl(dto.getValorIva()));
+        gasto.setBaseRetefuente(nvl(dto.getBaseRetefuente()));
+        gasto.setTarifaRetefuente(nvl(dto.getTarifaRetefuente()));
+        gasto.setValorRetefuente(nvl(dto.getValorRetefuente()));
+        gasto.setBaseReteica(nvl(dto.getBaseReteica()));
+        gasto.setTarifaReteica(nvl(dto.getTarifaReteica()));
+        gasto.setValorReteica(nvl(dto.getValorReteica()));
+        gasto.setTipoDocSoporte(dto.getTipoDocSoporte());
+        gasto.setNumeroDocSoporte(dto.getNumeroDocSoporte());
+    }
+
+    private BigDecimal nvl(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
     private GastoDto toDto(GastoEntity g) {
         GastoDto dto = new GastoDto();
         dto.setId(g.getId());
@@ -110,6 +137,22 @@ public class GastoServiceImpl implements GastoService {
         dto.setDeducible(g.getDeducible());
         dto.setEstado(g.getEstado());
         dto.setCreatedAt(g.getCreatedAt());
+        // Campos tributarios
+        dto.setTerceroId(g.getTerceroId());
+        dto.setCuentaContableId(g.getCuentaContableId());
+        dto.setCentroCostoId(g.getCentroCostoId());
+        dto.setPeriodoContableId(g.getPeriodoContableId());
+        dto.setBaseIva(g.getBaseIva());
+        dto.setTarifaIva(g.getTarifaIva());
+        dto.setValorIva(g.getValorIva());
+        dto.setBaseRetefuente(g.getBaseRetefuente());
+        dto.setTarifaRetefuente(g.getTarifaRetefuente());
+        dto.setValorRetefuente(g.getValorRetefuente());
+        dto.setBaseReteica(g.getBaseReteica());
+        dto.setTarifaReteica(g.getTarifaReteica());
+        dto.setValorReteica(g.getValorReteica());
+        dto.setTipoDocSoporte(g.getTipoDocSoporte());
+        dto.setNumeroDocSoporte(g.getNumeroDocSoporte());
         return dto;
     }
 }
