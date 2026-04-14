@@ -35,6 +35,13 @@ public class GastoServiceImpl implements GastoService {
     @Autowired private UsuarioJPARepository usuarioJPARepository;
 
     @Override
+    public GastoDto obtener(Long id, Integer empresaId) {
+        GastoEntity gasto = gastoJPARepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Gasto no encontrado"));
+        return toDto(gasto);
+    }
+
+    @Override
     @Transactional
     public GastoDto crear(CreateGastoDto dto, Integer empresaId, Long usuarioId) {
         var empresa = empresaJPARepository.findById(empresaId)
