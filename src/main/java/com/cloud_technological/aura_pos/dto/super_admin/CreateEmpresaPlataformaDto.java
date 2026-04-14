@@ -47,6 +47,14 @@ public class CreateEmpresaPlataformaDto {
     @NotBlank
     private String documentoAdmin;
 
+    private String tipoDocumentoAdmin = "CC";
+    private String tipoPersonaAdmin   = "NATURAL";
+    private String regimenAdmin       = "NO_RESPONSABLE_IVA";
+    private Boolean granContribuyenteAdmin = false;
+    private Boolean autoRetenedorAdmin     = false;
+    private String paisAdmin       = "Colombia";
+    private String codigoPaisAdmin = "CO";
+
     // Sucursal principal
     @NotBlank
     private String nombreSucursal;
