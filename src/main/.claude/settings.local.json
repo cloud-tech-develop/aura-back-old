@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(find D:\\\\DOCUMENTOS CLOUD TECNOLOGY\\\\REPOSITORIOS\\\\aura-back-old\\\\src\\\\main\\\\resources\\\\db\\\\migration:*)"
+    ]
+  }
+}

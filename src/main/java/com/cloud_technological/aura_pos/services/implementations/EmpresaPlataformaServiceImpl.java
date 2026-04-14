@@ -119,6 +119,7 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
         // 3. Tercero — datos del admin + datos de contacto de la empresa
         TerceroEntity tercero = TerceroEntity.builder()
                 .empresa(empresa)
+                .tipoDocumento(dto.getTipoDocumentoAdmin() != null ? dto.getTipoDocumentoAdmin() : "CC")
                 .nombres(dto.getNombresAdmin())
                 .apellidos(dto.getApellidosAdmin())
                 .numeroDocumento(dto.getDocumentoAdmin())
@@ -126,6 +127,14 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 .telefono(dto.getTelefono())
                 .municipio(dto.getMunicipio())
                 .municipioId(dto.getMunicipioId() != null ? dto.getMunicipioId().longValue() : null)
+                .tipoPersona(dto.getTipoPersonaAdmin() != null ? dto.getTipoPersonaAdmin() : "NATURAL")
+                .regimen(dto.getRegimenAdmin() != null ? dto.getRegimenAdmin() : "NO_RESPONSABLE_IVA")
+                .granContribuyente(Boolean.TRUE.equals(dto.getGranContribuyenteAdmin()))
+                .autoRetenedor(Boolean.TRUE.equals(dto.getAutoRetenedorAdmin()))
+                .pais(dto.getPaisAdmin() != null ? dto.getPaisAdmin() : "Colombia")
+                .codigoPais(dto.getCodigoPaisAdmin() != null ? dto.getCodigoPaisAdmin() : "CO")
+                .esCliente(false)
+                .esProveedor(false)
                 .esEmpleado(true)
                 .activo(true)
                 .build();
