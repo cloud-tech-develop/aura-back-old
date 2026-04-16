@@ -78,6 +78,9 @@ public class ProductoEntity {
     @Column(name = "iva_porcentaje")
     private BigDecimal ivaPorcentaje;
 
+    @Column(name = "iva_incluido")
+    private Boolean ivaIncluido = false;
+
     private BigDecimal impoconsumo;
     private Boolean activo;
     @Column(name = "visible_en_pos")

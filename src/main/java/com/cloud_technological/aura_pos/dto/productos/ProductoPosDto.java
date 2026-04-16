@@ -26,6 +26,7 @@ public class ProductoPosDto {
     private BigDecimal precio3;
     private BigDecimal costo;
     private BigDecimal ivaPorcentaje;
+    private Boolean ivaIncluido = false;
     private BigDecimal impoconsumo;
     private Long categoriaId;
     private String categoriaNombre;

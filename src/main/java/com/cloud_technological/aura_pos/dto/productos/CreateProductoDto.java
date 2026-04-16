@@ -31,6 +31,7 @@ public class CreateProductoDto {
     private BigDecimal precio2;
     private BigDecimal precio3;
     private BigDecimal ivaPorcentaje = BigDecimal.ZERO;
+    private Boolean ivaIncluido = false;
     private BigDecimal impoconsumo = BigDecimal.ZERO;
     private Boolean activo = true;
     private Boolean visibleEnPos;
