@@ -25,6 +25,7 @@ import com.cloud_technological.aura_pos.entity.ComisionConfigEntity;
 import com.cloud_technological.aura_pos.entity.ComisionLiquidacionEntity;
 import com.cloud_technological.aura_pos.entity.ComisionVentaEntity;
 import com.cloud_technological.aura_pos.entity.CuentaBancariaEntity;
+import com.cloud_technological.aura_pos.entity.EmpleadoEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.ProductoEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
@@ -35,6 +36,7 @@ import com.cloud_technological.aura_pos.repositories.comision.ComisionLiquidacio
 import com.cloud_technological.aura_pos.repositories.comision.ComisionQueryRepository;
 import com.cloud_technological.aura_pos.repositories.comision.ComisionVentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina.EmpleadoJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
@@ -56,12 +58,18 @@ public class ComisionServiceImpl implements ComisionService {
     @Autowired private EmpresaJPARepository empresaRepo;
     @Autowired private CategoriaJPARepository categoriaRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
+    @Autowired private EmpleadoJPARepository empleadoRepo;
 
-    // ── Técnicos ──────────────────────────────────────────────
+    // ── Técnicos y vendedores ─────────────────────────────────
 
     @Override
     public List<TecnicoDto> listarTecnicos(Integer empresaId) {
         return queryRepo.listarTecnicos(empresaId);
+    }
+
+    @Override
+    public List<TecnicoDto> listarVendedores(Integer empresaId) {
+        return queryRepo.listarVendedores(empresaId);
     }
 
     // ── Configuración ─────────────────────────────────────────
@@ -209,39 +217,74 @@ public class ComisionServiceImpl implements ComisionService {
         EmpresaEntity empresa = empresaRepo.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
 
-        UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
-                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Técnico no encontrado"));
+        String tipo = dto.getTipo() != null ? dto.getTipo().toUpperCase() : "TECNICO";
+        List<ComisionVentaEntity> pendientes;
+        ComisionLiquidacionEntity liquidacion = new ComisionLiquidacionEntity();
 
-        // Validar que pertenece a la empresa
-        if (!tecnico.getEmpresa().getId().equals(empresaId)) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El técnico no pertenece a esta empresa");
+        boolean seleccionManual = dto.getComisionIds() != null && !dto.getComisionIds().isEmpty();
+
+        if ("VENDEDOR".equals(tipo)) {
+            if (dto.getVendedorId() == null)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El vendedorId es requerido para liquidaciones de tipo VENDEDOR");
+
+            EmpleadoEntity vendedor = empleadoRepo.findByIdAndEmpresaId(dto.getVendedorId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Vendedor no encontrado"));
+
+            if (seleccionManual) {
+                pendientes = comisionVentaRepo.findAllById(dto.getComisionIds());
+                pendientes.removeIf(cv -> cv.getLiquidacion() != null
+                        || !cv.getEmpresa().getId().equals(empresaId)
+                        || cv.getVendedor() == null
+                        || !cv.getVendedor().getId().equals(dto.getVendedorId()));
+            } else {
+                pendientes = comisionVentaRepo.findPendientesVendedor(dto.getVendedorId(), empresaId);
+            }
+
+            if (pendientes.isEmpty())
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El vendedor no tiene comisiones pendientes de liquidar");
+
+            liquidacion.setVendedor(vendedor);
+
+        } else {
+            if (dto.getTecnicoId() == null)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El tecnicoId es requerido para liquidaciones de tipo TECNICO");
+
+            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Técnico no encontrado"));
+
+            if (!tecnico.getEmpresa().getId().equals(empresaId))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El técnico no pertenece a esta empresa");
+
+            if (seleccionManual) {
+                pendientes = comisionVentaRepo.findAllById(dto.getComisionIds());
+                pendientes.removeIf(cv -> cv.getLiquidacion() != null
+                        || !cv.getEmpresa().getId().equals(empresaId)
+                        || cv.getTecnico() == null
+                        || !cv.getTecnico().getId().equals(dto.getTecnicoId()));
+            } else {
+                pendientes = comisionVentaRepo.findPendientesTecnico(dto.getTecnicoId(), empresaId);
+            }
+
+            if (pendientes.isEmpty())
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El técnico no tiene comisiones pendientes de liquidar");
+
+            liquidacion.setTecnico(tecnico);
         }
 
-        List<ComisionVentaEntity> pendientes = comisionVentaRepo
-                .findPendientesByTecnicoIdAndEmpresaId(dto.getTecnicoId(), empresaId);
-
-        if (pendientes.isEmpty()) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "El técnico no tiene comisiones pendientes de liquidar");
-        }
-
-        BigDecimal totalTecnico = pendientes.stream()
+        BigDecimal total = pendientes.stream()
                 .map(ComisionVentaEntity::getValorTecnico)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Crear liquidación
-        ComisionLiquidacionEntity liquidacion = new ComisionLiquidacionEntity();
         liquidacion.setEmpresa(empresa);
-        liquidacion.setTecnico(tecnico);
         liquidacion.setFechaDesde(LocalDate.parse(dto.getFechaDesde()));
         liquidacion.setFechaHasta(LocalDate.parse(dto.getFechaHasta()));
         liquidacion.setTotalServicios(pendientes.size());
-        liquidacion.setValorTotal(totalTecnico.setScale(2, RoundingMode.HALF_UP));
+        liquidacion.setValorTotal(total.setScale(2, RoundingMode.HALF_UP));
         liquidacion.setEstado("PENDIENTE");
+        liquidacion.setTipo(tipo);
         liquidacion.setObservaciones(dto.getObservaciones());
         liquidacion = liquidacionRepo.save(liquidacion);
 
-        // Asociar las comisiones a esta liquidación
         for (ComisionVentaEntity cv : pendientes) {
             cv.setLiquidacion(liquidacion);
         }
@@ -283,8 +326,15 @@ public class ComisionServiceImpl implements ComisionService {
     // ── Pendientes ────────────────────────────────────────────
 
     @Override
-    public List<ComisionVentaDto> listarPendientesTecnico(Integer tecnicoId, Integer empresaId) {
-        return queryRepo.listarPendientesTecnico(tecnicoId, empresaId);
+    public List<ComisionVentaDto> listarPendientesTecnico(Integer tecnicoId, Integer empresaId, String modalidad,
+            String fechaDesde, String fechaHasta) {
+        return queryRepo.listarPendientesTecnico(tecnicoId, empresaId, modalidad, fechaDesde, fechaHasta);
+    }
+
+    @Override
+    public List<ComisionVentaDto> listarPendientesVendedor(Long vendedorId, Integer empresaId,
+            String fechaDesde, String fechaHasta) {
+        return queryRepo.listarPendientesVendedor(vendedorId, empresaId, fechaDesde, fechaHasta);
     }
 
     // ── Hook desde VentaService ───────────────────────────────
@@ -319,9 +369,9 @@ public class ComisionServiceImpl implements ComisionService {
 
     /** Comisión SERVICIO: técnico cobra su %, el negocio el resto */
     private void registrarComisionServicio(VentaDetalleEntity detalle, ComisionConfigEntity config) {
-        BigDecimal valorBase = detalle.getPrecioUnitario()
-                .multiply(detalle.getCantidad())
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal valorBase = detalle.getSubtotalLinea() != null
+                ? detalle.getSubtotalLinea()
+                : detalle.getPrecioUnitario().multiply(detalle.getCantidad()).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal valorTecnico = valorBase
                 .multiply(config.getPorcentajeTecnico())
@@ -333,6 +383,7 @@ public class ComisionServiceImpl implements ComisionService {
         cv.setVentaDetalle(detalle);
         cv.setProducto(detalle.getProducto());
         cv.setTecnico(config.getTecnico()); // técnico configurado (se asigna en caja)
+        cv.setModalidad("SERVICIO");
         cv.setValorTotal(valorBase);
         cv.setPorcentajeTecnico(config.getPorcentajeTecnico());
         cv.setPorcentajeNegocio(config.getPorcentajeNegocio());
@@ -343,9 +394,9 @@ public class ComisionServiceImpl implements ComisionService {
 
     /** Comisión VENTA: el vendedor logueado cobra su % sobre la venta */
     private void registrarComisionVenta(VentaDetalleEntity detalle, ComisionConfigEntity config, UsuarioEntity vendedor) {
-        BigDecimal valorBase = detalle.getPrecioUnitario()
-                .multiply(detalle.getCantidad())
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal valorBase = detalle.getSubtotalLinea() != null
+                ? detalle.getSubtotalLinea()
+                : detalle.getPrecioUnitario().multiply(detalle.getCantidad()).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal valorVendedor = valorBase
                 .multiply(config.getPorcentajeTecnico())
@@ -356,7 +407,12 @@ public class ComisionServiceImpl implements ComisionService {
         cv.setVenta(detalle.getVenta());
         cv.setVentaDetalle(detalle);
         cv.setProducto(detalle.getProducto());
-        cv.setTecnico(vendedor); // siempre el usuario logueado, no el de la config
+        cv.setTecnico(vendedor); // usuario logueado
+        cv.setModalidad("VENTA");
+        // Si el usuario tiene empleado asociado, registrar como vendedor
+        if (vendedor.getEmpleado() != null) {
+            cv.setVendedor(vendedor.getEmpleado());
+        }
         cv.setValorTotal(valorBase);
         cv.setPorcentajeTecnico(config.getPorcentajeTecnico());
         cv.setPorcentajeNegocio(BigDecimal.ZERO);
@@ -396,8 +452,16 @@ public class ComisionServiceImpl implements ComisionService {
         ComisionLiquidacionDto dto = new ComisionLiquidacionDto();
         dto.setId(e.getId());
         dto.setEmpresaId(e.getEmpresa().getId());
-        dto.setTecnicoId(e.getTecnico().getId());
-        dto.setTecnicoNombre(resolverNombreTecnico(e.getTecnico()));
+        dto.setTipo(e.getTipo());
+
+        if ("VENDEDOR".equals(e.getTipo()) && e.getVendedor() != null) {
+            dto.setTecnicoId(e.getVendedor().getId().intValue());
+            dto.setTecnicoNombre(e.getVendedor().getNombres() + " " + e.getVendedor().getApellidos());
+        } else if (e.getTecnico() != null) {
+            dto.setTecnicoId(e.getTecnico().getId());
+            dto.setTecnicoNombre(resolverNombreTecnico(e.getTecnico()));
+        }
+
         dto.setFechaDesde(e.getFechaDesde() != null ? e.getFechaDesde().toString() : null);
         dto.setFechaHasta(e.getFechaHasta() != null ? e.getFechaHasta().toString() : null);
         dto.setTotalServicios(e.getTotalServicios());

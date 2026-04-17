@@ -23,5 +23,6 @@ public class PedidoVendedorDto {
     private String referenciaPago;
     private LocalDateTime fechaCobro;
     private LocalDateTime createdAt;
+    private Long ventaId;
     private List<PedidoVendedorDetalleDto> detalles;
 }

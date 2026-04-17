@@ -14,5 +14,6 @@ public class PedidoVendedorTableDto {
     private String estado;
     private BigDecimal total;
     private LocalDateTime createdAt;
+    private Long ventaId;
     private long totalRows;
 }

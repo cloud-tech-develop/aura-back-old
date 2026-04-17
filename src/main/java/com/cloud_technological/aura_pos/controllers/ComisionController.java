@@ -52,6 +52,15 @@ public class ComisionController {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result));
     }
 
+    // ── Vendedores activos de la empresa ──────────────────────
+
+    @GetMapping("/vendedores")
+    public ResponseEntity<ApiResponse<List<TecnicoDto>>> listarVendedores() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<TecnicoDto> result = comisionService.listarVendedores(empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result));
+    }
+
     // ── Configuración ─────────────────────────────────────────
 
     @PostMapping("/config/page")
@@ -135,13 +144,27 @@ public class ComisionController {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Liquidación marcada como pagada", false, null));
     }
 
-    // ── Comisiones pendientes de un técnico ───────────────────
+    // ── Comisiones pendientes de un técnico (SERVICIO) ───────
 
     @GetMapping("/pendientes")
     public ResponseEntity<ApiResponse<List<ComisionVentaDto>>> listarPendientes(
-            @RequestParam Integer tecnicoId) {
+            @RequestParam Integer tecnicoId,
+            @RequestParam(required = false) String fechaDesde,
+            @RequestParam(required = false) String fechaHasta) {
         Integer empresaId = securityUtils.getEmpresaId();
-        List<ComisionVentaDto> result = comisionService.listarPendientesTecnico(tecnicoId, empresaId);
+        List<ComisionVentaDto> result = comisionService.listarPendientesTecnico(tecnicoId, empresaId, "SERVICIO", fechaDesde, fechaHasta);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result));
+    }
+
+    // ── Comisiones pendientes de un vendedor (VENTA) ─────────
+
+    @GetMapping("/pendientes/vendedor")
+    public ResponseEntity<ApiResponse<List<ComisionVentaDto>>> listarPendientesVendedor(
+            @RequestParam Long vendedorId,
+            @RequestParam(required = false) String fechaDesde,
+            @RequestParam(required = false) String fechaHasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<ComisionVentaDto> result = comisionService.listarPendientesVendedor(vendedorId, empresaId, fechaDesde, fechaHasta);
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result));
     }
 }
