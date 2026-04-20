@@ -18,6 +18,7 @@ public class ComisionLiquidacionDto {
     private Integer totalServicios;
     private BigDecimal valorTotal;
     private String estado;
+    private String tipo;
     private String observaciones;
     private String fechaPago;
     private String createdAt;

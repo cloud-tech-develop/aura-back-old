@@ -73,6 +73,11 @@ public class PedidoVendedorEntity {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    /** Venta que originó automáticamente este pedido (nullable — solo para pedidos auto-creados) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "venta_id", nullable = true)
+    private VentaEntity venta;
+
     @OneToMany(mappedBy = "pedidoVendedor", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PedidoVendedorDetalleEntity> detalles;
 }

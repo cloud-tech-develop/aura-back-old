@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,8 @@ import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorPageableDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorTableDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.RegistrarCobroPedidoDto;
+import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
+import com.cloud_technological.aura_pos.entity.CuentaCobrarEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.PedidoVendedorDetalleEntity;
 import com.cloud_technological.aura_pos.entity.PedidoVendedorEntity;
@@ -23,6 +26,9 @@ import com.cloud_technological.aura_pos.entity.ProductoEntity;
 import com.cloud_technological.aura_pos.entity.SucursalEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
+import com.cloud_technological.aura_pos.entity.VentaEntity;
+import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
+import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
 import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorDetalleJPARepository;
 import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorJPARepository;
@@ -31,7 +37,9 @@ import com.cloud_technological.aura_pos.repositories.productos.ProductoJPAReposi
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.PedidoVendedorService;
+import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import jakarta.transaction.Transactional;
@@ -62,6 +70,19 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
 
     @Autowired
     private ProductoJPARepository productoJPARepository;
+
+    @Autowired
+    private CuentaCobrarJPARepository cuentaCobrarJPARepository;
+
+    @Autowired
+    private AbonoCobrarJPARepository abonoCobrarJPARepository;
+
+    @Autowired
+    private VentaJPARepository ventaJPARepository;
+
+    @Lazy
+    @Autowired
+    private VentaService ventaService;
 
     @Override
     public PageImpl<PedidoVendedorTableDto> listar(PedidoVendedorPageableDto pageable, Integer empresaId) {
@@ -104,7 +125,7 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         pedido.setVendedor(vendedor);
         pedido.setCliente(cliente);
         pedido.setObservaciones(dto.getObservaciones());
-        pedido.setEstado("PENDIENTE_DESPACHO");
+        pedido.setEstado("CREADA");
         pedido.setCreatedAt(LocalDateTime.now());
 
         // Calcular totales
@@ -158,9 +179,9 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         PedidoVendedorEntity pedido = pedidoJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
 
-        if (!"PENDIENTE_DESPACHO".equals(pedido.getEstado())) {
+        if (!"CREADA".equals(pedido.getEstado()) && !"PENDIENTE_DESPACHO".equals(pedido.getEstado())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Solo se pueden despachar pedidos en estado PENDIENTE_DESPACHO");
+                    "Solo se pueden despachar pedidos en estado CREADA o PENDIENTE_DESPACHO");
         }
 
         pedido.setEstado("DESPACHADA");
@@ -183,6 +204,53 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         pedido.setReferenciaPago(dto.getReferencia());
         pedido.setFechaCobro(LocalDateTime.now());
         pedidoJPARepository.save(pedido);
+
+        // Si el pedido tiene venta vinculada, cerrar la cuenta por cobrar y marcar venta COMPLETADA
+        if (pedido.getVenta() != null) {
+            cerrarCuentaCobrarDeVenta(pedido.getVenta(), dto.getMetodoPago(), dto.getReferencia(), empresaId);
+        }
+    }
+
+    /**
+     * Cierra la cuenta por cobrar asociada a la venta y actualiza el estado de la venta a COMPLETADA.
+     * Se registra un abono por el saldo pendiente completo.
+     */
+    private void cerrarCuentaCobrarDeVenta(VentaEntity venta, String metodoPago, String referencia, Integer empresaId) {
+        // Actualizar cuenta por cobrar
+        cuentaCobrarJPARepository.findByVentaIdAndEmpresaId(venta.getId(), empresaId)
+                .ifPresent(cuenta -> {
+                    BigDecimal saldo = cuenta.getSaldoPendiente() != null
+                            ? cuenta.getSaldoPendiente()
+                            : cuenta.getTotalDeuda();
+
+                    if (saldo.compareTo(BigDecimal.ZERO) > 0) {
+                        // Registrar abono por el saldo pendiente
+                        AbonoCobrarEntity abono = new AbonoCobrarEntity();
+                        abono.setCuentaCobrar(cuenta);
+                        abono.setMonto(saldo);
+                        abono.setMetodoPago(metodoPago);
+                        abono.setReferencia(referencia);
+                        abono.setFechaPago(LocalDateTime.now());
+                        abonoCobrarJPARepository.save(abono);
+
+                        // Cerrar la cuenta
+                        cuenta.setTotalAbonado(cuenta.getTotalDeuda());
+                        cuenta.setSaldoPendiente(BigDecimal.ZERO);
+                        cuenta.setEstado("pagada");
+                        cuentaCobrarJPARepository.save(cuenta);
+                    }
+                });
+
+        // Marcar la venta como COMPLETADA si estaba en PAGO_PARCIAL
+        ventaJPARepository.findByIdAndEmpresaId(venta.getId(), empresaId)
+                .ifPresent(v -> {
+                    if ("PAGO_PARCIAL".equals(v.getEstadoVenta())) {
+                        v.setEstadoVenta("COMPLETADA");
+                        v.setSaldoPendiente(BigDecimal.ZERO);
+                        v.setPagoParcial(false);
+                        ventaJPARepository.save(v);
+                    }
+                });
     }
 
     @Override
@@ -192,8 +260,13 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
 
         if ("COBRADA".equals(pedido.getEstado())) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "No se puede anular un pedido ya cobrado");
+            // Solo se puede anular si vino de una venta automática; en ese caso también se anula la venta
+            if (pedido.getVenta() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "No se puede anular un pedido ya cobrado");
+            }
+            // Anular la venta vinculada (revierte inventario, etc.)
+            ventaService.anular(pedido.getVenta().getId(), empresaId);
         }
         if ("ANULADA".equals(pedido.getEstado())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El pedido ya está anulado");
@@ -217,6 +290,7 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         dto.setReferenciaPago(p.getReferenciaPago());
         dto.setFechaCobro(p.getFechaCobro());
         dto.setCreatedAt(p.getCreatedAt());
+        dto.setVentaId(p.getVenta() != null ? p.getVenta().getId() : null);
         if (p.getVendedor() != null && p.getVendedor().getTercero() != null) {
             TerceroEntity tv = p.getVendedor().getTercero();
             String vNombre = (tv.getRazonSocial() != null && !tv.getRazonSocial().isBlank())

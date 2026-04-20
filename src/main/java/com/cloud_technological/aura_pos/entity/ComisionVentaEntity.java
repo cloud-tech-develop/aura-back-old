@@ -62,6 +62,14 @@ public class ComisionVentaEntity {
     @Column(name = "valor_negocio")
     private BigDecimal valorNegocio;
 
+    // SERVICIO = comisión de técnico | VENTA = comisión de vendedor
+    private String modalidad = "SERVICIO";
+
+    // Solo para VENTA: empleado que hizo la venta
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendedor_id")
+    private EmpleadoEntity vendedor;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "liquidacion_id")
     private ComisionLiquidacionEntity liquidacion; // NULL = pendiente

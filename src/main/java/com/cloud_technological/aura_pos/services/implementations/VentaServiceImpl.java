@@ -55,6 +55,10 @@ import com.cloud_technological.aura_pos.repositories.venta_detalle_serial.VentaD
 import com.cloud_technological.aura_pos.repositories.venta_pago.VentaPagoJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository;
+import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorJPARepository;
+import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorDetalleJPARepository;
+import com.cloud_technological.aura_pos.entity.PedidoVendedorEntity;
+import com.cloud_technological.aura_pos.entity.PedidoVendedorDetalleEntity;
 import com.cloud_technological.aura_pos.dto.cartera.ValidacionCreditoDto;
 import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
@@ -94,6 +98,12 @@ public class VentaServiceImpl implements VentaService {
     private final ComisionService comisionService;
     private final CarteraService carteraService;
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
+
+    @Autowired
+    private PedidoVendedorJPARepository pedidoVendedorJPARepository;
+
+    @Autowired
+    private PedidoVendedorDetalleJPARepository pedidoVendedorDetalleJPARepository;
 
     @Autowired
     public VentaServiceImpl(VentaQueryRepository ventaRepository,
@@ -570,7 +580,57 @@ public class VentaServiceImpl implements VentaService {
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
         ventaDto.setFacturaId(facturaDto.getId());
 
+        // 10. Si el vendedor tiene un empleado vinculado, crear automáticamente un pedido_vendedor COBRADA
+        if (usuario.getEmpleado() != null) {
+            crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
+        }
+
         return ventaDto;
+    }
+
+    /**
+     * Crea un pedido_vendedor en estado COBRADA asociado a la venta recién creada.
+     * Solo se ejecuta cuando el usuario que realiza la venta tiene un empleado vinculado.
+     */
+    private void crearPedidoVendedorDesdeVenta(
+            VentaEntity venta,
+            UsuarioEntity vendedor,
+            EmpresaEntity empresa,
+            SucursalEntity sucursal,
+            TerceroEntity cliente) {
+
+        PedidoVendedorEntity pedido = new PedidoVendedorEntity();
+        pedido.setEmpresa(empresa);
+        pedido.setSucursal(sucursal);
+        pedido.setVendedor(vendedor);
+        pedido.setCliente(cliente);
+        pedido.setVenta(venta);
+        pedido.setEstado("CREADA");
+        pedido.setSubtotal(venta.getSubtotal());
+        pedido.setDescuentoTotal(venta.getDescuentoTotal() != null ? venta.getDescuentoTotal() : BigDecimal.ZERO);
+        pedido.setImpuestoTotal(venta.getImpuestosTotal() != null ? venta.getImpuestosTotal() : BigDecimal.ZERO);
+        pedido.setTotal(venta.getTotalPagar());
+        pedido.setMetodoPago(null); // pagado vía venta
+        pedido.setFechaCobro(venta.getFechaEmision());
+        pedido.setCreatedAt(venta.getFechaEmision());
+
+        PedidoVendedorEntity saved = pedidoVendedorJPARepository.save(pedido);
+        saved.setNumeroPedido("PV-" + String.format("%06d", saved.getId()));
+        pedidoVendedorJPARepository.save(saved);
+
+        // Copiar detalles desde venta_detalle
+        List<VentaDetalleEntity> detallesVenta = detalleJPARepository.findByVentaId(venta.getId());
+        for (VentaDetalleEntity vd : detallesVenta) {
+            PedidoVendedorDetalleEntity det = new PedidoVendedorDetalleEntity();
+            det.setPedidoVendedor(saved);
+            det.setProducto(vd.getProducto());
+            det.setCantidad(vd.getCantidad());
+            det.setPrecioUnitario(vd.getPrecioUnitario());
+            det.setDescuentoValor(vd.getMontoDescuento() != null ? vd.getMontoDescuento() : BigDecimal.ZERO);
+            det.setImpuestoValor(vd.getImpuestoValor() != null ? vd.getImpuestoValor() : BigDecimal.ZERO);
+            det.setSubtotalLinea(vd.getSubtotalLinea());
+            pedidoVendedorDetalleJPARepository.save(det);
+        }
     }
 
     @Override
