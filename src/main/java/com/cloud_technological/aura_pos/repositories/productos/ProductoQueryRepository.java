@@ -46,6 +46,7 @@ public class ProductoQueryRepository {
                 p.precio,
                 p.costo,
                 p.activo,
+                p.iva_porcentaje AS ivaPorcentaje,
                 COUNT(*) OVER() AS total_rows
             FROM producto p
             LEFT JOIN categoria c ON p.categoria_id = c.id

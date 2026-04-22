@@ -18,5 +18,6 @@ public class ProductoTableDto {
     private BigDecimal precio;
     private BigDecimal costo;
     private Boolean activo;
+    private BigDecimal ivaPorcentaje;
     private long totalRows;
 }
