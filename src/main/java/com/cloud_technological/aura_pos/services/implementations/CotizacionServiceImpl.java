@@ -92,7 +92,6 @@ public class CotizacionServiceImpl implements CotizacionService {
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
         }
 
-        // Generar número consecutivo COT-XXXX
         Long consecutivo = cotizacionRepository.obtenerSiguienteConsecutivo(empresaId);
         String numero = String.format("COT-%04d", consecutivo);
 
@@ -160,6 +159,84 @@ public class CotizacionServiceImpl implements CotizacionService {
 
     @Override
     @Transactional
+    public CotizacionDto actualizar(Long id, CreateCotizacionDto dto, Integer empresaId) {
+        CotizacionEntity cotizacion = cotizacionJPARepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cotización no encontrada"));
+
+        if (!"PENDIENTE".equals(cotizacion.getEstado())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Solo se pueden editar cotizaciones en estado PENDIENTE");
+        }
+
+        // Actualizar tercero si viene
+        if (dto.getTerceroId() != null) {
+            TerceroEntity tercero = terceroJPARepository.findByIdAndEmpresaId(dto.getTerceroId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
+            cotizacion.setTercero(tercero);
+        } else {
+            cotizacion.setTercero(null);
+        }
+
+        // Actualizar observaciones y días de vigencia
+        cotizacion.setObservaciones(dto.getObservaciones());
+        int diasVigencia = dto.getDiasVigencia() != null ? dto.getDiasVigencia() : 3;
+        cotizacion.setDiasVigencia(diasVigencia);
+        cotizacion.setFechaVencimiento(LocalDate.now().plusDays(diasVigencia));
+
+        // Eliminar detalles existentes
+        detalleJPARepository.deleteByCotizacionId(cotizacion.getId());
+
+        // Recalcular totales
+        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal ivaTotal = BigDecimal.ZERO;
+        BigDecimal descuentoTotal = BigDecimal.ZERO;
+
+        for (CreateCotizacionDetalleDto item : dto.getDetalles()) {
+            ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            "Producto no encontrado: " + item.getProductoId()));
+
+            BigDecimal baseNeta = item.getPrecioUnitario()
+                    .multiply(item.getCantidad())
+                    .subtract(item.getDescuentoValor() != null ? item.getDescuentoValor() : BigDecimal.ZERO)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal ivaPorcentaje = item.getIvaPorcentaje() != null ? item.getIvaPorcentaje() : BigDecimal.ZERO;
+            BigDecimal ivaLinea = baseNeta
+                    .multiply(ivaPorcentaje)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            BigDecimal subtotalLinea = baseNeta.add(ivaLinea).setScale(2, RoundingMode.HALF_UP);
+
+            CotizacionDetalleEntity detalle = new CotizacionDetalleEntity();
+            detalle.setCotizacion(cotizacion);
+            detalle.setProducto(producto);
+            detalle.setDescripcion(item.getDescripcion() != null ? item.getDescripcion() : producto.getNombre());
+            detalle.setCantidad(item.getCantidad());
+            detalle.setPrecioUnitario(item.getPrecioUnitario());
+            detalle.setIvaPorcentaje(ivaPorcentaje);
+            detalle.setDescuentoValor(item.getDescuentoValor() != null ? item.getDescuentoValor() : BigDecimal.ZERO);
+            detalle.setSubtotal(subtotalLinea);
+            detalleJPARepository.save(detalle);
+
+            subtotal = subtotal.add(baseNeta);
+            ivaTotal = ivaTotal.add(ivaLinea);
+            descuentoTotal = descuentoTotal.add(item.getDescuentoValor() != null ? item.getDescuentoValor() : BigDecimal.ZERO);
+        }
+
+        cotizacion.setSubtotal(subtotal.setScale(2, RoundingMode.HALF_UP));
+        cotizacion.setIva(ivaTotal.setScale(2, RoundingMode.HALF_UP));
+        cotizacion.setDescuento(descuentoTotal.setScale(2, RoundingMode.HALF_UP));
+        cotizacion.setTotal(subtotal.add(ivaTotal).setScale(2, RoundingMode.HALF_UP));
+        cotizacionJPARepository.save(cotizacion);
+
+        CotizacionDto result = cotizacionMapper.toDto(cotizacion);
+        result.setDetalles(cotizacionRepository.obtenerDetalles(cotizacion.getId()));
+        return result;
+    }
+
+    @Override
+    @Transactional
     public void anular(Long id, Integer empresaId) {
         CotizacionEntity entity = cotizacionJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cotización no encontrada"));
@@ -182,7 +259,6 @@ public class CotizacionServiceImpl implements CotizacionService {
                     "Solo se pueden convertir cotizaciones en estado PENDIENTE");
         }
 
-        // Retorna la cotización con sus detalles para que el frontend cargue el carrito
         CotizacionDto dto = cotizacionMapper.toDto(entity);
         dto.setDetalles(cotizacionRepository.obtenerDetalles(entity.getId()));
         return dto;
