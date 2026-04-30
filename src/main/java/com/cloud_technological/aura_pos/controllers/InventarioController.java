@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.inventario.CreateInventarioDto;
+import com.cloud_technological.aura_pos.dto.inventario.HistorialProductoResponseDto;
 import com.cloud_technological.aura_pos.dto.inventario.InventarioDto;
 import com.cloud_technological.aura_pos.dto.inventario.InventarioTableDto;
 import com.cloud_technological.aura_pos.dto.inventario.UpdateInventarioDto;
@@ -74,5 +76,14 @@ public class InventarioController {
         Integer empresaId = securityUtils.getEmpresaId();
         InventarioDto result = inventarioService.actualizar(id, dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Inventario actualizado correctamente", false, result), HttpStatus.OK);
+    }
+
+    @GetMapping("/historial")
+    public ResponseEntity<ApiResponse<HistorialProductoResponseDto>> historial(
+            @RequestParam Long productoId,
+            @RequestParam Long sucursalId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        HistorialProductoResponseDto result = inventarioService.historialProducto(productoId, sucursalId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Historial obtenido", false, result), HttpStatus.OK);
     }
 }
