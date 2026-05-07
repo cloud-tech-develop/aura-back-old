@@ -94,6 +94,7 @@ public class VentaQueryRepository {
             LEFT JOIN producto_presentacion pp ON vd.producto_presentacion_id = pp.id
             LEFT JOIN lote l ON vd.lote_id = l.id
             WHERE vd.venta_id = :ventaId
+              AND vd.cantidad > 0
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("ventaId", ventaId);
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(VentaDetalleDto.class));
