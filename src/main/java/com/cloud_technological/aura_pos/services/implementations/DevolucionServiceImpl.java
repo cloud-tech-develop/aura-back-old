@@ -203,7 +203,37 @@ public class DevolucionServiceImpl implements DevolucionService {
                         detalleDto.getCantidad(), ventaDetalle.getPrecioUnitario(),
                         dto.getVentaId());
             }
+
+            // 6.b Actualizar el venta_detalle: reducir cantidad y montos proporcionalmente
+            BigDecimal cantNuevaVD = cantidadOriginal.subtract(detalleDto.getCantidad());
+            BigDecimal montoDescOrig = ventaDetalle.getMontoDescuento() != null
+                    ? ventaDetalle.getMontoDescuento() : BigDecimal.ZERO;
+            BigDecimal subtotalOrig = ventaDetalle.getSubtotalLinea() != null
+                    ? ventaDetalle.getSubtotalLinea() : BigDecimal.ZERO;
+            BigDecimal impuestoOrig = ventaDetalle.getImpuestoValor() != null
+                    ? ventaDetalle.getImpuestoValor() : BigDecimal.ZERO;
+
+            if (cantNuevaVD.compareTo(BigDecimal.ZERO) <= 0) {
+                ventaDetalle.setCantidad(BigDecimal.ZERO);
+                ventaDetalle.setMontoDescuento(BigDecimal.ZERO);
+                ventaDetalle.setImpuestoValor(BigDecimal.ZERO);
+                ventaDetalle.setSubtotalLinea(BigDecimal.ZERO);
+            } else {
+                BigDecimal factor = cantNuevaVD.divide(cantidadOriginal, 8, RoundingMode.HALF_UP);
+                ventaDetalle.setCantidad(cantNuevaVD);
+                ventaDetalle.setMontoDescuento(
+                        montoDescOrig.multiply(factor).setScale(2, RoundingMode.HALF_UP));
+                ventaDetalle.setImpuestoValor(
+                        impuestoOrig.multiply(factor).setScale(2, RoundingMode.HALF_UP));
+                ventaDetalle.setSubtotalLinea(
+                        subtotalOrig.multiply(factor).setScale(2, RoundingMode.HALF_UP));
+            }
+            ventaDetalleRepository.save(ventaDetalle);
         }
+
+        // 6.c Recalcular totales de la venta a partir de los detalles actualizados
+        recalcularTotalesVenta(venta, ventaDetalles);
+        ventaRepository.save(venta);
 
         devolucion.setTotalDevolucion(totalDevolucion.setScale(2, RoundingMode.HALF_UP));
 
@@ -277,6 +307,35 @@ public class DevolucionServiceImpl implements DevolucionService {
         // Revertir movimientos de caja y tesorería
         revertirMovimientosDinero(devolucion, empresaId);
 
+        // Restaurar venta: sumar de vuelta cantidades y montos a venta_detalle
+        if (devolucion.getVenta() != null) {
+            VentaEntity venta = devolucion.getVenta();
+            List<DevolucionDetalleEntity> detallesDev = devolucionDetalleRepository
+                    .findByDevolucionId(devolucion.getId());
+            List<VentaDetalleEntity> ventaDetalles = ventaDetalleRepository
+                    .findByVentaId(venta.getId());
+            for (DevolucionDetalleEntity dd : detallesDev) {
+                Long productoId = dd.getProducto().getId();
+                Optional<VentaDetalleEntity> optVD = ventaDetalles.stream()
+                        .filter(vd -> vd.getProducto().getId().equals(productoId))
+                        .findFirst();
+                if (optVD.isPresent()) {
+                    VentaDetalleEntity vd = optVD.get();
+                    BigDecimal cantActual = vd.getCantidad() != null ? vd.getCantidad() : BigDecimal.ZERO;
+                    BigDecimal subActual = vd.getSubtotalLinea() != null ? vd.getSubtotalLinea() : BigDecimal.ZERO;
+                    BigDecimal impActual = vd.getImpuestoValor() != null ? vd.getImpuestoValor() : BigDecimal.ZERO;
+                    vd.setCantidad(cantActual.add(dd.getCantidad() != null ? dd.getCantidad() : BigDecimal.ZERO));
+                    vd.setSubtotalLinea(subActual.add(
+                            dd.getSubtotalLinea() != null ? dd.getSubtotalLinea() : BigDecimal.ZERO));
+                    vd.setImpuestoValor(impActual.add(
+                            dd.getImpuestoValor() != null ? dd.getImpuestoValor() : BigDecimal.ZERO));
+                    ventaDetalleRepository.save(vd);
+                }
+            }
+            recalcularTotalesVenta(venta, ventaDetalleRepository.findByVentaId(venta.getId()));
+            ventaRepository.save(venta);
+        }
+
         // Restaurar cartera si se había afectado
         if (Boolean.TRUE.equals(devolucion.getAfectoCartera())
                 && devolucion.getMontoCarteraAfectado() != null
@@ -342,6 +401,42 @@ public class DevolucionServiceImpl implements DevolucionService {
             registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
                     costoUnitario, "ANULACION_DEVOLUCION", "Anulación Devolución #" + devolucionId);
         }
+    }
+
+    /**
+     * Recalcula los totales (subtotal, descuento, impuestos, totalPagar) de la venta
+     * a partir de los detalles actualizados, y escala las bases de IVA por tarifa.
+     */
+    private void recalcularTotalesVenta(VentaEntity venta, List<VentaDetalleEntity> detalles) {
+        BigDecimal nuevoTotalPagar = BigDecimal.ZERO;
+        BigDecimal nuevoImpuestos = BigDecimal.ZERO;
+        BigDecimal nuevoDescuento = BigDecimal.ZERO;
+        for (VentaDetalleEntity d : detalles) {
+            nuevoTotalPagar = nuevoTotalPagar.add(safe(d.getSubtotalLinea()));
+            nuevoImpuestos = nuevoImpuestos.add(safe(d.getImpuestoValor()));
+            nuevoDescuento = nuevoDescuento.add(safe(d.getMontoDescuento()));
+        }
+        BigDecimal nuevoSubtotal = nuevoTotalPagar.add(nuevoDescuento).subtract(nuevoImpuestos);
+
+        BigDecimal totalPrevio = safe(venta.getTotalPagar());
+        BigDecimal factor = totalPrevio.compareTo(BigDecimal.ZERO) > 0
+                ? nuevoTotalPagar.divide(totalPrevio, 8, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        venta.setTotalPagar(nuevoTotalPagar.setScale(2, RoundingMode.HALF_UP));
+        venta.setImpuestosTotal(nuevoImpuestos.setScale(2, RoundingMode.HALF_UP));
+        venta.setDescuentoTotal(nuevoDescuento.setScale(2, RoundingMode.HALF_UP));
+        venta.setSubtotal(nuevoSubtotal.setScale(2, RoundingMode.HALF_UP));
+
+        venta.setIvaBase0(safe(venta.getIvaBase0()).multiply(factor).setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase5(safe(venta.getIvaBase5()).multiply(factor).setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor5(safe(venta.getIvaValor5()).multiply(factor).setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase19(safe(venta.getIvaBase19()).multiply(factor).setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor19(safe(venta.getIvaValor19()).multiply(factor).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal safe(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
     }
 
     private void registrarMovimiento(com.cloud_technological.aura_pos.entity.SucursalEntity sucursal,
