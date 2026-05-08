@@ -8,7 +8,10 @@
       "Bash(npx tsc:*)",
       "Bash(npx:*)",
       "Bash(xargs grep:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(./mvnw -o compile -q)",
+      "Bash(./mvnw -o compile)",
+      "Bash(./mvnw -o clean compile)"
     ]
   }
 }
