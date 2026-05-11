@@ -147,7 +147,7 @@ public class DashboardQueryRepository {
             INNER JOIN venta v ON vd.venta_id = v.id
             INNER JOIN producto p ON vd.producto_id = p.id
             WHERE v.empresa_id = :empresaId
-            AND v.estado_venta = 'COMPLETADA'
+            AND v.estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', v.fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
             GROUP BY p.id, p.nombre, p.sku
             ORDER BY total_ingresos DESC
