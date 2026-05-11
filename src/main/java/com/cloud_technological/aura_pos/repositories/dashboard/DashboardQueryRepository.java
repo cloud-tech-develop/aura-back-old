@@ -46,7 +46,7 @@ public class DashboardQueryRepository {
                 COALESCE(AVG(total_pagar), 0) AS promedio
             FROM venta
             WHERE empresa_id = :empresaId
-            AND estado_venta = 'COMPLETADA'
+            AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -147,7 +147,7 @@ public class DashboardQueryRepository {
             INNER JOIN venta v ON vd.venta_id = v.id
             INNER JOIN producto p ON vd.producto_id = p.id
             WHERE v.empresa_id = :empresaId
-            AND v.estado_venta = 'COMPLETADA'
+            AND v.estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', v.fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
             GROUP BY p.id, p.nombre, p.sku
             ORDER BY total_ingresos DESC
@@ -205,7 +205,7 @@ public class DashboardQueryRepository {
                 COUNT(*) AS cantidad
             FROM venta
             WHERE empresa_id = :empresaId
-            AND estado_venta = 'COMPLETADA'
+            AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND fecha_emision >= DATE_TRUNC('week', CURRENT_DATE)
             GROUP BY TO_CHAR(fecha_emision, 'YYYY-MM-DD'), TO_CHAR(fecha_emision, 'Day')
             ORDER BY fecha ASC
@@ -224,7 +224,7 @@ public class DashboardQueryRepository {
             FROM venta_pago vp
             INNER JOIN venta v ON vp.venta_id = v.id
             WHERE v.empresa_id = :empresaId
-            AND v.estado_venta = 'COMPLETADA'
+            AND v.estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', v.fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
             GROUP BY vp.metodo_pago
             ORDER BY total DESC
