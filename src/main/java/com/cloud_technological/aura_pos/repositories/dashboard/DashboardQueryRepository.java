@@ -31,7 +31,7 @@ public class DashboardQueryRepository {
                 COALESCE(AVG(total_pagar), 0) AS promedio
             FROM venta
             WHERE empresa_id = :empresaId
-            AND estado_venta = 'COMPLETADA'
+            AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE(fecha_emision) = CURRENT_DATE
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
