@@ -16,14 +16,22 @@ public class CierreContableDto {
 
     // ── Ventas del período ─────────────────────────────────
     private Integer    cantidadVentas;
-    private BigDecimal totalVentasBruto;
+    private BigDecimal totalVentasBruto;       // subtotal con IVA (legacy: total_pagar)
     private BigDecimal totalDescuentos;
-    private BigDecimal totalImpuestos;
-    private BigDecimal totalVentasNeto;
+    private BigDecimal totalImpuestos;         // IVA cobrado
+    private BigDecimal totalVentasNeto;        // total_pagar (legacy, con IVA)
+    private BigDecimal totalVentasSinIva;      // subtotal − descuentos (base real)
 
     // ── Compras del período ────────────────────────────────
     private Integer    cantidadCompras;
-    private BigDecimal totalComprasNeto;
+    private BigDecimal totalComprasNeto;       // total con IVA (legacy)
+    private BigDecimal totalComprasSinIva;     // subtotal − descuentos (base real)
+    private BigDecimal totalIvaCompras;        // IVA pagado en compras
+
+    // ── COGS (costo real de lo vendido) ────────────────────
+    private BigDecimal costoVentas;            // Σ (cantidad × producto.costo)
+    private Integer    productosSinCosto;      // items vendidos sin costo cargado
+    private BigDecimal valorVentasSinCosto;    // monto vendido sin costo configurado
 
     // ── Comisiones del período ─────────────────────────────
     private Integer    cantidadComisiones;
@@ -33,11 +41,13 @@ public class CierreContableDto {
     private Integer    cantidadMermas;
     private BigDecimal totalMermas;
 
-    // ── Resultados ─────────────────────────────────────────
-    private BigDecimal utilidadBruta;      // ventas neto − compras
-    private BigDecimal utilidadNeta;       // utilidad bruta − comisiones
-    private BigDecimal margenBruto;        // %
-    private BigDecimal margenNeto;         // %
+    // ── Resultados (modelo P&L corregido sin IVA) ──────────
+    private BigDecimal utilidadBruta;          // ventas sin IVA − COGS − mermas
+    private BigDecimal utilidadOperativa;      // bruta − comisiones − gastos deducibles
+    private BigDecimal utilidadNeta;           // operativa − gastos no deducibles
+    private BigDecimal margenBruto;            // %
+    private BigDecimal margenOperativo;        // %
+    private BigDecimal margenNeto;             // %
 
     // ── Cuentas por cobrar (snapshot) ─────────────────────
     private BigDecimal cxcTotalDeuda;
