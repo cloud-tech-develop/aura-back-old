@@ -83,16 +83,18 @@ public class ReporteVentasService {
 
     private record LineaReporte(VentaEntity venta, VentaDetalleEntity detalle) {}
 
+    /** Una factura agrupada: una sola línea con valores sumados (reporte simple). */
+    private record ResumenVenta(VentaEntity venta, int cantItems,
+                                BigDecimal subtotal, BigDecimal iva, BigDecimal total) {}
+
     // ── EXCEL ─────────────────────────────────────────────────
-    public byte[] generarExcel(LocalDate desde, LocalDate hasta) {
+    public byte[] generarExcel(LocalDate desde, LocalDate hasta, boolean detallado) {
         Integer empresaId = securityUtils.getEmpresaId();
         List<VentaEntity> ventas = filtrar(empresaId, desde, hasta);
 
         if (ventas == null || ventas.isEmpty()) {
             ventas = List.of();
         }
-
-        List<LineaReporte> lineas = aplanar(ventas);
 
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -107,25 +109,30 @@ public class ReporteVentasService {
             XSSFCellStyle titleStyle = crearEstiloTitulo(wb);
             XSSFCellStyle noteStyle = crearEstiloNota(wb);
 
+            // Header columnas (varía según el modo)
+            String[] cols = detallado
+                ? new String[]{
+                    "N° Venta", "Fecha", "Cajero / Caja", "Producto",
+                    "Cant.", "Precio Unit.", "IVA %", "IVA $", "Subtotal", "Total", "Estado"}
+                : new String[]{
+                    "N° Venta", "Cant. Ítems", "Fecha", "Cajero / Caja",
+                    "IVA $", "Subtotal", "Total", "Estado"};
+            int lastCol = cols.length - 1;
+
             // Título
             Row r0 = ws.createRow(0); r0.setHeightInPoints(30);
             Cell t = r0.createCell(0);
-            t.setCellValue("REPORTE DE VENTAS — AURA POS");
+            t.setCellValue("REPORTE DE VENTAS — AURA POS" + (detallado ? " (DETALLADO)" : " (SIMPLE)"));
             t.setCellStyle(titleStyle);
-            ws.addMergedRegion(new CellRangeAddress(0, 0, 0, 10));
+            ws.addMergedRegion(new CellRangeAddress(0, 0, 0, lastCol));
 
             Row r1 = ws.createRow(1); r1.setHeightInPoints(16);
             Cell sub = r1.createCell(0);
             sub.setCellValue("Generado el " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-            ws.addMergedRegion(new CellRangeAddress(1, 1, 0, 10));
+            ws.addMergedRegion(new CellRangeAddress(1, 1, 0, lastCol));
 
             ws.createRow(2); // separador
 
-            // Header columnas
-            String[] cols = {
-                "N° Venta", "Fecha", "Cajero / Caja", "Producto",
-                "Cant.", "Precio Unit.", "IVA %", "IVA $", "Subtotal", "Total", "Estado"
-            };
             Row rh = ws.createRow(3); rh.setHeightInPoints(22);
             for (int i = 0; i < cols.length; i++) {
                 Cell c = rh.createCell(i);
@@ -133,92 +140,11 @@ public class ReporteVentasService {
                 c.setCellStyle(hdrStyle);
             }
 
-            // Datos
-            BigDecimal totalSubtotalCompletadas = BigDecimal.ZERO;
-            BigDecimal totalIvaCompletadas = BigDecimal.ZERO;
-            BigDecimal totalConIvaCompletadas = BigDecimal.ZERO;
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
-            for (int li = 0; li < lineas.size(); li++) {
-                LineaReporte ln = lineas.get(li);
-                VentaEntity v = ln.venta();
-                VentaDetalleEntity d = ln.detalle();
-                Row rd = ws.createRow(4 + li);
-                rd.setHeightInPoints(22);
-                XSSFCellStyle st = li % 2 == 0 ? dataStyle : dataAlt;
-
-                String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "";
-
-                setCell(rd, 0, generarNumeroVenta(v), st);
-                setCell(rd, 1, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "", st);
-                setCell(rd, 2, obtenerNombreCaja(v), st);
-
-                if (d == null) {
-                    setCell(rd, 3, "—", st);
-                    setCell(rd, 4, "—", st);
-                    setCell(rd, 5, "—", st);
-                    setCell(rd, 6, "—", st);
-                    setCell(rd, 7, "—", st);
-                    setCell(rd, 8, "—", st);
-                    setCell(rd, 9, formatCOP(v.getTotalPagar()), st);
-                } else {
-                    BigDecimal subtotal = subtotalSinIva(d);
-                    BigDecimal total = totalConIva(d);
-
-                    setCell(rd, 3, nombreProducto(d), st);
-                    setCell(rd, 4, formatCantidad(d.getCantidad()), st);
-                    setCell(rd, 5, formatCOP(d.getPrecioUnitario()), st);
-                    setCell(rd, 6, formatIvaPorcentaje(d), st);
-                    setCell(rd, 7, formatCOP(d.getImpuestoValor()), st);
-                    setCell(rd, 8, formatCOP(subtotal), st);
-                    setCell(rd, 9, formatCOP(total), st);
-
-                    if (esVenta(estado)) {
-                        totalSubtotalCompletadas = totalSubtotalCompletadas.add(subtotal);
-                        totalConIvaCompletadas = totalConIvaCompletadas.add(total);
-                        if (d.getImpuestoValor() != null) {
-                            totalIvaCompletadas = totalIvaCompletadas.add(d.getImpuestoValor());
-                        }
-                    }
-                }
-
-                setCell(rd, 10, estado, st);
+            if (detallado) {
+                escribirDatosDetalladoExcel(ws, aplanar(ventas), dataStyle, dataAlt, totalStyle, noteStyle);
+            } else {
+                escribirDatosSimpleExcel(ws, agrupar(ventas), dataStyle, dataAlt, totalStyle, noteStyle);
             }
-
-            // Fila total
-            int tr = 4 + lineas.size();
-            Row rt = ws.createRow(tr); rt.setHeightInPoints(24);
-            Cell lbl = rt.createCell(0);
-            lbl.setCellValue("TOTALES VENDIDAS (incluye crédito)");
-            lbl.setCellStyle(totalStyle);
-            ws.addMergedRegion(new CellRangeAddress(tr, tr, 0, 6));
-            for (int i = 1; i <= 6; i++) {
-                rt.createCell(i).setCellStyle(totalStyle);
-            }
-            setCell(rt, 7, formatCOP(totalIvaCompletadas), totalStyle);
-            setCell(rt, 8, formatCOP(totalSubtotalCompletadas), totalStyle);
-            setCell(rt, 9, formatCOP(totalConIvaCompletadas), totalStyle);
-            rt.createCell(10).setCellStyle(totalStyle);
-
-            // Nota explicativa del asterisco
-            int notaRow = tr + 2;
-            Row rn = ws.createRow(notaRow);
-            Cell noteCell = rn.createCell(0);
-            noteCell.setCellValue("(*) IVA incluido en el precio de venta del producto.");
-            noteCell.setCellStyle(noteStyle);
-            ws.addMergedRegion(new CellRangeAddress(notaRow, notaRow, 0, 10));
-
-            // Anchos columnas
-            ws.setColumnWidth(0, 14 * 256);
-            ws.setColumnWidth(1, 20 * 256);
-            ws.setColumnWidth(2, 22 * 256);
-            ws.setColumnWidth(3, 28 * 256);
-            ws.setColumnWidth(4, 8 * 256);
-            ws.setColumnWidth(5, 14 * 256);
-            ws.setColumnWidth(6, 10 * 256);
-            ws.setColumnWidth(7, 14 * 256);
-            ws.setColumnWidth(8, 14 * 256);
-            ws.setColumnWidth(9, 14 * 256);
-            ws.setColumnWidth(10, 12 * 256);
 
             wb.write(out);
             return out.toByteArray();
@@ -227,13 +153,169 @@ public class ReporteVentasService {
         }
     }
 
+    /** Filas del Excel en modo DETALLADO: una línea por ítem. */
+    private void escribirDatosDetalladoExcel(XSSFSheet ws, List<LineaReporte> lineas,
+            XSSFCellStyle dataStyle, XSSFCellStyle dataAlt, XSSFCellStyle totalStyle, XSSFCellStyle noteStyle) {
+        BigDecimal totalSubtotalCompletadas = BigDecimal.ZERO;
+        BigDecimal totalIvaCompletadas = BigDecimal.ZERO;
+        BigDecimal totalConIvaCompletadas = BigDecimal.ZERO;
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        for (int li = 0; li < lineas.size(); li++) {
+            LineaReporte ln = lineas.get(li);
+            VentaEntity v = ln.venta();
+            VentaDetalleEntity d = ln.detalle();
+            Row rd = ws.createRow(4 + li);
+            rd.setHeightInPoints(22);
+            XSSFCellStyle st = li % 2 == 0 ? dataStyle : dataAlt;
+
+            String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "";
+
+            setCell(rd, 0, generarNumeroVenta(v), st);
+            setCell(rd, 1, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "", st);
+            setCell(rd, 2, obtenerNombreCaja(v), st);
+
+            if (d == null) {
+                setCell(rd, 3, "—", st);
+                setCell(rd, 4, "—", st);
+                setCell(rd, 5, "—", st);
+                setCell(rd, 6, "—", st);
+                setCell(rd, 7, "—", st);
+                setCell(rd, 8, "—", st);
+                setCell(rd, 9, formatCOP(v.getTotalPagar()), st);
+            } else {
+                BigDecimal subtotal = subtotalSinIva(d);
+                BigDecimal total = totalConIva(d);
+
+                setCell(rd, 3, nombreProducto(d), st);
+                setCell(rd, 4, formatCantidad(d.getCantidad()), st);
+                setCell(rd, 5, formatCOP(d.getPrecioUnitario()), st);
+                setCell(rd, 6, formatIvaPorcentaje(d), st);
+                setCell(rd, 7, formatCOP(d.getImpuestoValor()), st);
+                setCell(rd, 8, formatCOP(subtotal), st);
+                setCell(rd, 9, formatCOP(total), st);
+
+                if (esVenta(estado)) {
+                    totalSubtotalCompletadas = totalSubtotalCompletadas.add(subtotal);
+                    totalConIvaCompletadas = totalConIvaCompletadas.add(total);
+                    if (d.getImpuestoValor() != null) {
+                        totalIvaCompletadas = totalIvaCompletadas.add(d.getImpuestoValor());
+                    }
+                }
+            }
+
+            setCell(rd, 10, estado, st);
+        }
+
+        // Fila total
+        int tr = 4 + lineas.size();
+        Row rt = ws.createRow(tr); rt.setHeightInPoints(24);
+        Cell lbl = rt.createCell(0);
+        lbl.setCellValue("TOTALES VENDIDAS (incluye crédito)");
+        lbl.setCellStyle(totalStyle);
+        ws.addMergedRegion(new CellRangeAddress(tr, tr, 0, 6));
+        for (int i = 1; i <= 6; i++) {
+            rt.createCell(i).setCellStyle(totalStyle);
+        }
+        setCell(rt, 7, formatCOP(totalIvaCompletadas), totalStyle);
+        setCell(rt, 8, formatCOP(totalSubtotalCompletadas), totalStyle);
+        setCell(rt, 9, formatCOP(totalConIvaCompletadas), totalStyle);
+        rt.createCell(10).setCellStyle(totalStyle);
+
+        // Nota explicativa del asterisco
+        int notaRow = tr + 2;
+        Row rn = ws.createRow(notaRow);
+        Cell noteCell = rn.createCell(0);
+        noteCell.setCellValue("(*) IVA incluido en el precio de venta del producto.");
+        noteCell.setCellStyle(noteStyle);
+        ws.addMergedRegion(new CellRangeAddress(notaRow, notaRow, 0, 10));
+
+        // Anchos columnas
+        ws.setColumnWidth(0, 14 * 256);
+        ws.setColumnWidth(1, 20 * 256);
+        ws.setColumnWidth(2, 22 * 256);
+        ws.setColumnWidth(3, 28 * 256);
+        ws.setColumnWidth(4, 8 * 256);
+        ws.setColumnWidth(5, 14 * 256);
+        ws.setColumnWidth(6, 10 * 256);
+        ws.setColumnWidth(7, 14 * 256);
+        ws.setColumnWidth(8, 14 * 256);
+        ws.setColumnWidth(9, 14 * 256);
+        ws.setColumnWidth(10, 12 * 256);
+    }
+
+    /** Filas del Excel en modo SIMPLE: una línea por factura con valores sumados. */
+    private void escribirDatosSimpleExcel(XSSFSheet ws, List<ResumenVenta> resumenes,
+            XSSFCellStyle dataStyle, XSSFCellStyle dataAlt, XSSFCellStyle totalStyle, XSSFCellStyle noteStyle) {
+        BigDecimal totalSubtotal = BigDecimal.ZERO;
+        BigDecimal totalIva = BigDecimal.ZERO;
+        BigDecimal totalConIva = BigDecimal.ZERO;
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        for (int li = 0; li < resumenes.size(); li++) {
+            ResumenVenta r = resumenes.get(li);
+            VentaEntity v = r.venta();
+            Row rd = ws.createRow(4 + li);
+            rd.setHeightInPoints(22);
+            XSSFCellStyle st = li % 2 == 0 ? dataStyle : dataAlt;
+
+            String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "";
+
+            setCell(rd, 0, generarNumeroVenta(v), st);
+            setCell(rd, 1, String.valueOf(r.cantItems()), st);
+            setCell(rd, 2, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "", st);
+            setCell(rd, 3, obtenerNombreCaja(v), st);
+            setCell(rd, 4, formatCOP(r.iva()), st);
+            setCell(rd, 5, formatCOP(r.subtotal()), st);
+            setCell(rd, 6, formatCOP(r.total()), st);
+            setCell(rd, 7, estado, st);
+
+            if (esVenta(estado)) {
+                totalSubtotal = totalSubtotal.add(r.subtotal());
+                totalConIva = totalConIva.add(r.total());
+                totalIva = totalIva.add(r.iva());
+            }
+        }
+
+        // Fila total
+        int tr = 4 + resumenes.size();
+        Row rt = ws.createRow(tr); rt.setHeightInPoints(24);
+        Cell lbl = rt.createCell(0);
+        lbl.setCellValue("TOTALES VENDIDAS (incluye crédito)");
+        lbl.setCellStyle(totalStyle);
+        ws.addMergedRegion(new CellRangeAddress(tr, tr, 0, 3));
+        for (int i = 1; i <= 3; i++) {
+            rt.createCell(i).setCellStyle(totalStyle);
+        }
+        setCell(rt, 4, formatCOP(totalIva), totalStyle);
+        setCell(rt, 5, formatCOP(totalSubtotal), totalStyle);
+        setCell(rt, 6, formatCOP(totalConIva), totalStyle);
+        rt.createCell(7).setCellStyle(totalStyle);
+
+        // Nota explicativa
+        int notaRow = tr + 2;
+        Row rn = ws.createRow(notaRow);
+        Cell noteCell = rn.createCell(0);
+        noteCell.setCellValue("(*) Cant. Ítems = número de productos distintos en la factura. Valores sumados por factura.");
+        noteCell.setCellStyle(noteStyle);
+        ws.addMergedRegion(new CellRangeAddress(notaRow, notaRow, 0, 7));
+
+        // Anchos columnas
+        ws.setColumnWidth(0, 16 * 256);
+        ws.setColumnWidth(1, 12 * 256);
+        ws.setColumnWidth(2, 20 * 256);
+        ws.setColumnWidth(3, 24 * 256);
+        ws.setColumnWidth(4, 16 * 256);
+        ws.setColumnWidth(5, 16 * 256);
+        ws.setColumnWidth(6, 16 * 256);
+        ws.setColumnWidth(7, 14 * 256);
+    }
+
     // ── PDF ───────────────────────────────────────────────────
-    public byte[] generarPdf(LocalDate desde, LocalDate hasta) {
+    public byte[] generarPdf(LocalDate desde, LocalDate hasta, boolean detallado) {
         Integer empresaId = securityUtils.getEmpresaId();
         List<VentaEntity> ventas = filtrar(empresaId, desde, hasta);
         if (ventas == null) ventas = List.of();
 
-        List<LineaReporte> lineas = aplanar(ventas);
+        List<ResumenVenta> resumenes = agrupar(ventas);
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PdfWriter writer = new PdfWriter(baos);
@@ -249,86 +331,28 @@ public class ReporteVentasService {
             long credito     = ventas.stream().filter(v -> "PAGO_PARCIAL".equals(v.getEstadoVenta())).count();
             long anuladas    = ventas.stream().filter(v -> "ANULADA".equals(v.getEstadoVenta())).count();
 
+            // Totales (idénticos en ambos modos: suma de todos los detalles de ventas vendidas)
             BigDecimal totalSubtotal = BigDecimal.ZERO;
             BigDecimal totalConIvaAcum = BigDecimal.ZERO;
             BigDecimal totalIva = BigDecimal.ZERO;
-            for (LineaReporte ln : lineas) {
-                if (!esVenta(ln.venta().getEstadoVenta())) continue;
-                VentaDetalleEntity d = ln.detalle();
-                if (d == null) continue;
-                totalSubtotal = totalSubtotal.add(subtotalSinIva(d));
-                totalConIvaAcum = totalConIvaAcum.add(totalConIva(d));
-                if (d.getImpuestoValor() != null) totalIva = totalIva.add(d.getImpuestoValor());
+            for (ResumenVenta r : resumenes) {
+                if (!esVenta(r.venta().getEstadoVenta())) continue;
+                totalSubtotal = totalSubtotal.add(r.subtotal());
+                totalConIvaAcum = totalConIvaAcum.add(r.total());
+                totalIva = totalIva.add(r.iva());
             }
 
             addResumen(document, ventas.size(), completadas, credito, anuladas, totalIva, totalConIvaAcum);
 
             // ── Tabla de ventas ─────────────────────────────
-            document.add(new Paragraph("Detalle de Ventas")
+            document.add(new Paragraph(detallado ? "Detalle de Ventas" : "Resumen de Ventas por Factura")
                 .setBold().setFontSize(11).setFontColor(DARK_HEADER).setMarginTop(18).setMarginBottom(6));
 
-            Table tabla = new Table(UnitValue.createPercentArray(
-                    new float[]{7, 10, 10, 17, 5, 10, 6, 9, 10, 10, 6}))
-                .useAllAvailableWidth();
-
-            String[] headers = {
-                "N° Venta", "Fecha", "Cajero / Caja", "Producto",
-                "Cant.", "Precio Unit.", "IVA %", "IVA $", "Subtotal", "Total", "Estado"
-            };
-            for (String h : headers) {
-                tabla.addCell(new com.itextpdf.layout.element.Cell()
-                    .add(new Paragraph(h))
-                    .setBold().setFontSize(8)
-                    .setBackgroundColor(DARK_HEADER)
-                    .setFontColor(ColorConstants.WHITE)
-                    .setBorder(Border.NO_BORDER)
-                    .setPadding(6));
+            if (detallado) {
+                agregarTablaDetalladoPdf(document, aplanar(ventas));
+            } else {
+                agregarTablaSimplePdf(document, resumenes);
             }
-
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
-            int idx = 0;
-            for (LineaReporte ln : lineas) {
-                VentaEntity v = ln.venta();
-                VentaDetalleEntity d = ln.detalle();
-                com.itextpdf.kernel.colors.Color rowBg = (idx % 2 == 0)
-                    ? ColorConstants.WHITE : ZEBRA_GRAY;
-
-                String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "—";
-
-                addTableCell(tabla, generarNumeroVenta(v), rowBg, TextAlignment.LEFT, false);
-                addTableCell(tabla, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "—", rowBg, TextAlignment.LEFT, false);
-                addTableCell(tabla, obtenerNombreCaja(v), rowBg, TextAlignment.LEFT, false);
-
-                if (d == null) {
-                    addTableCell(tabla, "—", rowBg, TextAlignment.LEFT, false);
-                    addTableCell(tabla, "—", rowBg, TextAlignment.CENTER, false);
-                    addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, "—", rowBg, TextAlignment.CENTER, false);
-                    addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, formatCOP(v.getTotalPagar()), rowBg, TextAlignment.RIGHT, true);
-                } else {
-                    addTableCell(tabla, nombreProducto(d), rowBg, TextAlignment.LEFT, false);
-                    addTableCell(tabla, formatCantidad(d.getCantidad()), rowBg, TextAlignment.CENTER, false);
-                    addTableCell(tabla, formatCOP(d.getPrecioUnitario()), rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, formatIvaPorcentaje(d), rowBg, TextAlignment.CENTER, false);
-                    addTableCell(tabla, formatCOP(d.getImpuestoValor()), rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, formatCOP(subtotalSinIva(d)), rowBg, TextAlignment.RIGHT, false);
-                    addTableCell(tabla, formatCOP(totalConIva(d)), rowBg, TextAlignment.RIGHT, true);
-                }
-
-                addEstadoCell(tabla, estado, rowBg);
-
-                idx++;
-            }
-
-            if (lineas.isEmpty()) {
-                tabla.addCell(new com.itextpdf.layout.element.Cell(1, 11)
-                    .add(new Paragraph("No hay ventas en el período seleccionado").setFontColor(TEXT_GRAY).setItalic())
-                    .setBorder(Border.NO_BORDER).setPadding(12).setTextAlignment(TextAlignment.CENTER));
-            }
-
-            document.add(tabla);
 
             // ── Fila total ───────────────────────────────────
             document.add(new Paragraph("\n").setFontSize(4));
@@ -361,7 +385,9 @@ public class ReporteVentasService {
             document.add(totalRow);
 
             // Nota explicativa
-            document.add(new Paragraph("(*) IVA incluido en el precio de venta del producto.")
+            document.add(new Paragraph(detallado
+                    ? "(*) IVA incluido en el precio de venta del producto."
+                    : "(*) Cant. Ítems = número de productos distintos en la factura. Valores sumados por factura.")
                 .setFontSize(8).setFontColor(TEXT_GRAY).setItalic().setMarginTop(8));
 
             addFooter(document);
@@ -372,6 +398,120 @@ public class ReporteVentasService {
             log.error("Error generando PDF de ventas: {}", e.getMessage(), e);
             throw new RuntimeException("Error generando PDF de ventas: " + e.getMessage(), e);
         }
+    }
+
+    /** Tabla del PDF en modo DETALLADO: una fila por ítem. */
+    private void agregarTablaDetalladoPdf(Document document, List<LineaReporte> lineas) {
+        Table tabla = new Table(UnitValue.createPercentArray(
+                new float[]{7, 10, 10, 17, 5, 10, 6, 9, 10, 10, 6}))
+            .useAllAvailableWidth();
+
+        String[] headers = {
+            "N° Venta", "Fecha", "Cajero / Caja", "Producto",
+            "Cant.", "Precio Unit.", "IVA %", "IVA $", "Subtotal", "Total", "Estado"
+        };
+        for (String h : headers) {
+            tabla.addCell(new com.itextpdf.layout.element.Cell()
+                .add(new Paragraph(h))
+                .setBold().setFontSize(8)
+                .setBackgroundColor(DARK_HEADER)
+                .setFontColor(ColorConstants.WHITE)
+                .setBorder(Border.NO_BORDER)
+                .setPadding(6));
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        int idx = 0;
+        for (LineaReporte ln : lineas) {
+            VentaEntity v = ln.venta();
+            VentaDetalleEntity d = ln.detalle();
+            com.itextpdf.kernel.colors.Color rowBg = (idx % 2 == 0)
+                ? ColorConstants.WHITE : ZEBRA_GRAY;
+
+            String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "—";
+
+            addTableCell(tabla, generarNumeroVenta(v), rowBg, TextAlignment.LEFT, false);
+            addTableCell(tabla, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "—", rowBg, TextAlignment.LEFT, false);
+            addTableCell(tabla, obtenerNombreCaja(v), rowBg, TextAlignment.LEFT, false);
+
+            if (d == null) {
+                addTableCell(tabla, "—", rowBg, TextAlignment.LEFT, false);
+                addTableCell(tabla, "—", rowBg, TextAlignment.CENTER, false);
+                addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, "—", rowBg, TextAlignment.CENTER, false);
+                addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, "—", rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, formatCOP(v.getTotalPagar()), rowBg, TextAlignment.RIGHT, true);
+            } else {
+                addTableCell(tabla, nombreProducto(d), rowBg, TextAlignment.LEFT, false);
+                addTableCell(tabla, formatCantidad(d.getCantidad()), rowBg, TextAlignment.CENTER, false);
+                addTableCell(tabla, formatCOP(d.getPrecioUnitario()), rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, formatIvaPorcentaje(d), rowBg, TextAlignment.CENTER, false);
+                addTableCell(tabla, formatCOP(d.getImpuestoValor()), rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, formatCOP(subtotalSinIva(d)), rowBg, TextAlignment.RIGHT, false);
+                addTableCell(tabla, formatCOP(totalConIva(d)), rowBg, TextAlignment.RIGHT, true);
+            }
+
+            addEstadoCell(tabla, estado, rowBg);
+            idx++;
+        }
+
+        if (lineas.isEmpty()) {
+            tabla.addCell(new com.itextpdf.layout.element.Cell(1, 11)
+                .add(new Paragraph("No hay ventas en el período seleccionado").setFontColor(TEXT_GRAY).setItalic())
+                .setBorder(Border.NO_BORDER).setPadding(12).setTextAlignment(TextAlignment.CENTER));
+        }
+
+        document.add(tabla);
+    }
+
+    /** Tabla del PDF en modo SIMPLE: una fila por factura con valores sumados. */
+    private void agregarTablaSimplePdf(Document document, List<ResumenVenta> resumenes) {
+        Table tabla = new Table(UnitValue.createPercentArray(
+                new float[]{12, 9, 15, 19, 13, 13, 13, 6}))
+            .useAllAvailableWidth();
+
+        String[] headers = {
+            "N° Venta", "Cant. Ítems", "Fecha", "Cajero / Caja",
+            "IVA $", "Subtotal", "Total", "Estado"
+        };
+        for (String h : headers) {
+            tabla.addCell(new com.itextpdf.layout.element.Cell()
+                .add(new Paragraph(h))
+                .setBold().setFontSize(8)
+                .setBackgroundColor(DARK_HEADER)
+                .setFontColor(ColorConstants.WHITE)
+                .setBorder(Border.NO_BORDER)
+                .setPadding(6));
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        int idx = 0;
+        for (ResumenVenta r : resumenes) {
+            VentaEntity v = r.venta();
+            com.itextpdf.kernel.colors.Color rowBg = (idx % 2 == 0)
+                ? ColorConstants.WHITE : ZEBRA_GRAY;
+
+            String estado = v.getEstadoVenta() != null ? v.getEstadoVenta() : "—";
+
+            addTableCell(tabla, generarNumeroVenta(v), rowBg, TextAlignment.LEFT, false);
+            addTableCell(tabla, String.valueOf(r.cantItems()), rowBg, TextAlignment.CENTER, false);
+            addTableCell(tabla, v.getFechaEmision() != null ? v.getFechaEmision().format(fmt) : "—", rowBg, TextAlignment.LEFT, false);
+            addTableCell(tabla, obtenerNombreCaja(v), rowBg, TextAlignment.LEFT, false);
+            addTableCell(tabla, formatCOP(r.iva()), rowBg, TextAlignment.RIGHT, false);
+            addTableCell(tabla, formatCOP(r.subtotal()), rowBg, TextAlignment.RIGHT, false);
+            addTableCell(tabla, formatCOP(r.total()), rowBg, TextAlignment.RIGHT, true);
+            addEstadoCell(tabla, estado, rowBg);
+            idx++;
+        }
+
+        if (resumenes.isEmpty()) {
+            tabla.addCell(new com.itextpdf.layout.element.Cell(1, 8)
+                .add(new Paragraph("No hay ventas en el período seleccionado").setFontColor(TEXT_GRAY).setItalic())
+                .setBorder(Border.NO_BORDER).setPadding(12).setTextAlignment(TextAlignment.CENTER));
+        }
+
+        document.add(tabla);
     }
 
     // ── PDF helpers ───────────────────────────────────────────
@@ -520,6 +660,35 @@ public class ReporteVentasService {
                     out.add(new LineaReporte(v, d));
                 }
             }
+        }
+        return out;
+    }
+
+    /** Agrupa cada venta en una sola línea con los valores sumados (reporte simple). */
+    private List<ResumenVenta> agrupar(List<VentaEntity> ventas) {
+        List<ResumenVenta> out = new ArrayList<>();
+        if (ventas == null) return out;
+        for (VentaEntity v : ventas) {
+            if (v == null || v.getId() == null) continue;
+            List<VentaDetalleEntity> dets = ventaDetalleRepository.findByVentaId(v.getId());
+            int cantItems = 0;
+            BigDecimal subtotal = BigDecimal.ZERO;
+            BigDecimal iva = BigDecimal.ZERO;
+            BigDecimal total = BigDecimal.ZERO;
+            if (dets != null) {
+                cantItems = dets.size();
+                for (VentaDetalleEntity d : dets) {
+                    subtotal = subtotal.add(subtotalSinIva(d));
+                    total = total.add(totalConIva(d));
+                    if (d.getImpuestoValor() != null) iva = iva.add(d.getImpuestoValor());
+                }
+            }
+            // Si no hay detalles, usamos el total de la venta como referencia.
+            if (cantItems == 0 && v.getTotalPagar() != null) {
+                total = v.getTotalPagar();
+                subtotal = v.getTotalPagar();
+            }
+            out.add(new ResumenVenta(v, cantItems, subtotal, iva, total));
         }
         return out;
     }

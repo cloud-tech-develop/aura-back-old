@@ -11,7 +11,13 @@
       "Bash(grep:*)",
       "Bash(./mvnw -o compile -q)",
       "Bash(./mvnw -o compile)",
-      "Bash(./mvnw -o clean compile)"
+      "Bash(./mvnw -o clean compile)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('primeng:', \\(p.dependencies||{}\\).primeng\\); console.log\\('@angular/core:', \\(p.dependencies||{}\\)['@angular/core']\\);\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\camil\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--DOCUMENTOS-CLOUD-TECNOLOGY-REPOSITORIOS-aura-back-old\\\\8794ff01-976c-4cee-8b49-11c3af345ba1\\\\tasks\\\\b2amcchqw.output\")",
+      "Bash(Select-Object -Last 50)",
+      "PowerShell(mvn *)",
+      "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\);\")",
+      "PowerShell(npx ng build --configuration development 2>&1 | Select-Object -Last 5)"
     ]
   }
 }
