@@ -433,6 +433,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         var credito = turnoRepository.ventasCreditoTurno(turnoId);
         resumen.setCantidadVentasCredito(toInt(credito.get("cantidad_ventas_credito")));
         resumen.setTotalVentasCredito(toBD(credito.get("total_ventas_credito")));
+        resumen.setDetalleVentasCredito(turnoRepository.detalleVentasCreditoTurno(turnoId));
 
         return resumen;
     }

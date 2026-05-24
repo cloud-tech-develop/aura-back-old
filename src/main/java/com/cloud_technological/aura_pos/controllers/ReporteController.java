@@ -51,20 +51,25 @@ public class ReporteController {
     @GetMapping("/ventas/excel")
     public ResponseEntity<byte[]> ventasExcel(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(defaultValue = "detallado") String tipo) {
 
-        byte[] bytes = reporteVentasService.generarExcel(desde, hasta);
-        return respuesta(bytes, "reporte_ventas.xlsx",
+        boolean detallado = !"simple".equalsIgnoreCase(tipo);
+        byte[] bytes = reporteVentasService.generarExcel(desde, hasta, detallado);
+        return respuesta(bytes, "reporte_ventas_" + (detallado ? "detallado" : "simple") + ".xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     @GetMapping("/ventas/pdf")
     public ResponseEntity<byte[]> ventasPdf(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(defaultValue = "detallado") String tipo) {
 
-        byte[] bytes = reporteVentasService.generarPdf(desde, hasta);
-        return respuesta(bytes, "reporte_ventas.pdf", MediaType.APPLICATION_PDF_VALUE);
+        boolean detallado = !"simple".equalsIgnoreCase(tipo);
+        byte[] bytes = reporteVentasService.generarPdf(desde, hasta, detallado);
+        return respuesta(bytes, "reporte_ventas_" + (detallado ? "detallado" : "simple") + ".pdf",
+                MediaType.APPLICATION_PDF_VALUE);
     }
 
     // ── INVENTARIO ──────────────────────────────────────────

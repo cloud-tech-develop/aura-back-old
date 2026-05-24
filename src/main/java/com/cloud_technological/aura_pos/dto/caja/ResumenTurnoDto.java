@@ -52,6 +52,7 @@ public class ResumenTurnoDto {
     // Ventas a crédito del turno
     private Integer    cantidadVentasCredito = 0;
     private BigDecimal totalVentasCredito    = BigDecimal.ZERO;
+    private List<DetalleVentaCreditoDto> detalleVentasCredito = new ArrayList<>();
 
     // Diagnóstico: detalle de cada pago en efectivo del turno
     private List<DetalleEfectivoDto> detalleEfectivo = new ArrayList<>();
