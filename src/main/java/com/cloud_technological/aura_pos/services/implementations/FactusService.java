@@ -33,17 +33,18 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class FactusService {
 
-    private static final String FACTUS_BILL_URL =
-            "https://api.factus.com.co/v1/bills/validate";
-
+    private final String               factusBillUrl;
     private final RestTemplate         restTemplate;
     private final EmpresaJPARepository empresaRepository;
     private final FactusTokenService   factusTokenService;
     private final ObjectMapper         objectMapper;
 
-    public FactusService(RestTemplate restTemplate,
-                          EmpresaJPARepository empresaRepository,
-                          FactusTokenService factusTokenService) {
+    public FactusService(
+            @org.springframework.beans.factory.annotation.Value("${factus.api.base-url}") String factusBaseUrl,
+            RestTemplate restTemplate,
+            EmpresaJPARepository empresaRepository,
+            FactusTokenService factusTokenService) {
+        this.factusBillUrl     = factusBaseUrl + "/v1/bills/validate";
         this.restTemplate      = restTemplate;
         this.empresaRepository = empresaRepository;
         this.factusTokenService = factusTokenService;
@@ -70,7 +71,7 @@ public class FactusService {
 
         // Llamar como String para ver respuesta cruda en logs
         ResponseEntity<String> rawResponse = restTemplate.exchange(
-                FACTUS_BILL_URL,
+                factusBillUrl,
                 HttpMethod.POST,
                 new HttpEntity<>(dto, headers),
                 String.class);

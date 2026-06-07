@@ -34,14 +34,15 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class FactusTokenService {
 
-    private static final String FACTUS_TOKEN_URL =
-            "https://api.factus.com.co/oauth/token";
-
+    private final String                   factusTokenUrl;
     private final RestTemplate             restTemplate;
     private final EmpresaJPARepository     empresaRepository;
 
-    public FactusTokenService(RestTemplate restTemplate,
-                               EmpresaJPARepository empresaRepository) {
+    public FactusTokenService(
+            @org.springframework.beans.factory.annotation.Value("${factus.api.base-url}") String factusBaseUrl,
+            RestTemplate restTemplate,
+            EmpresaJPARepository empresaRepository) {
+        this.factusTokenUrl    = factusBaseUrl + "/oauth/token";
         this.restTemplate      = restTemplate;
         this.empresaRepository = empresaRepository;
     }
@@ -132,7 +133,7 @@ public class FactusTokenService {
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         ResponseEntity<FactusTokenResponseDto> response = restTemplate.postForEntity(
-                FACTUS_TOKEN_URL,
+                factusTokenUrl,
                 new HttpEntity<>(body, headers),
                 FactusTokenResponseDto.class);
 
