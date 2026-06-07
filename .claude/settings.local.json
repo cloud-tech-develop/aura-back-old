@@ -17,7 +17,10 @@
       "Bash(Select-Object -Last 50)",
       "PowerShell(mvn *)",
       "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\);\")",
-      "PowerShell(npx ng build --configuration development 2>&1 | Select-Object -Last 5)"
+      "PowerShell(npx ng build --configuration development 2>&1 | Select-Object -Last 5)",
+      "Bash(./mvnw -q -o compile)",
+      "Bash(grep -ril \"dotenv\\\\|\\\\.env\" src/main)",
+      "Bash(ls .vscode .idea)"
     ]
   }
 }
