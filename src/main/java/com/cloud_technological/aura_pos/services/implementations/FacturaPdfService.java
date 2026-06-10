@@ -26,18 +26,19 @@ public class FacturaPdfService {
     
     // Factus: GET /v1/bills/download-pdf/{bill_number}
     // Responde con: { "status": "OK", "data": { "pdf_base_64_encoded": "..." } }
-    private static final String FACTUS_PDF_URL =
-            "https://api.factus.com.co/v1/bills/download-pdf/{billNumber}";
-
+    private final String             factusPdfUrl;
     private final RestTemplate       restTemplate;
     private final VentaJPARepository ventaJPARepository;
     private final FactusTokenService factusTokenService;
     private final ObjectMapper       objectMapper;
 
-    public FacturaPdfService(RestTemplate restTemplate,
-                             VentaJPARepository ventaJPARepository,
-                             FactusTokenService factusTokenService,
-                             ObjectMapper objectMapper) {
+    public FacturaPdfService(
+            @org.springframework.beans.factory.annotation.Value("${factus.api.base-url}") String factusBaseUrl,
+            RestTemplate restTemplate,
+            VentaJPARepository ventaJPARepository,
+            FactusTokenService factusTokenService,
+            ObjectMapper objectMapper) {
+        this.factusPdfUrl = factusBaseUrl + "/v1/bills/download-pdf/{billNumber}";
         this.restTemplate = restTemplate;
         this.ventaJPARepository = ventaJPARepository;
         this.factusTokenService = factusTokenService;
@@ -70,7 +71,7 @@ public class FacturaPdfService {
         try {
             // Factus responde JSON con base64 del PDF
             ResponseEntity<String> response = restTemplate.exchange(
-                    FACTUS_PDF_URL,
+                    factusPdfUrl,
                     HttpMethod.GET,
                     new HttpEntity<>(headers),
                     String.class,

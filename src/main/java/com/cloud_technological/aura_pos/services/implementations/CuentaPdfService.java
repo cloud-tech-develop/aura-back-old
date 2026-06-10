@@ -14,10 +14,12 @@ import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
 import com.cloud_technological.aura_pos.entity.AbonoPagarEntity;
 import com.cloud_technological.aura_pos.entity.CuentaCobrarEntity;
 import com.cloud_technological.aura_pos.entity.CuentaPagarEntity;
+import com.cloud_technological.aura_pos.entity.VentaDetalleEntity;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.AbonoPagarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository;
+import com.cloud_technological.aura_pos.repositories.venta_detalle.VentaDetalleJPARepository;
 import com.cloud_technological.aura_pos.services.IEmpresaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.itextpdf.io.image.ImageDataFactory;
@@ -46,6 +48,7 @@ public class CuentaPdfService {
     private final CuentaPagarJPARepository cuentaPagarRepository;
     private final AbonoCobrarJPARepository abonoCobrarRepository;
     private final AbonoPagarJPARepository abonoPagarRepository;
+    private final VentaDetalleJPARepository ventaDetalleRepository;
     private final IEmpresaService empresaService;
 
     // Modern Color Palette
@@ -59,11 +62,13 @@ public class CuentaPdfService {
                            CuentaPagarJPARepository cuentaPagarRepository,
                            AbonoCobrarJPARepository abonoCobrarRepository,
                            AbonoPagarJPARepository abonoPagarRepository,
+                           VentaDetalleJPARepository ventaDetalleRepository,
                            IEmpresaService empresaService) {
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.cuentaPagarRepository = cuentaPagarRepository;
         this.abonoCobrarRepository = abonoCobrarRepository;
         this.abonoPagarRepository = abonoPagarRepository;
+        this.ventaDetalleRepository = ventaDetalleRepository;
         this.empresaService = empresaService;
     }
 
@@ -113,6 +118,11 @@ public class CuentaPdfService {
             throw new GlobalException(HttpStatus.FORBIDDEN, "No tiene permisos para acceder a esta cuenta");
         }
 
+        // Cargar los productos de la venta de origen (si la cuenta proviene de una venta)
+        List<VentaDetalleEntity> detalles = cuenta.getVenta() != null
+                ? ventaDetalleRepository.findByVentaId(cuenta.getVenta().getId())
+                : List.of();
+
         return generarPdfCuenta("ESTADO DE CUENTA", "POR COBRAR",
                                 getNombreTercero(cuenta.getTercero()),
                                 cuenta.getTercero().getNumeroDocumento(),
@@ -124,6 +134,7 @@ public class CuentaPdfService {
                                 cuenta.getSaldoPendiente(),
                                 cuenta.getEstado(),
                                 cuenta.getAbonos(),
+                                detalles,
                                 empresaId);
     }
 
@@ -146,6 +157,7 @@ public class CuentaPdfService {
                                 cuenta.getSaldoPendiente(),
                                 cuenta.getEstado(),
                                 cuenta.getAbonos(),
+                                List.of(),
                                 empresaId);
     }
 
@@ -257,7 +269,8 @@ public class CuentaPdfService {
 
     private byte[] generarPdfCuenta(String titulo, String subtitulo, String tercero, String documento, String nroCuenta,
                                    LocalDateTime emision, LocalDateTime vencimiento, BigDecimal total,
-                                   BigDecimal abonado, BigDecimal saldo, String estado, List<?> abonos, Integer empresaId) {
+                                   BigDecimal abonado, BigDecimal saldo, String estado, List<?> abonos,
+                                   List<VentaDetalleEntity> detalles, Integer empresaId) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PdfWriter writer = new PdfWriter(baos);
             PdfDocument pdf = new PdfDocument(writer);
@@ -282,6 +295,33 @@ public class CuentaPdfService {
             infoGrid.addCell(rightCell);
             
             document.add(infoGrid);
+
+            // Detalle de productos de la venta de origen
+            if (detalles != null && !detalles.isEmpty()) {
+                document.add(new Paragraph("DETALLE DE PRODUCTOS").setBold().setFontSize(11).setFontColor(DARK_HEADER).setMarginBottom(5));
+                Table productsTable = new Table(UnitValue.createPercentArray(new float[]{40, 12, 16, 16, 16})).useAllAvailableWidth();
+                productsTable.setBorder(Border.NO_BORDER).setMarginBottom(15);
+
+                productsTable.addHeaderCell(new Cell().add(new Paragraph("Producto")).setBold().setBackgroundColor(DARK_HEADER).setFontColor(ColorConstants.WHITE).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9));
+                productsTable.addHeaderCell(new Cell().add(new Paragraph("Cant.")).setBold().setBackgroundColor(DARK_HEADER).setFontColor(ColorConstants.WHITE).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.CENTER));
+                productsTable.addHeaderCell(new Cell().add(new Paragraph("P. Unit.")).setBold().setBackgroundColor(DARK_HEADER).setFontColor(ColorConstants.WHITE).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.RIGHT));
+                productsTable.addHeaderCell(new Cell().add(new Paragraph("Desc.")).setBold().setBackgroundColor(DARK_HEADER).setFontColor(ColorConstants.WHITE).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.RIGHT));
+                productsTable.addHeaderCell(new Cell().add(new Paragraph("Subtotal")).setBold().setBackgroundColor(DARK_HEADER).setFontColor(ColorConstants.WHITE).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.RIGHT));
+
+                int prodCount = 0;
+                for (VentaDetalleEntity det : detalles) {
+                    com.itextpdf.kernel.colors.Color rowBg = (prodCount % 2 == 0) ? com.itextpdf.kernel.colors.ColorConstants.WHITE : ZEBRA_GRAY;
+                    String nombre = det.getProducto() != null && det.getProducto().getNombre() != null
+                            ? det.getProducto().getNombre() : "Producto";
+                    productsTable.addCell(new Cell().add(new Paragraph(nombre)).setBackgroundColor(rowBg).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9));
+                    productsTable.addCell(new Cell().add(new Paragraph(formatCantidad(det.getCantidad()))).setBackgroundColor(rowBg).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.CENTER));
+                    productsTable.addCell(new Cell().add(new Paragraph(formatCOP(det.getPrecioUnitario()))).setBackgroundColor(rowBg).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.RIGHT));
+                    productsTable.addCell(new Cell().add(new Paragraph(formatCOP(det.getMontoDescuento()))).setBackgroundColor(rowBg).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setTextAlignment(TextAlignment.RIGHT));
+                    productsTable.addCell(new Cell().add(new Paragraph(formatCOP(det.getSubtotalLinea()))).setBackgroundColor(rowBg).setBorder(Border.NO_BORDER).setPadding(6).setFontSize(9).setBold().setTextAlignment(TextAlignment.RIGHT));
+                    prodCount++;
+                }
+                document.add(productsTable);
+            }
 
             // Summary Table
             Table summaryTable = new Table(UnitValue.createPercentArray(new float[]{70, 30})).useAllAvailableWidth();
@@ -361,6 +401,11 @@ public class CuentaPdfService {
     private String formatCOP(BigDecimal v) {
         if (v == null) return "$ 0";
         return String.format("$ %,.0f", v).replace(",", ".");
+    }
+
+    private String formatCantidad(BigDecimal v) {
+        if (v == null) return "0";
+        return v.stripTrailingZeros().toPlainString();
     }
 
     private String getNombreTercero(com.cloud_technological.aura_pos.entity.TerceroEntity t) {

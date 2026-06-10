@@ -22,6 +22,7 @@ import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
+import com.cloud_technological.aura_pos.entity.VentaEntity;
 import com.cloud_technological.aura_pos.mappers.CuentaCobrarMapper;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
@@ -30,6 +31,7 @@ import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPAReposito
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -44,6 +46,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
     private final TerceroJPARepository terceroRepository;
     private final UsuarioJPARepository usuarioRepository;
     private final TurnoCajaJPARepository turnoCajaRepository;
+    private final VentaJPARepository ventaRepository;
     private final CuentaCobrarMapper mapper;
 
     @Autowired
@@ -54,6 +57,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             TerceroJPARepository terceroRepository,
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
+            VentaJPARepository ventaRepository,
             CuentaCobrarMapper mapper) {
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
@@ -62,6 +66,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         this.terceroRepository = terceroRepository;
         this.usuarioRepository = usuarioRepository;
         this.turnoCajaRepository = turnoCajaRepository;
+        this.ventaRepository = ventaRepository;
         this.mapper = mapper;
     }
 
@@ -111,6 +116,12 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         CuentaCobrarEntity entity = mapper.toEntity(dto);
         entity.setEmpresa(empresa);
         entity.setTercero(tercero);
+        // Relacionar la venta de origen (necesario para imprimir la factura con sus productos)
+        if (dto.getVentaId() != null) {
+            VentaEntity venta = ventaRepository.findByIdAndEmpresaId(dto.getVentaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Venta no encontrada"));
+            entity.setVenta(venta);
+        }
         entity.setNumeroCuenta(numeroCuenta);
         entity.setTotalDeuda(dto.getTotalDeuda());
         entity.setTotalAbonado(BigDecimal.ZERO);
