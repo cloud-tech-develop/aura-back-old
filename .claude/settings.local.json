@@ -22,7 +22,10 @@
       "Bash(grep -ril \"dotenv\\\\|\\\\.env\" src/main)",
       "Bash(ls .vscode .idea)",
       "Bash(./mvnw -q -o compile -DskipTests)",
-      "Bash(./mvnw -q compile)"
+      "Bash(./mvnw -q compile)",
+      "PowerShell(Set-Location *)",
+      "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
+      "PowerShell(npm run *)"
     ]
   }
 }
