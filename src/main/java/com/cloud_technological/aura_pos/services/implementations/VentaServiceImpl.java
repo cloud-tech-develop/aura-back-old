@@ -516,6 +516,14 @@ public class VentaServiceImpl implements VentaService {
         }
 
         // 7. Actualizar totales y calcular pagos parciales (HU-004)
+        // Pago real recibido al momento de la venta. Excluye la línea de CRÉDITO:
+        // esa no es dinero entregado sino el monto que queda financiado, y el
+        // frontend la envía con el total de la venta como monto.
+        BigDecimal totalPagadoContado = dto.getPagos().stream()
+                .filter(p -> !"CREDITO".equalsIgnoreCase(p.getMetodoPago()))
+                .map(CreateVentaPagoDto::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         // Detectar si es venta a crédito
         boolean esCredito = false;
         BigDecimal saldoPendiente = BigDecimal.ZERO;
@@ -523,7 +531,10 @@ public class VentaServiceImpl implements VentaService {
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             if ("CREDITO".equalsIgnoreCase(pago.getMetodoPago())) {
                 esCredito = true;
-                saldoPendiente = totalFinal.subtract(totalPagado);
+                // Lo que queda debiendo = total − lo pagado de contado.
+                // Crédito puro: contado = 0 → saldo = total.
+                // Mixto (efectivo + crédito): saldo = total − efectivo.
+                saldoPendiente = totalFinal.subtract(totalPagadoContado);
                 break;
             }
         }
@@ -558,11 +569,15 @@ public class VentaServiceImpl implements VentaService {
         ventaJPARepository.save(venta);
 
         // 8. Crear cuenta por cobrar si es crédito o pago parcial (HU-014)
-        if ((esCredito || esPagoParcial) && dto.getClienteId() != null) {
+        if ((esCredito || esPagoParcial) && dto.getClienteId() != null
+                && saldoPendiente.compareTo(BigDecimal.ZERO) > 0) {
             CreateCuentaCobrarDto cuentaCobrarDto = new CreateCuentaCobrarDto();
             cuentaCobrarDto.setClienteId(dto.getClienteId());
             cuentaCobrarDto.setVentaId(venta.getId());
-            cuentaCobrarDto.setTotalDeuda(totalFinal);
+            // La deuda es solo el saldo pendiente: lo pagado de contado al momento
+            // de la venta (efectivo/transferencia) ya no se debe. En crédito puro,
+            // saldoPendiente == totalFinal.
+            cuentaCobrarDto.setTotalDeuda(saldoPendiente);
             cuentaCobrarDto.setFechaEmision(venta.getFechaEmision());
             cuentaCobrarDto.setFechaVencimiento(dto.getFechaVencimiento() != null
                     ? dto.getFechaVencimiento() : venta.getFechaEmision().plusDays(30));
