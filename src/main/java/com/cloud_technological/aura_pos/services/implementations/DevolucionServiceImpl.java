@@ -240,28 +240,47 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucion.setMetodoDevolucion(dto.getMetodoDevolucion() != null
                 ? dto.getMetodoDevolucion() : "SIN_DEVOLUCION");
 
-        // 8. Afectación de cartera — solo si la venta era a crédito (tiene CxC activa)
+        // 8. Coordinación cartera + reembolso.
+        //    - Venta a crédito (tiene CxC): la devolución primero rebaja el saldo
+        //      pendiente; solo el excedente (= lo que el cliente ya había abonado)
+        //      se reembolsa en efectivo/transferencia.
+        //    - Venta de contado: se reembolsa el total devuelto.
         Optional<CuentaCobrarEntity> optCxC = cuentaCobrarRepository
                 .findByVentaIdAndEmpresaId(venta.getId(), empresaId);
-        if (optCxC.isPresent()) {
+        boolean esCredito = optCxC.isPresent();
+        BigDecimal descuentoCartera = BigDecimal.ZERO;
+
+        if (esCredito) {
             CuentaCobrarEntity cxc = optCxC.get();
-            if (cxc.getSaldoPendiente() != null
-                    && cxc.getSaldoPendiente().compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal saldoAntes = cxc.getSaldoPendiente();
-                BigDecimal descuento = totalDevolucion.min(saldoAntes);
-                BigDecimal nuevoSaldo = saldoAntes.subtract(descuento).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal saldoAntes = cxc.getSaldoPendiente() != null
+                    ? cxc.getSaldoPendiente() : BigDecimal.ZERO;
+            if (saldoAntes.compareTo(BigDecimal.ZERO) > 0) {
+                descuentoCartera = totalDevolucion.min(saldoAntes);
+                BigDecimal nuevoSaldo = saldoAntes.subtract(descuentoCartera)
+                        .setScale(2, RoundingMode.HALF_UP);
+                // Reducir la deuda total: el saldo mostrado se calcula como
+                // (totalDeuda - totalAbonado), por eso hay que bajar totalDeuda.
+                BigDecimal nuevaDeuda = (cxc.getTotalDeuda() != null
+                        ? cxc.getTotalDeuda() : BigDecimal.ZERO)
+                        .subtract(descuentoCartera).setScale(2, RoundingMode.HALF_UP);
+                cxc.setTotalDeuda(nuevaDeuda);
                 cxc.setSaldoPendiente(nuevoSaldo);
                 if (nuevoSaldo.compareTo(BigDecimal.ZERO) == 0) {
                     cxc.setEstado("pagada");
                 }
                 cuentaCobrarRepository.save(cxc);
                 devolucion.setAfectoCartera(true);
-                devolucion.setMontoCarteraAfectado(descuento.setScale(2, RoundingMode.HALF_UP));
+                devolucion.setMontoCarteraAfectado(descuentoCartera.setScale(2, RoundingMode.HALF_UP));
             }
         }
         if (devolucion.getAfectoCartera() == null) {
             devolucion.setAfectoCartera(false);
         }
+
+        // Monto efectivamente reembolsable al cliente.
+        BigDecimal montoReembolso = esCredito
+                ? totalDevolucion.subtract(descuentoCartera).setScale(2, RoundingMode.HALF_UP)
+                : totalDevolucion;
 
         // 9. Si es devolución TOTAL, marcar la venta
         if ("TOTAL".equals(devolucion.getTipo())) {
@@ -277,8 +296,8 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucionDetalleRepository.saveAll(detalles);
         saved.setDetalles(detalles);
 
-        // 11. Movimientos de caja y tesorería
-        registrarMovimientosDinero(saved, usuario, usuarioId, empresaId);
+        // 11. Movimientos de caja y tesorería (solo por el monto reembolsable)
+        registrarMovimientosDinero(saved, usuario, usuarioId, empresaId, montoReembolso);
 
         return toDto(saved);
     }
@@ -342,12 +361,18 @@ public class DevolucionServiceImpl implements DevolucionService {
             cuentaCobrarRepository
                 .findByVentaIdAndEmpresaId(devolucion.getVenta().getId(), empresaId)
                 .ifPresent(cxc -> {
+                    BigDecimal montoCartera = devolucion.getMontoCarteraAfectado();
                     BigDecimal saldoRestaurado = (cxc.getSaldoPendiente() != null
                             ? cxc.getSaldoPendiente() : BigDecimal.ZERO)
-                            .add(devolucion.getMontoCarteraAfectado())
+                            .add(montoCartera)
                             .setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal deudaRestaurada = (cxc.getTotalDeuda() != null
+                            ? cxc.getTotalDeuda() : BigDecimal.ZERO)
+                            .add(montoCartera)
+                            .setScale(2, RoundingMode.HALF_UP);
+                    cxc.setTotalDeuda(deudaRestaurada);
                     cxc.setSaldoPendiente(saldoRestaurado);
-                    if (!"pagada".equals(cxc.getEstado())) {
+                    if (saldoRestaurado.compareTo(BigDecimal.ZERO) > 0) {
                         cxc.setEstado("activa");
                     }
                     cuentaCobrarRepository.save(cxc);
@@ -460,13 +485,18 @@ public class DevolucionServiceImpl implements DevolucionService {
      * Guarda los IDs de los movimientos en la entidad y persiste los cambios.
      */
     private void registrarMovimientosDinero(DevolucionEntity dev, UsuarioEntity usuario,
-            Long usuarioId, Integer empresaId) {
+            Long usuarioId, Integer empresaId, BigDecimal montoReembolso) {
         String metodo = dev.getMetodoDevolucion();
         if (metodo == null || "SIN_DEVOLUCION".equals(metodo) || "NOTA_CREDITO".equals(metodo)) {
             return;
         }
 
-        BigDecimal monto = dev.getTotalDevolucion();
+        // Sin excedente que reembolsar (p.ej. crédito absorbido totalmente por la cartera).
+        if (montoReembolso == null || montoReembolso.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        BigDecimal monto = montoReembolso;
         String concepto = "Devolución de venta DEV-" + dev.getConsecutivo();
         String referencia = "DEV-" + dev.getConsecutivo();
         boolean cambios = false;
@@ -547,7 +577,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             dev.getUsuario().getId(),
             "EGRESO",
             "Devolución DEV-" + dev.getConsecutivo() + " — " + dev.getMotivo(),
-            dev.getTotalDevolucion(),
+            monto,
             metodo,
             clienteNombre,
             "DEVOLUCION",
