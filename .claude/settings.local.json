@@ -21,7 +21,8 @@
       "Bash(./mvnw -q -o compile)",
       "Bash(grep -ril \"dotenv\\\\|\\\\.env\" src/main)",
       "Bash(ls .vscode .idea)",
-      "Bash(./mvnw -q -o compile -DskipTests)"
+      "Bash(./mvnw -q -o compile -DskipTests)",
+      "Bash(./mvnw -q compile)"
     ]
   }
 }
