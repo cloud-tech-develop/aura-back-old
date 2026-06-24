@@ -643,6 +643,10 @@ public class VentaServiceImpl implements VentaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La venta ya está anulada");
         }
 
+        // Anular la cuenta por cobrar asociada (ventas a crédito).
+        // Falla si la cuenta ya tiene abonos, abortando la anulación de la venta.
+        cuentaCobrarService.anularPorVenta(id, empresaId);
+
         List<VentaDetalleEntity> detalles = detalleJPARepository.findByVentaId(id);
 
         for (VentaDetalleEntity detalle : detalles) {

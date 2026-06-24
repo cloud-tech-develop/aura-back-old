@@ -23,6 +23,10 @@ public interface CuentaCobrarService {
     AbonoCobrarDto registrarAbono(Long cuentaId, AbonoCobrarDto dto, Integer empresaId, Long usuarioId);
     List<AbonoCobrarDto> listarAbonos(Long cuentaId, Integer empresaId);
     void eliminarAbono(Long cuentaId, Long abonoId, Integer empresaId);
+
+    // Anula la cuenta por cobrar asociada a una venta (al anular la venta).
+    // Lanza error si la cuenta ya tiene abonos registrados.
+    void anularPorVenta(Long ventaId, Integer empresaId);
     
     // Resumen
     CuentaCobrarResumenDto obtenerResumen(Integer empresaId, String fechaDesde, String fechaHasta, Long clienteId, String estado);

@@ -248,6 +248,33 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         abonoJpaRepository.delete(abono);
     }
 
+    @Override
+    @Transactional
+    public void anularPorVenta(Long ventaId, Integer empresaId) {
+        // Buscar la cuenta por cobrar generada por la venta (puede no existir si fue de contado).
+        CuentaCobrarEntity cuenta = jpaRepository.findByVentaIdAndEmpresaId(ventaId, empresaId)
+                .orElse(null);
+
+        if (cuenta == null || cuenta.getDeletedAt() != null) {
+            return;
+        }
+
+        // Bloquear la anulación si la cuenta ya tiene abonos registrados (dinero recibido).
+        boolean tieneAbonos = abonoJpaRepository.findByCuentaCobrarId(cuenta.getId()).stream()
+                .anyMatch(a -> a.getDeletedAt() == null);
+
+        if (tieneAbonos) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No se puede anular la venta porque su cuenta por cobrar ya tiene abonos. "
+                    + "Reverse primero los abonos.");
+        }
+
+        // Sin abonos: anular la cuenta limpiamente.
+        cuenta.setEstado("anulada");
+        cuenta.setDeletedAt(LocalDateTime.now());
+        jpaRepository.save(cuenta);
+    }
+
     private CuentaCobrarDto toDto(CuentaCobrarEntity entity) {
         CuentaCobrarDto dto = new CuentaCobrarDto();
         dto.setId(entity.getId());
