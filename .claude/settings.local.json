@@ -25,7 +25,12 @@
       "Bash(./mvnw -q compile)",
       "PowerShell(Set-Location *)",
       "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "Bash(ls -la .claude/)",
+      "Bash(ls -la .claude/agents/)",
+      "Bash(./mvnw -o compile -DskipTests -q)",
+      "Bash(./mvnw -o compile -DskipTests)",
+      "Bash(awk 'NR>=651 && NR<=760 && \\(/setEstadoVenta\\\\\\(\"ANULADA\"\\\\\\)/ || /ventaJPARepository.save\\\\\\(venta\\\\\\)/ || /^    }/\\)' src/main/java/com/cloud_technological/aura_pos/services/implementations/VentaServiceImpl.java)"
     ]
   }
 }

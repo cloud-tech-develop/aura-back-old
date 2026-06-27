@@ -100,6 +100,9 @@ public class VentaServiceImpl implements VentaService {
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     private PedidoVendedorJPARepository pedidoVendedorJPARepository;
 
     @Autowired
@@ -357,6 +360,10 @@ public class VentaServiceImpl implements VentaService {
 
             detalle.setSubtotalLinea(subtotalLinea);
 
+            // Costo de la línea en unidades base (para el asiento de costo de venta).
+            // Se captura el costo vigente al momento de la venta.
+            detalle.setCostoLinea(calcularCostoBase(producto, cantidadBase));
+
             // Asignar presentación al detalle si aplica
             if (presentacion != null) {
                 detalle.setProductoPresentacion(presentacion);
@@ -600,6 +607,12 @@ public class VentaServiceImpl implements VentaService {
             crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
         }
 
+        // 11. Disparar la generación del asiento contable tras el commit de la venta.
+        //     Si la contabilización falla, la venta NO se revierte (se registra en ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.VentaContabilizableEvent(
+                        venta.getId(), empresaId, usuarioId.intValue()));
+
         return ventaDto;
     }
 
@@ -739,9 +752,35 @@ public class VentaServiceImpl implements VentaService {
 
         venta.setEstadoVenta("ANULADA");
         ventaJPARepository.save(venta);
+
+        // Reversar el asiento contable de la venta tras el commit de la anulación.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "VENTA", venta.getId(), empresaId, null));
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
+
+    /**
+     * Costo total de una línea en unidades base. Para productos compuestos suma
+     * el costo de cada componente; para simples usa el costo del producto.
+     */
+    private BigDecimal calcularCostoBase(ProductoEntity producto, BigDecimal cantidadBase) {
+        List<ProductoComposicionEntity> componentes
+                = composicionJPARepository.findByProductoPadreId(producto.getId());
+        if (!componentes.isEmpty()) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (ProductoComposicionEntity comp : componentes) {
+                ProductoEntity hijo = comp.getProductoHijo();
+                BigDecimal costoHijo = hijo.getCosto() != null ? hijo.getCosto() : BigDecimal.ZERO;
+                total = total.add(cantidadBase.multiply(comp.getCantidad()).multiply(costoHijo));
+            }
+            return total.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal costo = producto.getCosto() != null ? producto.getCosto() : BigDecimal.ZERO;
+        return cantidadBase.multiply(costo).setScale(2, RoundingMode.HALF_UP);
+    }
+
     private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {

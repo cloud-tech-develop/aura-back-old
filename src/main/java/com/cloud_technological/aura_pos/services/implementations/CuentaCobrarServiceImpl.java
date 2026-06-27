@@ -39,6 +39,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @Service
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final CuentaCobrarQueryRepository queryRepository;
     private final CuentaCobrarJPARepository jpaRepository;
     private final AbonoCobrarJPARepository abonoJpaRepository;
@@ -205,6 +208,11 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         }
 
         jpaRepository.save(cuenta);
+
+        // Asiento contable del recaudo tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                        "COBRO", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toAbonoDto(abono);
     }

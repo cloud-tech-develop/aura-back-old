@@ -37,6 +37,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @Service
 public class CuentaPagarServiceImpl implements CuentaPagarService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final CuentaPagarQueryRepository queryRepository;
     private final CuentaPagarJPARepository jpaRepository;
     private final AbonoPagarJPARepository abonoJpaRepository;
@@ -196,6 +199,11 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         }
 
         jpaRepository.save(cuenta);
+
+        // Asiento contable del pago a proveedor tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                        "PAGO", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toAbonoDto(abono);
     }

@@ -28,6 +28,9 @@ import com.cloud_technological.aura_pos.services.GastoService;
 @Service
 public class GastoServiceImpl implements GastoService {
 
+    @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Autowired private com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository terceroJPARepository;
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaJPARepository;
     @Autowired private GastoJPARepository gastoJPARepository;
     @Autowired private GastoQueryRepository gastoQueryRepository;
     @Autowired private EmpresaJPARepository empresaJPARepository;
@@ -67,6 +70,12 @@ public class GastoServiceImpl implements GastoService {
         mapCamposTributarios(dto, gasto);
 
         gasto = gastoJPARepository.save(gasto);
+
+        // Asiento contable del gasto tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                        "GASTO", gasto.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+
         return toDto(gasto);
     }
 
@@ -98,6 +107,11 @@ public class GastoServiceImpl implements GastoService {
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Gasto no encontrado"));
         gasto.setEstado("ELIMINADO");
         gastoJPARepository.save(gasto);
+
+        // Reversar el asiento del gasto tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "GASTO", gasto.getId(), empresaId, null));
     }
 
     @Override
@@ -147,6 +161,19 @@ public class GastoServiceImpl implements GastoService {
         // Campos tributarios
         dto.setTerceroId(g.getTerceroId());
         dto.setCuentaContableId(g.getCuentaContableId());
+        Integer empId = g.getEmpresa() != null ? g.getEmpresa().getId() : null;
+        if (g.getTerceroId() != null && empId != null) {
+            terceroJPARepository.findByIdAndEmpresaId(g.getTerceroId(), empId)
+                    .ifPresent(t -> dto.setTerceroNombre(
+                            t.getRazonSocial() != null && !t.getRazonSocial().isBlank()
+                                    ? t.getRazonSocial()
+                                    : ((t.getNombres() != null ? t.getNombres() : "") + " "
+                                            + (t.getApellidos() != null ? t.getApellidos() : "")).trim()));
+        }
+        if (g.getCuentaContableId() != null && empId != null) {
+            planCuentaJPARepository.findByIdAndEmpresaId(g.getCuentaContableId(), empId)
+                    .ifPresent(c -> dto.setCuentaContableNombre(c.getCodigo() + " - " + c.getNombre()));
+        }
         dto.setCentroCostoId(g.getCentroCostoId());
         dto.setPeriodoContableId(g.getPeriodoContableId());
         dto.setBaseIva(g.getBaseIva());

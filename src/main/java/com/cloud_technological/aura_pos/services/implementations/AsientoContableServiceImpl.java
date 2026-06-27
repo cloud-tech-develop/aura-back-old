@@ -28,6 +28,7 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContabl
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
+import com.cloud_technological.aura_pos.utils.AsientoBalanceValidator;
 
 @Service
 public class AsientoContableServiceImpl implements AsientoContableService {
@@ -66,10 +67,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .map(d -> d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (totalDebito.compareTo(totalCredito) != 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El asiento no está cuadrado: débito=" + totalDebito + " crédito=" + totalCredito);
-        }
+        AsientoBalanceValidator.validarCuadre(totalDebito, totalCredito);
 
         // Validar período contable abierto
         PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")

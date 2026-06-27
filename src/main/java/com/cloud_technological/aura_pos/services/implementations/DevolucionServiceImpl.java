@@ -55,6 +55,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 public class DevolucionServiceImpl implements DevolucionService {
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     private DevolucionJPARepository devolucionRepository;
 
     @Autowired
@@ -299,6 +302,11 @@ public class DevolucionServiceImpl implements DevolucionService {
         // 11. Movimientos de caja y tesorería (solo por el monto reembolsable)
         registrarMovimientosDinero(saved, usuario, usuarioId, empresaId, montoReembolso);
 
+        // 12. Generar el asiento contable de la devolución tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.DevolucionContabilizableEvent(
+                        saved.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+
         return toDto(saved);
     }
 
@@ -389,6 +397,11 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucion.setEstado("ANULADA");
         devolucion.setUpdatedAt(LocalDateTime.now());
         devolucionRepository.save(devolucion);
+
+        // Reversar el asiento contable de la devolución tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "DEVOLUCION", devolucion.getId(), empresaId, null));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

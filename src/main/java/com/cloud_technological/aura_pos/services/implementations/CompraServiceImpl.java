@@ -77,6 +77,9 @@ public class CompraServiceImpl implements CompraService {
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     public CompraServiceImpl(CompraQueryRepository compraRepository,
             CompraJPARepository compraJPARepository,
             CompraPagoJPARepository compraPagoJPARepository,
@@ -336,6 +339,12 @@ public class CompraServiceImpl implements CompraService {
             }
         }
 
+        // Disparar la generación del asiento contable tras el commit de la compra.
+        // Si la contabilización falla, la compra NO se revierte (se registra en ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.CompraContabilizableEvent(
+                        compra.getId(), empresaId, usuarioId.intValue()));
+
         return obtenerPorId(compra.getId(), empresaId);
     }
 
@@ -383,6 +392,11 @@ public class CompraServiceImpl implements CompraService {
 
         compra.setEstado("ANULADA");
         compraJPARepository.save(compra);
+
+        // Reversar el asiento contable de la compra tras el commit de la anulación.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "COMPRA", compra.getId(), empresaId, null));
     }
 
     @Override

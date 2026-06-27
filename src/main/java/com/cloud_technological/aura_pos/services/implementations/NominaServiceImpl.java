@@ -36,6 +36,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 public class NominaServiceImpl implements NominaService {
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     private NominaJPARepository nominaRepo;
 
     @Autowired
@@ -229,7 +232,14 @@ public class NominaServiceImpl implements NominaService {
 
         nomina.setEstado("APROBADO");
         nomina.setUpdatedAt(LocalDateTime.now());
-        return toDto(nominaRepo.save(nomina));
+        NominaDto dto = toDto(nominaRepo.save(nomina));
+
+        // Asiento contable de la nómina al aprobarla, tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                        "NOMINA", nomina.getId(), empresaId, null));
+
+        return dto;
     }
 
     @Override
@@ -243,7 +253,14 @@ public class NominaServiceImpl implements NominaService {
 
         nomina.setEstado("ANULADO");
         nomina.setUpdatedAt(LocalDateTime.now());
-        return toDto(nominaRepo.save(nomina));
+        NominaDto dto = toDto(nominaRepo.save(nomina));
+
+        // Reversar el asiento de la nómina tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "NOMINA", nomina.getId(), empresaId, null));
+
+        return dto;
     }
 
     // ─── Motor de cálculo ─────────────────────────────────────────────────────

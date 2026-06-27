@@ -16,4 +16,6 @@ public interface PlanCuentaJPARepository extends JpaRepository<PlanCuentaEntity,
     boolean existsByEmpresaIdAndCodigo(Integer empresaId, String codigo);
 
     List<PlanCuentaEntity> findByEmpresaIdAndActivaTrue(Integer empresaId);
+
+    Optional<PlanCuentaEntity> findByEmpresaIdAndCodigo(Integer empresaId, String codigo);
 }
