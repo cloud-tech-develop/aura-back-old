@@ -29,6 +29,7 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
 
     @Autowired private ObligacionFinancieraJPARepository obligacionRepo;
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepo;
     @Autowired private ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -50,6 +51,15 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
 
         o.setCuotas(generarTablaAmortizacion(o));
         ObligacionFinancieraEntity saved = obligacionRepo.save(o);
+
+        // El desembolso aumenta el saldo de la cuenta bancaria elegida.
+        if (saved.getCuentaBancariaId() != null) {
+            cuentaBancariaRepo.findByIdAndEmpresaId(saved.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().add(saved.getMontoPrincipal()));
+                        cuentaBancariaRepo.save(cb);
+                    });
+        }
 
         // Asiento de desembolso (DB Bancos / CR Obligaciones financieras) tras commit.
         eventPublisher.publishEvent(new OperacionContabilizableEvent(
@@ -140,6 +150,15 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
             o.setEstado("PAGADA");
         }
         obligacionRepo.save(o);
+
+        // El pago de la cuota disminuye el saldo de la cuenta bancaria.
+        if (o.getCuentaBancariaId() != null) {
+            cuentaBancariaRepo.findByIdAndEmpresaId(o.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().subtract(cuota.getCuota()));
+                        cuentaBancariaRepo.save(cb);
+                    });
+        }
 
         // Asiento del pago de la cuota (DB capital + DB interés / CR Bancos) tras commit.
         eventPublisher.publishEvent(new OperacionContabilizableEvent(

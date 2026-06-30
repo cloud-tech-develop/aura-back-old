@@ -20,6 +20,7 @@ import com.cloud_technological.aura_pos.entity.CompraPagoEntity;
 import com.cloud_technological.aura_pos.entity.ConceptoContable;
 import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
 import com.cloud_technological.aura_pos.entity.AbonoPagarEntity;
+import com.cloud_technological.aura_pos.entity.CuentaBancariaEntity;
 import com.cloud_technological.aura_pos.entity.DevolucionEntity;
 import com.cloud_technological.aura_pos.entity.DevolucionDetalleEntity;
 import com.cloud_technological.aura_pos.entity.GastoEntity;
@@ -35,8 +36,10 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContabl
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.compras.CompraJPARepository;
 import com.cloud_technological.aura_pos.repositories.compras.CompraPagoJPARepository;
+import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.AbonoPagarJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.devolucion.DevolucionJPARepository;
 import com.cloud_technological.aura_pos.repositories.devolucion.DevolucionDetalleJPARepository;
 import com.cloud_technological.aura_pos.repositories.gastos.GastoJPARepository;
@@ -72,6 +75,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private NominaJPARepository nominaRepo;
     @Autowired private ObligacionFinancieraJPARepository obligacionRepo;
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
+    @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
+    @Autowired private PlanCuentaJPARepository planRepo;
     @Autowired private ConfiguracionContableService config;
 
     // ────────────────────────────────────────────────────────────────────────
@@ -126,9 +131,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             }
             BigDecimal monto = nz(pago.getMonto());
             if (monto.signum() <= 0) continue;
-            ConceptoContable concepto = pago.getCuentaBancariaId() != null
-                    ? ConceptoContable.BANCOS : ConceptoContable.CAJA;
-            PlanCuentaEntity cuenta = config.resolverCuenta(empresaId, concepto);
+            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(), pago.getCuentaBancariaId());
             detalles.add(linea(cuenta.getId(),
                     "Recaudo venta (" + pago.getMetodoPago() + ")", monto, BigDecimal.ZERO));
         }
@@ -252,9 +255,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         for (CompraPagoEntity pago : compraPagoRepo.findByCompraIdAndActivoTrue(compraId)) {
             BigDecimal monto = nz(pago.getMonto());
             if (monto.signum() <= 0) continue;
-            ConceptoContable concepto = pago.getCuentaBancariaId() != null
-                    ? ConceptoContable.BANCOS : ConceptoContable.CAJA;
-            PlanCuentaEntity cuenta = config.resolverCuenta(empresaId, concepto);
+            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(), pago.getCuentaBancariaId());
             detalles.add(linea(cuenta.getId(),
                     "Pago compra (" + pago.getMetodoPago() + ")", BigDecimal.ZERO, monto));
             pagado = pagado.add(monto);
@@ -454,7 +455,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 ? abono.getCuentaCobrar().getTercero().getId() : null;
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
-        PlanCuentaEntity caja = config.resolverCuenta(empresaId, conceptoPago(abono.getMetodoPago()));
+        PlanCuentaEntity caja = resolverCuentaPago(empresaId, abono.getMetodoPago(), null);
         PlanCuentaEntity clientes = config.resolverCuenta(empresaId, ConceptoContable.CLIENTES);
         detalles.add(linea(caja.getId(), "Recaudo cartera (" + abono.getMetodoPago() + ")", monto, BigDecimal.ZERO));
         detalles.add(linea(clientes.getId(), "Abono cartera cliente", BigDecimal.ZERO, monto, terceroId));
@@ -482,7 +483,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
         PlanCuentaEntity proveedores = config.resolverCuenta(empresaId, ConceptoContable.PROVEEDORES);
-        PlanCuentaEntity caja = config.resolverCuenta(empresaId, conceptoPago(abono.getMetodoPago()));
+        PlanCuentaEntity caja = resolverCuentaPago(empresaId, abono.getMetodoPago(), abono.getCuentaBancariaId());
         detalles.add(linea(proveedores.getId(), "Pago a proveedor", monto, BigDecimal.ZERO, terceroId));
         detalles.add(linea(caja.getId(), "Egreso pago (" + abono.getMetodoPago() + ")", BigDecimal.ZERO, monto));
 
@@ -718,7 +719,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         BigDecimal monto = nz(o.getMontoPrincipal());
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
-        PlanCuentaEntity banco = config.resolverCuenta(empresaId, ConceptoContable.BANCOS);
+        // El dinero entra a la cuenta bancaria elegida (su cuenta contable real).
+        PlanCuentaEntity banco = resolverCuentaPago(empresaId, null, o.getCuentaBancariaId());
         PlanCuentaEntity obligacion = config.resolverCuenta(empresaId, ConceptoContable.OBLIGACIONES_FINANCIERAS);
         detalles.add(linea(banco.getId(), "Desembolso préstamo " + o.getEntidad(), monto, BigDecimal.ZERO));
         detalles.add(linea(obligacion.getId(), "Obligación financiera " + o.getEntidad(),
@@ -755,7 +757,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             PlanCuentaEntity gastoFin = config.resolverCuenta(empresaId, ConceptoContable.GASTOS_FINANCIEROS);
             detalles.add(linea(gastoFin.getId(), "Intereses del préstamo", interes, BigDecimal.ZERO));
         }
-        PlanCuentaEntity banco = config.resolverCuenta(empresaId, ConceptoContable.BANCOS);
+        // El pago sale de la cuenta bancaria del préstamo (su cuenta contable real).
+        PlanCuentaEntity banco = resolverCuentaPago(empresaId, null,
+                o != null ? o.getCuentaBancariaId() : null);
         detalles.add(linea(banco.getId(), "Pago cuota préstamo", BigDecimal.ZERO, total));
 
         java.time.LocalDate fecha = cuota.getFechaPago() != null ? cuota.getFechaPago() : java.time.LocalDate.now();
@@ -773,6 +777,28 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             return ConceptoContable.CAJA;
         }
         return ConceptoContable.BANCOS;
+    }
+
+    /**
+     * Resuelve la cuenta contable de un movimiento de dinero, en este orden:
+     * (1) la cuenta contable de la cuenta bancaria del pago, si la tiene;
+     * (2) fallback por método de pago (efectivo→Caja, resto→Bancos genérico).
+     * Aquí se insertará luego la parametrización de formas de pago (Pieza 2).
+     */
+    private PlanCuentaEntity resolverCuentaPago(Integer empresaId, String metodoPago, Long cuentaBancariaId) {
+        if (cuentaBancariaId != null) {
+            CuentaBancariaEntity cb = cuentaBancariaRepo.findByIdAndEmpresaId(cuentaBancariaId, empresaId)
+                    .orElse(null);
+            if (cb != null && cb.getCuentaContableId() != null) {
+                PlanCuentaEntity cuenta = planRepo.findByIdAndEmpresaId(cb.getCuentaContableId(), empresaId)
+                        .filter(c -> Boolean.TRUE.equals(c.getActiva()))
+                        .orElse(null);
+                if (cuenta != null) {
+                    return cuenta;
+                }
+            }
+        }
+        return config.resolverCuenta(empresaId, conceptoPago(metodoPago));
     }
 
     private PeriodoContableEntity periodoAbierto(Integer empresaId) {

@@ -20,6 +20,12 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
     @Autowired
     private CuentaBancariaJPARepository repo;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository terceroRepo;
+
     @Override
     public List<CuentaBancariaDto> listar(Integer empresaId) {
         return repo.findByEmpresaIdOrderByNombreAsc(empresaId)
@@ -37,6 +43,8 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
                 .banco(dto.getBanco())
                 .numeroCuenta(dto.getNumeroCuenta())
                 .titular(dto.getTitular())
+                .terceroId(dto.getTerceroId())
+                .cuentaContableId(dto.getCuentaContableId())
                 .saldoInicial(dto.getSaldoInicial())
                 .saldoActual(dto.getSaldoInicial())
                 .build();
@@ -53,6 +61,8 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
         entity.setBanco(dto.getBanco());
         entity.setNumeroCuenta(dto.getNumeroCuenta());
         entity.setTitular(dto.getTitular());
+        entity.setTerceroId(dto.getTerceroId());
+        entity.setCuentaContableId(dto.getCuentaContableId());
 
         // Solo actualiza saldo_inicial si cambió y no hay movimientos aún
         if (entity.getSaldoActual().compareTo(entity.getSaldoInicial()) == 0) {
@@ -74,6 +84,21 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
     }
 
     private CuentaBancariaDto toDto(CuentaBancariaEntity e) {
+        String cuentaNombre = null;
+        if (e.getCuentaContableId() != null) {
+            cuentaNombre = planCuentaRepo.findByIdAndEmpresaId(e.getCuentaContableId(), e.getEmpresaId())
+                    .map(c -> c.getCodigo() + " - " + c.getNombre())
+                    .orElse(null);
+        }
+        String terceroNombre = null;
+        if (e.getTerceroId() != null) {
+            terceroNombre = terceroRepo.findByIdAndEmpresaId(e.getTerceroId(), e.getEmpresaId())
+                    .map(t -> t.getRazonSocial() != null && !t.getRazonSocial().isBlank()
+                            ? t.getRazonSocial()
+                            : ((t.getNombres() != null ? t.getNombres() : "") + " "
+                                    + (t.getApellidos() != null ? t.getApellidos() : "")).trim())
+                    .orElse(null);
+        }
         return CuentaBancariaDto.builder()
                 .id(e.getId())
                 .nombre(e.getNombre())
@@ -81,6 +106,10 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
                 .banco(e.getBanco())
                 .numeroCuenta(e.getNumeroCuenta())
                 .titular(e.getTitular())
+                .terceroId(e.getTerceroId())
+                .terceroNombre(terceroNombre)
+                .cuentaContableId(e.getCuentaContableId())
+                .cuentaContableNombre(cuentaNombre)
                 .saldoInicial(e.getSaldoInicial())
                 .saldoActual(e.getSaldoActual())
                 .activa(e.getActiva())

@@ -15,6 +15,7 @@ public class TerceroTableDto {
     private Boolean esCliente;
     private Boolean esProveedor;
     private Boolean esEmpleado;
+    private Boolean esBanco;
     private Boolean activo;
     private long totalRows;
 }
