@@ -60,13 +60,17 @@ public class ComprobanteCajaQueryRepository {
     }
 
     public String siguienteNumeroComprobante(Integer empresaId, String prefix) {
+        // Contador UNIFICADO por prefijo: comparte serie con los asientos contables.
         String sql = """
-            SELECT COALESCE(MAX(
-                CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER)
-            ), 0) + 1
-            FROM comprobante_caja
-            WHERE empresa_id = :empresaId
-              AND numero_comprobante LIKE :prefixLike
+            SELECT COALESCE(MAX(n), 0) + 1 FROM (
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM comprobante_caja
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+                UNION ALL
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM asiento_contable
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+            ) t
             """;
         Integer siguiente = jdbc.queryForObject(sql,
                 Map.of("empresaId", empresaId, "prefix", prefix, "prefixLike", prefix + "-%"),

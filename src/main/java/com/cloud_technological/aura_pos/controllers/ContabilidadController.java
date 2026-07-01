@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreatePlanCuentaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaDto;
@@ -125,6 +126,27 @@ public class ContabilidadController {
         Integer empresaId = securityUtils.getEmpresaId();
         asientoService.anular(id, empresaId);
         return ResponseEntity.ok(new ApiResponse<>(200, "Asiento anulado", false, null));
+    }
+
+    // ── Comprobantes manuales (CD/CE/RC) ─────────────────────────────────
+
+    @PostMapping("/comprobantes")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> crearComprobante(
+            @Valid @RequestBody CreateComprobanteDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = asientoService.crearComprobante(empresaId, usuarioId, dto);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Comprobante creado", false, created));
+    }
+
+    @GetMapping("/comprobantes/siguiente")
+    public ResponseEntity<ApiResponse<String>> siguienteConsecutivo(
+            @RequestParam(defaultValue = "CD") String tipo) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                asientoService.siguienteConsecutivo(empresaId, tipo)));
     }
 
     // ── Balance General ──────────────────────────────────────────────

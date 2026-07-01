@@ -77,6 +77,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
     @Autowired private PlanCuentaJPARepository planRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository movimientoCajaRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.conceptos_caja.ConceptoCajaJPARepository conceptoCajaRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.comprobante_caja.ComprobanteCajaJPARepository comprobanteCajaRepo;
     @Autowired private ConfiguracionContableService config;
 
     // ────────────────────────────────────────────────────────────────────────
@@ -757,9 +760,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             PlanCuentaEntity gastoFin = config.resolverCuenta(empresaId, ConceptoContable.GASTOS_FINANCIEROS);
             detalles.add(linea(gastoFin.getId(), "Intereses del préstamo", interes, BigDecimal.ZERO));
         }
-        // El pago sale de la cuenta bancaria del préstamo (su cuenta contable real).
-        PlanCuentaEntity banco = resolverCuentaPago(empresaId, null,
-                o != null ? o.getCuentaBancariaId() : null);
+        // El pago sale del activo elegido al pagar la cuota (caja o cualquier cuenta
+        // bancaria), no necesariamente la del desembolso. Se relee de la cuota; si no
+        // se registró origen, cae a la cuenta bancaria del préstamo (comportamiento previo).
+        Long cuentaOrigenId = cuota.getCuentaBancariaIdPago() != null
+                ? cuota.getCuentaBancariaIdPago()
+                : (o != null ? o.getCuentaBancariaId() : null);
+        PlanCuentaEntity banco = resolverCuentaPago(empresaId, cuota.getMetodoPago(), cuentaOrigenId);
         detalles.add(linea(banco.getId(), "Pago cuota préstamo", BigDecimal.ZERO, total));
 
         java.time.LocalDate fecha = cuota.getFechaPago() != null ? cuota.getFechaPago() : java.time.LocalDate.now();
@@ -769,7 +776,86 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 "CUOTA_OBLIGACION", cuotaId, periodo.getId(), detalles);
     }
 
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto generarDesdeMovimientoCaja(Long movimientoId, Integer empresaId,
+            Integer usuarioId) {
+        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("MOVIMIENTO_CAJA", movimientoId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un asiento contable para el movimiento de caja #" + movimientoId);
+        }
+        PeriodoContableEntity periodo = periodoAbierto(empresaId);
+
+        com.cloud_technological.aura_pos.entity.MovimientoCajaEntity mov = movimientoCajaRepo.findById(movimientoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Movimiento de caja no encontrado"));
+        if (mov.getConceptoCajaId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El movimiento de caja #" + movimientoId + " no tiene concepto contable, no se puede contabilizar.");
+        }
+
+        com.cloud_technological.aura_pos.entity.ConceptoCajaEntity concepto =
+                conceptoCajaRepo.findByIdAndEmpresaId(mov.getConceptoCajaId(), empresaId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                                "El concepto de caja del movimiento no existe."));
+        PlanCuentaEntity cuentaConcepto = planRepo.findByIdAndEmpresaId(concepto.getCuentaContableId(), empresaId)
+                .filter(c -> Boolean.TRUE.equals(c.getActiva()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "La cuenta contable del concepto '" + concepto.getNombre() + "' no existe o está inactiva."));
+        // El dinero entra/sale de Caja (efectivo) o Bancos (transferencia).
+        PlanCuentaEntity cuentaCaja = resolverCuentaPago(empresaId, mov.getMetodoPago(), null);
+
+        BigDecimal monto = nz(mov.getMonto());
+        boolean ingreso = "INGRESO".equalsIgnoreCase(mov.getTipo());
+        String desc = mov.getConcepto() != null ? mov.getConcepto() : concepto.getNombre();
+
+        List<AsientoDetalleEntity> detalles = new ArrayList<>();
+        if (ingreso) {
+            detalles.add(linea(cuentaCaja.getId(), desc, monto, BigDecimal.ZERO));
+            detalles.add(linea(cuentaConcepto.getId(), desc, BigDecimal.ZERO, monto));
+        } else {
+            detalles.add(linea(cuentaConcepto.getId(), desc, monto, BigDecimal.ZERO));
+            detalles.add(linea(cuentaCaja.getId(), desc, BigDecimal.ZERO, monto));
+        }
+
+        String tipoComprobante = ingreso ? "RC" : "CE";
+        java.time.LocalDate fecha = mov.getCreatedAt() != null
+                ? mov.getCreatedAt().toLocalDate() : java.time.LocalDate.now();
+
+        // Un solo número por hecho: el asiento reutiliza el número del comprobante
+        // de caja del mismo movimiento (origen MANUAL). Si no lo encuentra, genera uno.
+        String numero = comprobanteCajaRepo
+                .findFirstByEmpresaIdAndOrigenAndOrigenId(empresaId, "MANUAL", movimientoId)
+                .map(com.cloud_technological.aura_pos.entity.ComprobanteCajaEntity::getNumeroComprobante)
+                .orElse(null);
+
+        return persistirComprobante(empresaId, usuarioId, fecha, tipoComprobante, numero,
+                (ingreso ? "Ingreso de caja — " : "Egreso de caja — ") + concepto.getNombre(),
+                "MOVIMIENTO_CAJA", movimientoId, periodo.getId(), tipoComprobante, detalles);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Igual que {@link #persistir} pero marca el {@code tipoComprobante} (RC/CE/CD)
+     * en la cabecera, para los comprobantes de caja/manuales.
+     */
+    private AsientoContableTableDto persistirComprobante(Integer empresaId, Integer usuarioId,
+            java.time.LocalDate fecha, String prefijo, String numeroPreset, String descripcion,
+            String tipoOrigen, Long origenId, Long periodoId, String tipoComprobante,
+            List<AsientoDetalleEntity> detalles) {
+        // Si viene un número pre-asignado (p.ej. reutiliza el del comprobante de caja),
+        // se respeta; si no, se toma el siguiente de la serie unificada del prefijo.
+        String comprobante = (numeroPreset != null && !numeroPreset.isBlank())
+                ? numeroPreset : queryRepo.siguienteNumeroComprobante(empresaId, prefijo);
+        AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId, fecha, comprobante,
+                descripcion, tipoOrigen, origenId, periodoId, detalles);
+        asiento.setTipoComprobante(tipoComprobante);
+        detalles.forEach(d -> d.setAsiento(asiento));
+        AsientoContableEntity saved = asientoRepo.save(asiento);
+        AsientoContableTableDto result = toDto(saved);
+        result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
+        return result;
+    }
 
     /** Resuelve Caja vs Bancos según el método de pago (efectivo → Caja). */
     private ConceptoContable conceptoPago(String metodoPago) {

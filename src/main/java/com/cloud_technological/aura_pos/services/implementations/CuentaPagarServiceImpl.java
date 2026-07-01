@@ -47,6 +47,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
     private final TerceroJPARepository terceroRepository;
     private final UsuarioJPARepository usuarioRepository;
     private final TurnoCajaJPARepository turnoCajaRepository;
+    private final com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository;
     private final CuentaPagarMapper mapper;
 
     @Autowired
@@ -57,6 +58,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
             TerceroJPARepository terceroRepository,
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
+            com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository,
             CuentaPagarMapper mapper) {
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
@@ -65,6 +67,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         this.terceroRepository = terceroRepository;
         this.usuarioRepository = usuarioRepository;
         this.turnoCajaRepository = turnoCajaRepository;
+        this.cuentaBancariaRepository = cuentaBancariaRepository;
         this.mapper = mapper;
     }
 
@@ -184,10 +187,20 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                 .metodoPago(dto.getMetodoPago())
                 .referencia(dto.getReferencia())
                 .banco(dto.getBanco())
+                .cuentaBancariaId(dto.getCuentaBancariaId())
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
 
         abono = abonoJpaRepository.save(abono);
+
+        // Si el abono sale de una cuenta bancaria, descontar su saldo real.
+        if (dto.getCuentaBancariaId() != null) {
+            cuentaBancariaRepository.findByIdAndEmpresaId(dto.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().subtract(dto.getMonto()));
+                        cuentaBancariaRepository.save(cb);
+                    });
+        }
 
         // Actualizar cuenta
         cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
@@ -242,6 +255,15 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
         cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
         cuenta.setEstado("activa");
+
+        // Si el abono salió de una cuenta bancaria, devolverle el saldo.
+        if (abono.getCuentaBancariaId() != null) {
+            cuentaBancariaRepository.findByIdAndEmpresaId(abono.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().add(abono.getMonto()));
+                        cuentaBancariaRepository.save(cb);
+                    });
+        }
 
         jpaRepository.save(cuenta);
         abonoJpaRepository.delete(abono);
@@ -338,6 +360,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         dto.setMetodoPago(entity.getMetodoPago());
         dto.setReferencia(entity.getReferencia());
         dto.setBanco(entity.getBanco());
+        dto.setCuentaBancariaId(entity.getCuentaBancariaId());
         dto.setFechaPago(entity.getFechaPago());
         dto.setCreatedAt(entity.getCreatedAt());
         

@@ -30,7 +30,9 @@
       "Bash(ls -la .claude/agents/)",
       "Bash(./mvnw -o compile -DskipTests -q)",
       "Bash(./mvnw -o compile -DskipTests)",
-      "Bash(awk 'NR>=651 && NR<=760 && \\(/setEstadoVenta\\\\\\(\"ANULADA\"\\\\\\)/ || /ventaJPARepository.save\\\\\\(venta\\\\\\)/ || /^    }/\\)' src/main/java/com/cloud_technological/aura_pos/services/implementations/VentaServiceImpl.java)"
+      "Bash(awk 'NR>=651 && NR<=760 && \\(/setEstadoVenta\\\\\\(\"ANULADA\"\\\\\\)/ || /ventaJPARepository.save\\\\\\(venta\\\\\\)/ || /^    }/\\)' src/main/java/com/cloud_technological/aura_pos/services/implementations/VentaServiceImpl.java)",
+      "Bash(git stash *)",
+      "Bash(javac Q.java)"
     ]
   }
 }

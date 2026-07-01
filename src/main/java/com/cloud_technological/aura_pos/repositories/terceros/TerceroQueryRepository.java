@@ -191,4 +191,34 @@ public class TerceroQueryRepository {
         params.addValue("search", "%" + search.trim().toLowerCase() + "%");
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(TerceroTableDto.class));
     }
+
+    /**
+     * Selector completo: todos los clientes y proveedores activos (sin exigir
+     * término de búsqueda), para poblar dropdowns. Tope alto para SMB.
+     */
+    public List<TerceroTableDto> listarParaSelector(Integer empresaId) {
+        String sql = """
+            SELECT
+                t.id,
+                t.tipo_documento,
+                t.numero_documento,
+                COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos)) AS nombre_completo,
+                t.telefono,
+                t.email,
+                t.es_cliente,
+                t.es_proveedor,
+                t.es_empleado,
+                t.activo
+            FROM tercero t
+            WHERE t.empresa_id = :empresaId
+              AND (t.es_cliente = true OR t.es_proveedor = true)
+              AND t.activo = true
+              AND t.deleted_at IS NULL
+            ORDER BY nombre_completo ASC
+            LIMIT 500
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("empresaId", empresaId);
+        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(TerceroTableDto.class));
+    }
 }

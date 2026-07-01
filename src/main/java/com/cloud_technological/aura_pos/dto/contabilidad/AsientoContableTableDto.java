@@ -18,5 +18,13 @@ public class AsientoContableTableDto {
     private String estado;
     private String createdAt;
     private Long totalRows;
+    // Cabecera de comprobante manual (null en asientos automáticos)
+    private String tipoComprobante;
+    private Long beneficiarioTerceroId;
+    private String beneficiarioNombre;
+    private String beneficiarioDireccion;
+    private String beneficiarioTelefono;
+    private String ciudad;
+    private String fechaVencimiento;
     private List<AsientoDetalleDto> detalles;
 }

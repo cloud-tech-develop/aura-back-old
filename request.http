@@ -1,4 +1,4 @@
-@baseUrl = http://localhost:8000/api
+@baseUrl = http://localhost:9001/api
 @token = {{auth.response.body.access_token}}
 
 #####################################################

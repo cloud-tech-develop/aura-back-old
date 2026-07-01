@@ -32,7 +32,20 @@ public class MunicipioQueryRepository {
         
         Map<String, Object> params = new HashMap<>();
         params.put("search", "%" + search + "%");
-        
+
         return jdbc.query(sql, params, BeanPropertyRowMapper.newInstance(MunicipioDto.class));
+    }
+
+    public MunicipioDto findById(Long id) {
+        String sql = """
+            SELECT id, codigo, nombre, departamento,
+                   nombre || ' - ' || departamento as label
+            FROM municipios
+            WHERE id = :id
+            """;
+        Map<String, Object> params = new HashMap<>();
+        params.put("id", id);
+        return jdbc.query(sql, params, BeanPropertyRowMapper.newInstance(MunicipioDto.class))
+                .stream().findFirst().orElse(null);
     }
 }

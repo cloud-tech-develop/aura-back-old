@@ -47,4 +47,15 @@ public class CuotaAmortizacionEntity {
 
     @Column(name = "fecha_pago")
     private LocalDate fechaPago;
+
+    /** Medio de pago con que se canceló la cuota (EFECTIVO, TRANSFERENCIA, ...). */
+    @Column(name = "metodo_pago", length = 30)
+    private String metodoPago;
+
+    /**
+     * Cuenta bancaria DE DONDE salió el dinero al pagar (origen del pago).
+     * Puede diferir de la cuenta del desembolso. Null cuando el pago fue en efectivo.
+     */
+    @Column(name = "cuenta_bancaria_id_pago")
+    private Long cuentaBancariaIdPago;
 }

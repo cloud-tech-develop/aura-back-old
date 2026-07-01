@@ -253,8 +253,13 @@ public class CompraServiceImpl implements CompraService {
         compra.setNetaAPagar(totalBruto.subtract(totalRetenciones));
         compraJPARepository.save(compra);
 
-        // 4. Procesar pagos y generar notas contables (HU-008)
-        if (dto.getPagos() != null && !dto.getPagos().isEmpty()) {
+        // 4. Procesar pagos y generar notas contables (HU-008).
+        // Una compra a CRÉDITO no tiene salida de dinero al momento de la compra:
+        // toda la obligación queda con el proveedor. Por eso se ignoran los pagos
+        // que pudieran venir en el payload (evita líneas a Bancos/Caja en el asiento,
+        // descontar saldo bancario sin movimiento real y CxP inconsistentes).
+        boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
+        if (!esCredito && dto.getPagos() != null && !dto.getPagos().isEmpty()) {
             UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
@@ -305,12 +310,15 @@ public class CompraServiceImpl implements CompraService {
             }
         }
 
-        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO
-        if ("CREDITO".equalsIgnoreCase(compra.getFormaPago())) {
+        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
+        // La deuda con el proveedor es la neta a pagar (total menos retenciones
+        // practicadas), igual que la línea de Proveedores del asiento contable.
+        if (esCredito) {
             CreateCuentaPagarDto cuentaPagarDto = new CreateCuentaPagarDto();
             cuentaPagarDto.setProveedorId(dto.getProveedorId());
             cuentaPagarDto.setCompraId(compra.getId());
-            cuentaPagarDto.setTotalDeuda(compra.getTotal());
+            cuentaPagarDto.setTotalDeuda(compra.getNetaAPagar() != null
+                    ? compra.getNetaAPagar() : compra.getTotal());
             cuentaPagarDto.setFechaEmision(compra.getFecha());
             cuentaPagarDto.setFechaVencimiento(dto.getFechaVencimiento() != null ? dto.getFechaVencimiento() : compra.getFecha().plusDays(30));
             cuentaPagarDto.setObservaciones("Compra #" + compra.getId() + " - Compra a crédito");

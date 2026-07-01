@@ -24,6 +24,8 @@ public class AbonoPagarDto {
 
     private String referencia;
     private String banco;
+    /** Cuenta bancaria DE DONDE sale el dinero del abono (origen). Null si es efectivo. */
+    private Long cuentaBancariaId;
     private LocalDateTime fechaPago;
     private LocalDateTime createdAt;
 }

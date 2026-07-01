@@ -90,6 +90,14 @@ public class TerceroController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
     }
 
+    /** Selector completo (clientes y proveedores activos) para dropdowns. */
+    @GetMapping("/selector")
+    public ResponseEntity<ApiResponse<List<TerceroTableDto>>> listarParaSelector() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<TerceroTableDto> result = terceroService.listarParaSelector(empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
+    }
+
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<TerceroDto>> crear(@Valid @RequestBody CreateTerceroDto dto) {
         Integer empresaId = securityUtils.getEmpresaId();

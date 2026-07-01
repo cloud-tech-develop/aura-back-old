@@ -17,11 +17,17 @@ import org.springframework.web.server.ResponseStatusException;
 import com.cloud_technological.aura_pos.dto.obligaciones.CreateObligacionDto;
 import com.cloud_technological.aura_pos.dto.obligaciones.CuotaAmortizacionDto;
 import com.cloud_technological.aura_pos.dto.obligaciones.ObligacionDto;
+import com.cloud_technological.aura_pos.dto.obligaciones.PagarCuotaDto;
 import com.cloud_technological.aura_pos.entity.CuotaAmortizacionEntity;
+import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
 import com.cloud_technological.aura_pos.entity.ObligacionFinancieraEntity;
+import com.cloud_technological.aura_pos.entity.UsuarioEntity;
 import com.cloud_technological.aura_pos.event.OperacionContabilizableEvent;
+import com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.obligaciones.CuotaAmortizacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.obligaciones.ObligacionFinancieraJPARepository;
+import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
+import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.ObligacionFinancieraService;
 
 @Service
@@ -30,6 +36,9 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
     @Autowired private ObligacionFinancieraJPARepository obligacionRepo;
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepo;
+    @Autowired private UsuarioJPARepository usuarioRepository;
+    @Autowired private TurnoCajaJPARepository turnoCajaRepo;
+    @Autowired private MovimientoCajaJPARepository movimientoCajaRepo;
     @Autowired private ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -130,7 +139,8 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
 
     @Override
     @Transactional
-    public CuotaAmortizacionDto pagarCuota(Long obligacionId, Long cuotaId, Integer empresaId, Long usuarioId) {
+    public CuotaAmortizacionDto pagarCuota(Long obligacionId, Long cuotaId, PagarCuotaDto pago,
+            Integer empresaId, Long usuarioId) {
         ObligacionFinancieraEntity o = obligacionRepo.findByIdAndEmpresaId(obligacionId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Obligación no encontrada"));
 
@@ -141,8 +151,21 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuota #" + cuota.getNumeroCuota() + " ya está pagada");
         }
 
+        // ── Resolver el ORIGEN del dinero ────────────────────────────────────
+        // El pasivo puede cancelarse desde cualquier activo monetario: efectivo
+        // (caja) o cualquier cuenta bancaria, no solo la del desembolso. Si no se
+        // envía origen, cae a la cuenta del desembolso (comportamiento anterior).
+        String metodoPago = (pago != null && pago.getMetodoPago() != null)
+                ? pago.getMetodoPago().trim().toUpperCase() : null;
+        boolean esEfectivo = metodoPago != null && metodoPago.contains("EFECTIVO");
+        Long cuentaOrigen = (pago != null && pago.getCuentaBancariaId() != null)
+                ? pago.getCuentaBancariaId()
+                : (esEfectivo ? null : o.getCuentaBancariaId());
+
         cuota.setEstado("PAGADA");
         cuota.setFechaPago(LocalDate.now());
+        cuota.setMetodoPago(metodoPago);
+        cuota.setCuentaBancariaIdPago(cuentaOrigen);
         cuotaRepo.save(cuota);
 
         o.setSaldoCapital(o.getSaldoCapital().subtract(cuota.getAbonoCapital()).max(BigDecimal.ZERO));
@@ -151,16 +174,36 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
         }
         obligacionRepo.save(o);
 
-        // El pago de la cuota disminuye el saldo de la cuenta bancaria.
-        if (o.getCuentaBancariaId() != null) {
-            cuentaBancariaRepo.findByIdAndEmpresaId(o.getCuentaBancariaId(), empresaId)
+        // El pago disminuye el saldo del activo del que sale el dinero.
+        if (cuentaOrigen != null) {
+            // Salida desde una cuenta bancaria (la elegida, o la del desembolso por defecto).
+            cuentaBancariaRepo.findByIdAndEmpresaId(cuentaOrigen, empresaId)
                     .ifPresent(cb -> {
                         cb.setSaldoActual(cb.getSaldoActual().subtract(cuota.getCuota()));
                         cuentaBancariaRepo.save(cb);
                     });
+        } else {
+            // Pago en efectivo → egreso de caja en el turno abierto (patrón de compras CONTADO).
+            UsuarioEntity usuario = usuarioId != null
+                    ? usuarioRepository.findById(usuarioId.intValue()).orElse(null) : null;
+            if (usuario != null) {
+                turnoCajaRepo.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
+                        .ifPresent(turno -> {
+                            MovimientoCajaEntity egreso = MovimientoCajaEntity.builder()
+                                    .turnoCaja(turno)
+                                    .usuario(usuario)
+                                    .tipo("EGRESO")
+                                    .concepto("Pago cuota #" + cuota.getNumeroCuota()
+                                            + " — obligación #" + o.getId())
+                                    .monto(cuota.getCuota())
+                                    .build();
+                            movimientoCajaRepo.save(egreso);
+                        });
+            }
         }
 
-        // Asiento del pago de la cuota (DB capital + DB interés / CR Bancos) tras commit.
+        // Asiento del pago de la cuota (DB capital + DB interés / CR Caja/Bancos del
+        // origen elegido) tras commit. El motor relee metodoPago/cuentaBancariaIdPago.
         eventPublisher.publishEvent(new OperacionContabilizableEvent(
                 "CUOTA", cuota.getId(), empresaId,
                 usuarioId != null ? usuarioId.intValue() : null));

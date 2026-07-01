@@ -94,6 +94,11 @@ public class TerceroServiceImpl implements ITerceroService {
     }
 
     @Override
+    public List<TerceroTableDto> listarParaSelector(Integer empresaId) {
+        return terceroRepository.listarParaSelector(empresaId);
+    }
+
+    @Override
     @Transactional
     public TerceroDto crear(CreateTerceroDto dto, Integer empresaId) {
         if (terceroRepository.existeDocumento(dto.getNumeroDocumento(), empresaId))

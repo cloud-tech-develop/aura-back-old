@@ -55,4 +55,10 @@ public interface ContabilidadAutoService {
 
     /** Pago de cuota: DB Obligaciones (capital) + DB Gasto financiero (interés) · CR Bancos. Idempotente. */
     AsientoContableTableDto generarDesdePagoCuota(Long cuotaId, Integer empresaId, Integer usuarioId);
+
+    /**
+     * Movimiento de caja manual con concepto: ingreso (DB Caja · CR cuenta del
+     * concepto) o egreso (DB cuenta del concepto · CR Caja). Idempotente.
+     */
+    AsientoContableTableDto generarDesdeMovimientoCaja(Long movimientoId, Integer empresaId, Integer usuarioId);
 }

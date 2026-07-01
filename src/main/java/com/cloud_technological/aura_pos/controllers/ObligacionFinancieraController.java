@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import com.cloud_technological.aura_pos.dto.obligaciones.CreateObligacionDto;
 import com.cloud_technological.aura_pos.dto.obligaciones.CuotaAmortizacionDto;
 import com.cloud_technological.aura_pos.dto.obligaciones.ObligacionDto;
+import com.cloud_technological.aura_pos.dto.obligaciones.PagarCuotaDto;
 import com.cloud_technological.aura_pos.services.ObligacionFinancieraService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -50,10 +51,11 @@ public class ObligacionFinancieraController {
 
     @PostMapping("/{id}/cuotas/{cuotaId}/pagar")
     public ResponseEntity<ApiResponse<CuotaAmortizacionDto>> pagarCuota(
-            @PathVariable Long id, @PathVariable Long cuotaId) {
+            @PathVariable Long id, @PathVariable Long cuotaId,
+            @RequestBody(required = false) PagarCuotaDto pago) {
         Integer empresaId = securityUtils.getEmpresaId();
         Long usuarioId = securityUtils.getUsuarioId();
-        CuotaAmortizacionDto cuota = service.pagarCuota(id, cuotaId, empresaId, usuarioId);
+        CuotaAmortizacionDto cuota = service.pagarCuota(id, cuotaId, pago, empresaId, usuarioId);
         return ResponseEntity.ok(new ApiResponse<>(200, "Cuota pagada", false, cuota));
     }
 

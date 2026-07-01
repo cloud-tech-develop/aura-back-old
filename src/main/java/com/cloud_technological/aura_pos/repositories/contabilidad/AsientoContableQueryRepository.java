@@ -120,13 +120,19 @@ public class AsientoContableQueryRepository {
      * Formato: {PREFIX}-{6 dígitos}  ej: CD-000001
      */
     public String siguienteNumeroComprobante(Integer empresaId, String prefix) {
+        // Contador UNIFICADO por prefijo: considera tanto los asientos contables como
+        // los comprobantes de caja, para que ambas fuentes compartan la misma serie
+        // (evita que el comprobante contable reinicie en 1 cuando la caja ya va en N).
         String sql = """
-            SELECT COALESCE(MAX(
-                CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER)
-            ), 0) + 1
-            FROM asiento_contable
-            WHERE empresa_id = :empresaId
-              AND numero_comprobante LIKE :prefixLike
+            SELECT COALESCE(MAX(n), 0) + 1 FROM (
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM asiento_contable
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+                UNION ALL
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM comprobante_caja
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+            ) t
             """;
         Integer siguiente = jdbc.queryForObject(sql,
                 Map.of("empresaId", empresaId, "prefix", prefix, "prefixLike", prefix + "-%"),

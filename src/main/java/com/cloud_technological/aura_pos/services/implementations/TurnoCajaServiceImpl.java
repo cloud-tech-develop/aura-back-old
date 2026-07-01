@@ -57,6 +57,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     private final CuentaPagarJPARepository cuentaPagarRepository;
     private final MovimientoCajaJPARepository movimientoCajaRepository;
     private final ComprobanteCajaService comprobanteCajaService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public TurnoCajaServiceImpl(TurnoCajaQueryRepository turnoRepository,
@@ -69,7 +70,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             CuentaCobrarJPARepository cuentaCobrarRepository,
             CuentaPagarJPARepository cuentaPagarRepository,
             MovimientoCajaJPARepository movimientoCajaRepository,
-            ComprobanteCajaService comprobanteCajaService) {
+            ComprobanteCajaService comprobanteCajaService,
+            org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.turnoRepository = turnoRepository;
         this.turnoJPARepository = turnoJPARepository;
         this.cajaJPARepository = cajaJPARepository;
@@ -81,6 +83,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         this.cuentaPagarRepository = cuentaPagarRepository;
         this.movimientoCajaRepository = movimientoCajaRepository;
         this.comprobanteCajaService = comprobanteCajaService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -223,6 +226,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 "ABONO_CXC", saved.getId(), turnoId
             );
 
+            // Asiento del recaudo (DB Caja · CR Clientes) tras el commit.
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                    "COBRO", saved.getId(), empId, usuarioId.intValue()));
+
             return abonoCobrarToDto(saved);
         }
 
@@ -261,6 +268,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 "ABONO_CXP", saved.getId(), turnoId
             );
 
+            // Asiento del pago a proveedor (DB Proveedores · CR Caja) tras el commit.
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                    "PAGO", saved.getId(), empId, usuarioId.intValue()));
+
             return abonoPagarToDto(saved);
         }
 
@@ -270,6 +281,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 .tipo(dto.getTipo())
                 .concepto(dto.getConcepto())
                 .monto(dto.getMonto())
+                .conceptoCajaId(dto.getConceptoCajaId())
+                .metodoPago(dto.getMetodoPago())
                 .build();
         MovimientoCajaEntity saved = movimientoCajaRepository.save(movimiento);
 
@@ -280,6 +293,12 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             dto.getMetodoPago(), dto.getEntregadoA(),
             "MANUAL", saved.getId(), turnoId
         );
+
+        // Si trae concepto de caja, genera su asiento (DB/CR Caja + cuenta del concepto) tras el commit.
+        if (dto.getConceptoCajaId() != null) {
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.MovimientoCajaContabilizableEvent(
+                    saved.getId(), empId, usuarioId.intValue()));
+        }
 
         return movimientoCajaToDto(saved);
     }
