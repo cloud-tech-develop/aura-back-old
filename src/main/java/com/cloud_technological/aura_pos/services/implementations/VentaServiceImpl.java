@@ -12,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.CreateCuentaCobrarDto;
-import com.cloud_technological.aura_pos.dto.facturacion.FacturaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDetalleDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaPagoDto;
@@ -63,7 +62,6 @@ import com.cloud_technological.aura_pos.dto.cartera.ValidacionCreditoDto;
 import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
-import com.cloud_technological.aura_pos.services.FacturaService;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -93,7 +91,6 @@ public class VentaServiceImpl implements VentaService {
     private final VentaPagoMapper pagoMapper;
     private final ProductoComposicionJPARepository composicionJPARepository;
     private final ProductoPresentacionJPARepository presentacionJPARepository;
-    private final FacturaService facturaService;
     private final CuentaCobrarService cuentaCobrarService;
     private final ComisionService comisionService;
     private final CarteraService carteraService;
@@ -129,7 +126,6 @@ public class VentaServiceImpl implements VentaService {
             ProductoPresentacionJPARepository presentacionJPARepository,
             VentaDetalleMapper detalleMapper,
             VentaPagoMapper pagoMapper,
-            FacturaService facturaService,
             CuentaCobrarService cuentaCobrarService,
             ComisionService comisionService,
             CarteraService carteraService,
@@ -154,7 +150,6 @@ public class VentaServiceImpl implements VentaService {
         this.ventaMapper = ventaMapper;
         this.detalleMapper = detalleMapper;
         this.pagoMapper = pagoMapper;
-        this.facturaService = facturaService;
         this.cuentaCobrarService = cuentaCobrarService;
         this.comisionService = comisionService;
         this.carteraService = carteraService;
@@ -595,12 +590,10 @@ public class VentaServiceImpl implements VentaService {
             cuentaCobrarService.crear(cuentaCobrarDto, empresaId, usuarioId);
         }
 
-        // 9. Crear factura automáticamente desde la venta
-        FacturaDto facturaDto = facturaService.crearDesdeVenta(venta.getId(), empresaId, usuarioId.intValue());
-
-        // 9. Obtener venta con factura asignada
+        // 9. La factura interna NO se crea automáticamente. Se genera on-demand
+        //    cuando el usuario la solicite (FacturaController POST /facturas/desde-venta).
+        //    Así solo se factura la venta que se elija, no todas.
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
-        ventaDto.setFacturaId(facturaDto.getId());
 
         // 10. Si el vendedor tiene un empleado vinculado, crear automáticamente un pedido_vendedor COBRADA
         if (usuario.getEmpleado() != null) {

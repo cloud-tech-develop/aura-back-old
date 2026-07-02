@@ -61,4 +61,12 @@ public interface ContabilidadAutoService {
      * concepto) o egreso (DB cuenta del concepto · CR Caja). Idempotente.
      */
     AsientoContableTableDto generarDesdeMovimientoCaja(Long movimientoId, Integer empresaId, Integer usuarioId);
+
+    /**
+     * Movimiento de tesorería (recaudo/egreso/transferencia sobre una cuenta
+     * bancaria): entrada (DB Banco · CR contrapartida) o salida (DB contrapartida
+     * · CR Banco). El banco se resuelve por la cuenta contable de la cuenta
+     * bancaria; la contrapartida viene en el propio movimiento. Idempotente.
+     */
+    AsientoContableTableDto generarDesdeTesoreria(Long movimientoId, Integer empresaId, Integer usuarioId);
 }

@@ -134,8 +134,11 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             { "2505", "Salarios por Pagar",             "PASIVO",  "CREDITO", 3, "25" },
             // ── Clase 3 · Patrimonio ──────────────────────────────────────────
             { "31", "Capital Social",                   "PATRIMONIO","CREDITO",2, "3" },
+            { "3105","Capital",                         "PATRIMONIO","CREDITO",3, "31" },
             { "36", "Resultados del Ejercicio",         "PATRIMONIO","CREDITO",2, "3" },
             { "3605","Utilidad del Ejercicio",          "PATRIMONIO","CREDITO",3, "36" },
+            { "37", "Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",2, "3" },
+            { "3705","Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",3, "37" },
             // ── Clase 4 · Ingresos ────────────────────────────────────────────
             { "41", "Operacionales",                    "INGRESO", "CREDITO", 2, "4" },
             { "4135","Comercio al por Menor",           "INGRESO", "CREDITO", 3, "41" },

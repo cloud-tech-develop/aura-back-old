@@ -171,6 +171,23 @@ public class AsientoContableQueryRepository {
                         rs.getBigDecimal("credito")));
     }
 
+    /**
+     * Saldo del mayor (débito − crédito) de una cuenta hasta hoy, considerando
+     * solo asientos contabilizados. Para cuentas de activo (11xx) es el saldo real.
+     */
+    public BigDecimal saldoCuenta(Integer empresaId, Long cuentaId) {
+        String sql = """
+            SELECT COALESCE(SUM(ad.debito - ad.credito), 0)
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            WHERE a.empresa_id = :empresaId
+              AND ad.cuenta_id = :cuentaId
+              AND a.estado = 'CONTABILIZADO'
+            """;
+        return jdbc.queryForObject(sql,
+                Map.of("empresaId", empresaId, "cuentaId", cuentaId), BigDecimal.class);
+    }
+
     public Map<String, Object> balanceGeneral(Integer empresaId, String hasta) {
         String sql = """
             SELECT

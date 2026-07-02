@@ -39,7 +39,9 @@ import com.cloud_technological.aura_pos.repositories.compras.CompraPagoJPAReposi
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.AbonoPagarJPARepository;
+import com.cloud_technological.aura_pos.entity.TesoreriaMovimientoEntity;
 import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.TesoreriaMovimientoJPARepository;
 import com.cloud_technological.aura_pos.repositories.devolucion.DevolucionJPARepository;
 import com.cloud_technological.aura_pos.repositories.devolucion.DevolucionDetalleJPARepository;
 import com.cloud_technological.aura_pos.repositories.gastos.GastoJPARepository;
@@ -76,6 +78,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private ObligacionFinancieraJPARepository obligacionRepo;
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
+    @Autowired private TesoreriaMovimientoJPARepository tesoreriaMovRepo;
     @Autowired private PlanCuentaJPARepository planRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository movimientoCajaRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.conceptos_caja.ConceptoCajaJPARepository conceptoCajaRepo;
@@ -98,6 +101,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     private static final String PREFIX_CIERRE     = "CE";
     private static final String PREFIX_OBLIGACION = "OB";
     private static final String PREFIX_CUOTA      = "CU";
+    private static final String PREFIX_TESORERIA  = "TS";
 
     @Override
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
@@ -334,7 +338,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_REVERSA);
-        String etiqueta = "VENTA".equals(origenTipo) ? "venta" : "compra";
+        String etiqueta = origenTipo != null ? origenTipo.toLowerCase() : "operación";
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
                 java.time.LocalDate.now(), comprobante,
                 "Anulación " + etiqueta + " #" + origenId
@@ -831,6 +835,62 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         return persistirComprobante(empresaId, usuarioId, fecha, tipoComprobante, numero,
                 (ingreso ? "Ingreso de caja — " : "Egreso de caja — ") + concepto.getNombre(),
                 "MOVIMIENTO_CAJA", movimientoId, periodo.getId(), tipoComprobante, detalles);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto generarDesdeTesoreria(Long movimientoId, Integer empresaId,
+            Integer usuarioId) {
+        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("TESORERIA", movimientoId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un asiento contable para el movimiento de tesorería #" + movimientoId);
+        }
+        PeriodoContableEntity periodo = periodoAbierto(empresaId);
+
+        TesoreriaMovimientoEntity mov = tesoreriaMovRepo.findByIdAndEmpresaId(movimientoId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Movimiento de tesorería no encontrado"));
+
+        if (Boolean.TRUE.equals(mov.getAnulado())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El movimiento de tesorería #" + movimientoId + " está anulado, no se contabiliza.");
+        }
+        if (mov.getContrapartidaCuentaId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El movimiento de tesorería #" + movimientoId
+                            + " no tiene cuenta de contrapartida, no se puede contabilizar.");
+        }
+
+        // Lado del banco: cuenta contable de la cuenta bancaria (fallback Bancos genérico).
+        PlanCuentaEntity banco = resolverCuentaPago(empresaId, null, mov.getCuentaBancariaId());
+        // Lado de la contrapartida: la cuenta elegida en el movimiento.
+        PlanCuentaEntity contrapartida = planRepo.findByIdAndEmpresaId(mov.getContrapartidaCuentaId(), empresaId)
+                .filter(c -> Boolean.TRUE.equals(c.getActiva()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "La cuenta de contrapartida del movimiento de tesorería no existe o está inactiva."));
+
+        BigDecimal monto = nz(mov.getMonto());
+        String desc = mov.getConcepto();
+        boolean entrada = "RECAUDO".equals(mov.getTipo())
+                || "TRANSFERENCIA_ENTRADA".equals(mov.getTipo());
+
+        List<AsientoDetalleEntity> detalles = new ArrayList<>();
+        if (entrada) {
+            // Entra dinero al banco: DB Banco · CR contrapartida.
+            detalles.add(linea(banco.getId(), desc, monto, BigDecimal.ZERO));
+            detalles.add(linea(contrapartida.getId(), desc, BigDecimal.ZERO, monto));
+        } else {
+            // Sale dinero del banco: DB contrapartida · CR Banco.
+            detalles.add(linea(contrapartida.getId(), desc, monto, BigDecimal.ZERO));
+            detalles.add(linea(banco.getId(), desc, BigDecimal.ZERO, monto));
+        }
+
+        String tipoComprobante = entrada ? "RC" : "CE";
+        java.time.LocalDate fecha = mov.getFecha() != null ? mov.getFecha() : java.time.LocalDate.now();
+
+        return persistirComprobante(empresaId, usuarioId, fecha, PREFIX_TESORERIA, null,
+                (entrada ? "Recaudo tesorería — " : "Egreso tesorería — ") + desc,
+                "TESORERIA", movimientoId, periodo.getId(), tipoComprobante, detalles);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

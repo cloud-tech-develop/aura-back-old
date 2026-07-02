@@ -18,10 +18,12 @@ import com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreatePlanCuentaDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateSaldosInicialesDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.LibroMayorLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.PlanCuentaDto;
+import com.cloud_technological.aura_pos.services.AperturaContableService;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
 import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
 import com.cloud_technological.aura_pos.services.PlanCuentasService;
@@ -40,6 +42,9 @@ public class ContabilidadController {
 
     @Autowired
     private ContabilidadAutoService autoService;
+
+    @Autowired
+    private AperturaContableService aperturaService;
 
     @Autowired
     private SecurityUtils securityUtils;
@@ -147,6 +152,58 @@ public class ContabilidadController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 asientoService.siguienteConsecutivo(empresaId, tipo)));
+    }
+
+    // ── Saldos iniciales / apertura ──────────────────────────────────
+
+    @GetMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> obtenerApertura() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, aperturaService.obtener(empresaId)));
+    }
+
+    @GetMapping("/saldos-iniciales/sugerencia-bancos")
+    public ResponseEntity<ApiResponse<java.util.List<com.cloud_technological.aura_pos.dto.contabilidad.SaldoInicialLineaDto>>>
+            sugerenciaBancos() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                aperturaService.sugerirDesdeBancos(empresaId)));
+    }
+
+    @PostMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> guardarApertura(
+            @Valid @RequestBody CreateSaldosInicialesDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = aperturaService.guardar(dto, empresaId, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Saldos iniciales cargados", false, created));
+    }
+
+    /**
+     * Atajo: crea la apertura directamente desde las cuentas bancarias usando el
+     * saldo actual de cada una. Un solo tiro para migrar clientes con saldos.
+     * POST /api/contabilidad/saldos-iniciales/desde-bancos?fecha=YYYY-MM-DD
+     */
+    @PostMapping("/saldos-iniciales/desde-bancos")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> guardarAperturaDesdeBancos(
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate fecha) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = aperturaService.guardarDesdeBancos(empresaId, fecha, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Apertura cargada desde bancos", false, created));
+    }
+
+    @DeleteMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<Void>> eliminarApertura() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        aperturaService.eliminar(empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(200, "Apertura eliminada", false, null));
     }
 
     // ── Balance General ──────────────────────────────────────────────

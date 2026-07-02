@@ -51,7 +51,11 @@ public enum ConceptoContable {
     // ── Cierre / depreciación ─────────────────────────────────────────────
     UTILIDAD_EJERCICIO("3605", "Utilidad del ejercicio"),
     DEPRECIACION_GASTO("5160", "Gasto por depreciación"),
-    DEPRECIACION_ACUMULADA("1592", "Depreciación acumulada");
+    DEPRECIACION_ACUMULADA("1592", "Depreciación acumulada"),
+
+    // ── Patrimonio / apertura (saldos iniciales) ──────────────────────────
+    CAPITAL_SOCIAL("3105", "Capital social"),
+    RESULTADOS_ACUMULADOS("3705", "Resultados de ejercicios anteriores");
 
     private final String codigoDefault;
     private final String descripcion;

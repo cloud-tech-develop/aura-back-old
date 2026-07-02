@@ -13,4 +13,8 @@ public interface AsientoContableJPARepository extends JpaRepository<AsientoConta
     boolean existsByTipoOrigenAndOrigenIdAndEmpresaId(String tipoOrigen, Long origenId, Integer empresaId);
 
     Optional<AsientoContableEntity> findByTipoOrigenAndOrigenIdAndEmpresaId(String tipoOrigen, Long origenId, Integer empresaId);
+
+    Optional<AsientoContableEntity> findFirstByEmpresaIdAndTipoOrigen(Integer empresaId, String tipoOrigen);
+
+    long countByEmpresaIdAndTipoOrigenNot(Integer empresaId, String tipoOrigen);
 }

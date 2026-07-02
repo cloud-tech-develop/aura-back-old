@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.entity.FacturaLogEntity;
+import com.cloud_technological.aura_pos.repositories.facturacion.FacturaJPARepository;
 import com.cloud_technological.aura_pos.repositories.factura_log.FacturaLogJPARepository;
 import com.cloud_technological.aura_pos.services.FacturaService;
 
@@ -22,12 +23,15 @@ public class FacturaRetryService {
     private static final Logger logger = LoggerFactory.getLogger(FacturaRetryService.class);
 
     private final FacturaLogJPARepository facturaLogRepository;
+    private final FacturaJPARepository facturaJPARepository;
     private final FacturaService facturaService;
 
     @Autowired
     public FacturaRetryService(FacturaLogJPARepository facturaLogRepository,
+                               FacturaJPARepository facturaJPARepository,
                                FacturaService facturaService) {
         this.facturaLogRepository = facturaLogRepository;
+        this.facturaJPARepository = facturaJPARepository;
         this.facturaService = facturaService;
     }
 
@@ -89,6 +93,18 @@ public class FacturaRetryService {
                 Long ventaId = toLong(metadata.get("ventaId"));
                 Integer empresaId = toInteger(metadata.get("empresaId"));
                 Integer usuarioId = toInteger(metadata.get("usuarioId"));
+
+                // Idempotencia: si la factura ya existe para esta venta, el trabajo ya
+                // está hecho. Reintentar solo produciría "Ya existe una factura para esta
+                // venta". Se resuelve el log (se limpia el payload) para que el scheduler
+                // no lo vuelva a seleccionar.
+                if (facturaJPARepository.findByVentaId(ventaId).isPresent()) {
+                    logger.info(">>> Factura de venta {} ya existe - nada que reintentar, se resuelve log {}",
+                        ventaId, log.getId());
+                    resolverLog(log);
+                    return true;
+                }
+
                 facturaService.crearDesdeVenta(ventaId, empresaId, usuarioId);
                 logger.info(">>> Reintento exitoso para factura {} - action: crearDesdeVenta", log.getFacturaId());
             }
@@ -99,6 +115,16 @@ public class FacturaRetryService {
         }
 
         return true;
+    }
+
+    /**
+     * Marca un log como resuelto limpiando su payload de reintento (metadata),
+     * de modo que {@code findPendingWithRetryPayload} deje de seleccionarlo. Se
+     * conserva el resto de la información de auditoría (estado, datos, mensaje).
+     */
+    private void resolverLog(FacturaLogEntity log) {
+        log.setMetadata(null);
+        facturaLogRepository.save(log);
     }
 
     private Long toLong(Object value) {

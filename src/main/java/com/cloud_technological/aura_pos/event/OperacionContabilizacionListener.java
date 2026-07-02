@@ -33,6 +33,8 @@ public class OperacionContabilizacionListener {
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
                 case "CUOTA" -> contabilidadAutoService.generarDesdePagoCuota(
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
+                case "TESORERIA" -> contabilidadAutoService.generarDesdeTesoreria(
+                        event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
                 default -> contabilidadAutoService.generarDesdeMerma(
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
             }
