@@ -431,7 +431,10 @@ public class CompraServiceImpl implements CompraService {
             if (inventario != null) {
                 BigDecimal saldoAnterior = inventario.getStockActual();
                 BigDecimal saldoNuevo = saldoAnterior.subtract(detalle.getCantidad());
-                inventario.setStockActual(saldoNuevo.max(BigDecimal.ZERO));
+                // El kardex debe ser secuencial: el stock puede quedar negativo de forma
+                // transitoria tras la reversión para que el siguiente movimiento continúe
+                // desde este saldo (no se clava en 0).
+                inventario.setStockActual(saldoNuevo);
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
                 registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),
