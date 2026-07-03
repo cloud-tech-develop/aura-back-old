@@ -29,6 +29,10 @@ public class OperacionContabilizacionListener {
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
                 case "NOMINA" -> contabilidadAutoService.generarDesdeNomina(
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
+                case "NOMINA_PAGO" -> contabilidadAutoService.generarDesdePagoNomina(
+                        event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
+                case "PRESTACION_PAGO" -> contabilidadAutoService.generarDesdePagoPrestacion(
+                        event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
                 case "OBLIGACION" -> contabilidadAutoService.generarDesdeObligacion(
                         event.getOrigenId(), event.getEmpresaId(), event.getUsuarioId());
                 case "CUOTA" -> contabilidadAutoService.generarDesdePagoCuota(

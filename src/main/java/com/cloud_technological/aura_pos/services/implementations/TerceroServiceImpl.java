@@ -89,6 +89,11 @@ public class TerceroServiceImpl implements ITerceroService {
     }
 
     @Override
+    public List<TerceroTableDto> listarBancos(String search, Integer empresaId) {
+        return terceroRepository.listarBancos(search, empresaId);
+    }
+
+    @Override
     public List<TerceroTableDto> listarTodos(String search, Integer empresaId) {
         return terceroRepository.listarTodos(search, empresaId);
     }

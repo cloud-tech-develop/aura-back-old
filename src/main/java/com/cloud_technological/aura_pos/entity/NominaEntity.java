@@ -112,6 +112,16 @@ public class NominaEntity {
     @Column(name = "estado", length = 20, nullable = false)
     private String estado = "BORRADOR"; // BORRADOR | APROBADO | PAGADO | ANULADO
 
+    // Pago
+    @Column(name = "medio_pago", length = 20)
+    private String medioPago; // EFECTIVO | TRANSFERENCIA
+
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
+    @Column(name = "fecha_pago")
+    private LocalDateTime fechaPago;
+
     @OneToMany(mappedBy = "nomina", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<NominaNovedadEntity> novedades = new ArrayList<>();
 

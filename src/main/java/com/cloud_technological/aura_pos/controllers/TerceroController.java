@@ -90,6 +90,15 @@ public class TerceroController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
     }
 
+    // Para selector de banco (nómina/tesorería) - solo terceros tipo banco
+    @GetMapping("/bancos")
+    public ResponseEntity<ApiResponse<List<TerceroTableDto>>> listarBancos(
+            @RequestParam(defaultValue = "") String search) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<TerceroTableDto> result = terceroService.listarBancos(search, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
+    }
+
     /** Selector completo (clientes y proveedores activos) para dropdowns. */
     @GetMapping("/selector")
     public ResponseEntity<ApiResponse<List<TerceroTableDto>>> listarParaSelector() {

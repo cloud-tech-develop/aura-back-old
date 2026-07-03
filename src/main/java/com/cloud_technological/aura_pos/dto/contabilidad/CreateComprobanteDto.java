@@ -48,4 +48,7 @@ public class CreateComprobanteDto {
     @NotEmpty
     @Valid
     private List<CreateAsientoDetalleDto> detalles;
+
+    /** Cruce de cartera opcional: cuentas por cobrar/pagar a las que se aplica este comprobante. */
+    private List<AplicacionCarteraDto> aplicaciones;
 }

@@ -287,4 +287,19 @@ public class ContabilidadController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(201, "Asiento generado", false, result));
     }
+
+    /**
+     * Regenera manualmente el asiento de una nómina ya aprobada (útil cuando el
+     * asiento automático falló por falta de cuentas y ya se corrigió el PUC).
+     */
+    @PostMapping("/asientos/generar-desde-nomina/{nominaId}")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> generarDesdeNomina(
+            @PathVariable Long nominaId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto result = autoService.generarDesdeNomina(nominaId, empresaId, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Asiento generado", false, result));
+    }
 }

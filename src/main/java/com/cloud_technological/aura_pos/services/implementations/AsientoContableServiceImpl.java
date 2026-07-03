@@ -48,6 +48,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     @Autowired
     private TerceroJPARepository terceroRepo;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CuentaCobrarService cuentaCobrarService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
+
     @Override
     public List<AsientoContableTableDto> listar(Integer empresaId, String desde, String hasta,
             String tipoOrigen, int page, int rows) {
@@ -186,6 +192,21 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         detalles.forEach(d -> d.setAsiento(asiento));
 
         AsientoContableEntity saved = repo.save(asiento);
+
+        // ── Cruce de cartera (aplicación del pago) en la misma transacción ──
+        if (dto.getAplicaciones() != null) {
+            for (var ap : dto.getAplicaciones()) {
+                if (ap == null || ap.getCuentaId() == null
+                        || ap.getMonto() == null || ap.getMonto().signum() <= 0) continue;
+                String referencia = "Comprobante " + comprobante;
+                if ("CXP".equalsIgnoreCase(ap.getTipo())) {
+                    cuentaPagarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                } else if ("CXC".equalsIgnoreCase(ap.getTipo())) {
+                    cuentaCobrarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                }
+            }
+        }
+
         AsientoContableTableDto result = toTableDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
         return result;

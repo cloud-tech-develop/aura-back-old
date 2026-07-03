@@ -98,6 +98,11 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     private static final String PREFIX_GASTO      = "GT";
     private static final String PREFIX_MERMA      = "MM";
     private static final String PREFIX_NOMINA     = "NO";
+    private static final String PREFIX_NOMINA_PAGO = "PN";
+    private static final String PREFIX_PRESTACION_PAGO = "PP";
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.nomina.LiquidacionPrestacionJPARepository prestacionRepo;
     private static final String PREFIX_CIERRE     = "CE";
     private static final String PREFIX_OBLIGACION = "OB";
     private static final String PREFIX_CUOTA      = "CU";
@@ -375,9 +380,22 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         BigDecimal iva = dets.stream().map(d -> nz(d.getImpuestoValor()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal base = total.subtract(iva);                              // ingreso revertido
+
+        // Productos agregados en un cambio (se suman a la venta original).
+        BigDecimal totalAgregado = nz(dev.getTotalAgregado());
+        BigDecimal ivaAgregado = nz(dev.getIvaAgregado());
+        BigDecimal baseAgregada = totalAgregado.subtract(ivaAgregado);      // ingreso reconocido
+        BigDecimal costoAgregado = nz(dev.getCostoAgregado());
+
+        // Neto: + a favor del cliente (reembolso), - faltante que paga el cliente.
+        BigDecimal neto = dev.getNetoDiferencia() != null
+                ? dev.getNetoDiferencia() : total.subtract(totalAgregado);
+        BigDecimal montoAFavor = neto.signum() > 0 ? neto : BigDecimal.ZERO;
+        BigDecimal faltante = neto.signum() < 0 ? neto.negate() : BigDecimal.ZERO;
+
         BigDecimal carteraAfectada = Boolean.TRUE.equals(dev.getAfectoCartera())
                 ? nz(dev.getMontoCarteraAfectado()) : BigDecimal.ZERO;
-        BigDecimal reembolso = total.subtract(carteraAfectada);            // devuelto en caja
+        BigDecimal reembolso = montoAFavor.subtract(carteraAfectada);      // devuelto en caja
         Long clienteId = dev.getCliente() != null ? dev.getCliente().getId()
                 : (dev.getVenta() != null && dev.getVenta().getCliente() != null
                         ? dev.getVenta().getCliente().getId() : null);
@@ -405,6 +423,16 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             detalles.add(linea(ivaCta.getId(), "IVA devolución", iva, BigDecimal.ZERO));
         }
 
+        // ── CRÉDITO · ingreso reconocido por los productos del cambio ─────────
+        if (baseAgregada.signum() != 0) {
+            PlanCuentaEntity ingresos = config.resolverCuenta(empresaId, ConceptoContable.INGRESOS_VENTAS);
+            detalles.add(linea(ingresos.getId(), "Venta por cambio", BigDecimal.ZERO, baseAgregada));
+        }
+        if (ivaAgregado.signum() > 0) {
+            PlanCuentaEntity ivaCta = config.resolverCuenta(empresaId, ConceptoContable.IVA_GENERADO);
+            detalles.add(linea(ivaCta.getId(), "IVA venta por cambio", BigDecimal.ZERO, ivaAgregado));
+        }
+
         // ── CRÉDITO · devolución de dinero (cartera y/o caja) ─────────────────
         if (carteraAfectada.signum() > 0) {
             PlanCuentaEntity clientes = config.resolverCuenta(empresaId, ConceptoContable.CLIENTES);
@@ -416,6 +444,12 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             detalles.add(linea(caja.getId(), "Reembolso devolución", BigDecimal.ZERO, reembolso));
         }
 
+        // ── DÉBITO · cobro del faltante del cambio (entra dinero a caja) ──────
+        if (faltante.signum() > 0) {
+            PlanCuentaEntity caja = config.resolverCuenta(empresaId, ConceptoContable.CAJA);
+            detalles.add(linea(caja.getId(), "Cobro faltante cambio", faltante, BigDecimal.ZERO));
+        }
+
         // ── Reingreso de inventario / reversa de costo (par balanceado) ───────
         if (costoDevuelto.signum() > 0) {
             PlanCuentaEntity inv = config.resolverCuenta(empresaId, ConceptoContable.INVENTARIO);
@@ -424,13 +458,23 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             detalles.add(linea(costo.getId(), "Reversa costo de venta", BigDecimal.ZERO, costoDevuelto));
         }
 
+        // ── Salida de inventario / costo de los productos del cambio ──────────
+        if (costoAgregado.signum() > 0) {
+            PlanCuentaEntity inv = config.resolverCuenta(empresaId, ConceptoContable.INVENTARIO);
+            PlanCuentaEntity costo = config.resolverCuenta(empresaId, ConceptoContable.COSTO_VENTAS);
+            detalles.add(linea(costo.getId(), "Costo venta por cambio", costoAgregado, BigDecimal.ZERO));
+            detalles.add(linea(inv.getId(), "Salida inventario por cambio", BigDecimal.ZERO, costoAgregado));
+        }
+
         if (detalles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "La devolución #" + devolucionId + " no produjo movimientos contables.");
         }
 
-        java.time.LocalDate fecha = dev.getCreatedAt() != null
-                ? dev.getCreatedAt().toLocalDate() : java.time.LocalDate.now();
+        // El asiento se fecha en la fecha de la VENTA original (afecta ese día/operación).
+        java.time.LocalDate fecha = dev.getVenta() != null && dev.getVenta().getFechaEmision() != null
+                ? dev.getVenta().getFechaEmision().toLocalDate()
+                : (dev.getCreatedAt() != null ? dev.getCreatedAt().toLocalDate() : java.time.LocalDate.now());
         Long ventaId = dev.getVenta() != null ? dev.getVenta().getId() : null;
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_DEVOLUCION);
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId, fecha, comprobante,
@@ -599,44 +643,53 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
 
-        BigDecimal devengado    = nz(n.getTotalDevengado());
-        BigDecimal deducciones  = nz(n.getTotalDeducciones());
-        BigDecimal neto         = nz(n.getNetoPagar());
-        BigDecimal aportes = nz(n.getAporteSalud()).add(nz(n.getAportePension()))
-                .add(nz(n.getAporteArl())).add(nz(n.getAporteCaja()))
-                .add(nz(n.getAporteIcbf())).add(nz(n.getAporteSena()));
-        BigDecimal provisiones = nz(n.getProvisionPrima()).add(nz(n.getProvisionCesantias()))
-                .add(nz(n.getProvisionIntCesantias())).add(nz(n.getProvisionVacaciones()));
-
-        BigDecimal gastoTotal = devengado.add(aportes).add(provisiones);
-
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
-        // DB · gasto de personal (devengado + aportes patronales + provisiones)
-        PlanCuentaEntity gasto = config.resolverCuenta(empresaId, ConceptoContable.GASTOS_PERSONAL);
-        detalles.add(linea(gasto.getId(), "Gasto de nómina (devengado + aportes + provisiones)",
-                gastoTotal, BigDecimal.ZERO));
+        // ── DÉBITOS · gasto de personal desglosado por auxiliar (5105xx) ──────
+        // El sueldo absorbe todo el devengado (salario proporcional + auxilio + novedades).
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_SUELDOS,
+                "Sueldos y devengados", nz(n.getTotalDevengado()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_APORTE_SALUD,
+                "Aporte patronal salud", nz(n.getAporteSalud()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_APORTE_PENSION,
+                "Aporte patronal pensión", nz(n.getAportePension()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_ARL,
+                "ARL", nz(n.getAporteArl()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_CAJA,
+                "Caja de compensación", nz(n.getAporteCaja()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_SENA_ICBF,
+                "SENA e ICBF", nz(n.getAporteSena()).add(nz(n.getAporteIcbf())));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_PRIMA,
+                "Provisión prima de servicios", nz(n.getProvisionPrima()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_CESANTIAS,
+                "Provisión cesantías", nz(n.getProvisionCesantias()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_INT_CESANTIAS,
+                "Provisión intereses de cesantías", nz(n.getProvisionIntCesantias()));
+        addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_VACACIONES,
+                "Provisión vacaciones", nz(n.getProvisionVacaciones()));
 
-        // CR · salarios netos por pagar
-        if (neto.signum() > 0) {
-            PlanCuentaEntity salarios = config.resolverCuenta(empresaId, ConceptoContable.SALARIOS_POR_PAGAR);
-            detalles.add(linea(salarios.getId(), "Salarios netos por pagar", BigDecimal.ZERO, neto));
-        }
-        // CR · deducciones del empleado por pagar (salud/pensión/otros)
-        if (deducciones.signum() > 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.DEDUCCIONES_NOMINA_POR_PAGAR);
-            detalles.add(linea(c.getId(), "Deducciones nómina por pagar", BigDecimal.ZERO, deducciones));
-        }
-        // CR · aportes patronales por pagar
-        if (aportes.signum() > 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.APORTES_NOMINA_POR_PAGAR);
-            detalles.add(linea(c.getId(), "Aportes patronales por pagar", BigDecimal.ZERO, aportes));
-        }
-        // CR · provisiones de prestaciones por pagar
-        if (provisiones.signum() > 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.PROVISIONES_NOMINA_POR_PAGAR);
-            detalles.add(linea(c.getId(), "Provisiones prestaciones por pagar", BigDecimal.ZERO, provisiones));
-        }
+        // ── CRÉDITOS · pasivos por pagar ──────────────────────────────────────
+        // Salarios netos al empleado.
+        addCreditoNomina(detalles, empresaId, ConceptoContable.SALARIOS_POR_PAGAR,
+                "Salarios netos por pagar", nz(n.getNetoPagar()));
+        // Seguridad social + parafiscales (deducciones del empleado + aportes patronales).
+        BigDecimal seguridadSocial = nz(n.getDeduccionSalud()).add(nz(n.getDeduccionPension()))
+                .add(nz(n.getAporteSalud())).add(nz(n.getAportePension())).add(nz(n.getAporteArl()))
+                .add(nz(n.getAporteCaja())).add(nz(n.getAporteIcbf())).add(nz(n.getAporteSena()));
+        addCreditoNomina(detalles, empresaId, ConceptoContable.SEGURIDAD_SOCIAL_POR_PAGAR,
+                "Seguridad social y parafiscales por pagar", seguridadSocial);
+        // Otras deducciones del empleado (préstamos/embargos).
+        addCreditoNomina(detalles, empresaId, ConceptoContable.OTRAS_DEDUCCIONES_POR_PAGAR,
+                "Otras deducciones por pagar", nz(n.getDeduccionOtros()));
+        // Prestaciones sociales por pagar.
+        addCreditoNomina(detalles, empresaId, ConceptoContable.CESANTIAS_POR_PAGAR,
+                "Cesantías por pagar", nz(n.getProvisionCesantias()));
+        addCreditoNomina(detalles, empresaId, ConceptoContable.INT_CESANTIAS_POR_PAGAR,
+                "Intereses de cesantías por pagar", nz(n.getProvisionIntCesantias()));
+        addCreditoNomina(detalles, empresaId, ConceptoContable.PRIMA_POR_PAGAR,
+                "Prima de servicios por pagar", nz(n.getProvisionPrima()));
+        addCreditoNomina(detalles, empresaId, ConceptoContable.VACACIONES_POR_PAGAR,
+                "Vacaciones por pagar", nz(n.getProvisionVacaciones()));
 
         if (detalles.size() < 2) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -650,6 +703,134 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                         + (n.getEmpleado() != null && n.getEmpleado().getId() != null
                                 ? " — empleado " + n.getEmpleado().getId() : ""),
                 "NOMINA", nominaId, periodo.getId(), detalles);
+    }
+
+    /**
+     * Asiento del PAGO de la nómina: DB salarios por pagar (neto) / CR banco o caja.
+     * Cierra el pasivo generado al aprobar y refleja de dónde salió el dinero.
+     */
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto generarDesdePagoNomina(Long nominaId, Integer empresaId,
+            Integer usuarioId) {
+        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("NOMINA_PAGO", nominaId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un asiento de pago para la nómina #" + nominaId);
+        }
+        PeriodoContableEntity periodo = periodoAbierto(empresaId);
+
+        NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
+
+        BigDecimal neto = nz(n.getNetoPagar());
+        if (neto.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La nómina #" + nominaId + " no tiene neto a pagar.");
+        }
+
+        List<AsientoDetalleEntity> detalles = new ArrayList<>();
+        // DB · salarios por pagar (cancela el pasivo)
+        PlanCuentaEntity salarios = config.resolverCuenta(empresaId, ConceptoContable.SALARIOS_POR_PAGAR);
+        detalles.add(linea(salarios.getId(), "Pago de nómina — salarios por pagar", neto, BigDecimal.ZERO));
+        // CR · banco o caja de donde salió el dinero
+        PlanCuentaEntity origen = resolverCuentaPago(empresaId, n.getMedioPago(), n.getCuentaBancariaId());
+        detalles.add(linea(origen.getId(), "Pago de nómina", BigDecimal.ZERO, neto));
+
+        java.time.LocalDate fecha = n.getFechaPago() != null
+                ? n.getFechaPago().toLocalDate() : java.time.LocalDate.now();
+        return persistir(empresaId, usuarioId, fecha, PREFIX_NOMINA_PAGO,
+                "Pago nómina #" + nominaId
+                        + (n.getEmpleado() != null && n.getEmpleado().getId() != null
+                                ? " — empleado " + n.getEmpleado().getId() : ""),
+                "NOMINA_PAGO", nominaId, periodo.getId(), detalles);
+    }
+
+    /**
+     * Asiento del pago de una prestación en EFECTIVO: DB pasivo por pagar (25xx) / CR Caja.
+     * (En transferencia el asiento lo genera el egreso de tesorería, no este método.)
+     */
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto generarDesdePagoPrestacion(Long prestacionId, Integer empresaId,
+            Integer usuarioId) {
+        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("PRESTACION_PAGO", prestacionId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un asiento de pago para la prestación #" + prestacionId);
+        }
+        PeriodoContableEntity periodo = periodoAbierto(empresaId);
+
+        var p = prestacionRepo.findByIdAndEmpresaId(prestacionId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Prestación no encontrada"));
+
+        BigDecimal valor = nz(p.getValor());
+        if (valor.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La prestación #" + prestacionId + " no tiene valor a pagar.");
+        }
+
+        Long empId = p.getEmpleado().getId();
+        String tipo = p.getTipo();
+        String tipoLower = tipo.toLowerCase();
+
+        // Conceptos y saldo provisionado según el tipo de prestación.
+        ConceptoContable conceptoPasivo;
+        ConceptoContable conceptoGasto;
+        BigDecimal provisionado;
+        switch (tipo) {
+            case "VACACIONES" -> {
+                conceptoPasivo = ConceptoContable.VACACIONES_POR_PAGAR;
+                conceptoGasto  = ConceptoContable.NOMINA_VACACIONES;
+                provisionado   = nz(nominaRepo.sumProvisionVacaciones(empresaId, empId));
+            }
+            case "CESANTIAS" -> {
+                conceptoPasivo = ConceptoContable.CESANTIAS_POR_PAGAR;
+                conceptoGasto  = ConceptoContable.NOMINA_CESANTIAS;
+                provisionado   = nz(nominaRepo.sumProvisionCesantias(empresaId, empId));
+            }
+            case "INTERESES_CESANTIAS" -> {
+                conceptoPasivo = ConceptoContable.INT_CESANTIAS_POR_PAGAR;
+                conceptoGasto  = ConceptoContable.NOMINA_INT_CESANTIAS;
+                provisionado   = nz(nominaRepo.sumProvisionIntCesantias(empresaId, empId));
+            }
+            case "INDEMNIZACION" -> {
+                // La indemnización no se provisiona: va 100% a gasto (provisionado = 0).
+                conceptoPasivo = ConceptoContable.PRIMA_POR_PAGAR; // no se usa (dbPasivo será 0)
+                conceptoGasto  = ConceptoContable.NOMINA_INDEMNIZACION;
+                provisionado   = BigDecimal.ZERO;
+            }
+            default -> { // PRIMA
+                conceptoPasivo = ConceptoContable.PRIMA_POR_PAGAR;
+                conceptoGasto  = ConceptoContable.NOMINA_PRIMA;
+                provisionado   = nz(nominaRepo.sumProvisionPrima(empresaId, empId));
+            }
+        }
+
+        // Saldo provisionado disponible = provisiones acumuladas − prestaciones ya pagadas del tipo.
+        BigDecimal pagadoAntes = nz(prestacionRepo.sumPagadoByEmpleadoTipo(empresaId, empId, tipo, prestacionId));
+        BigDecimal disponible = provisionado.subtract(pagadoAntes).max(BigDecimal.ZERO);
+
+        // Se consume primero el pasivo provisionado; el faltante va a gasto.
+        BigDecimal dbPasivo = valor.min(disponible);
+        BigDecimal dbGasto = valor.subtract(dbPasivo);
+
+        List<AsientoDetalleEntity> detalles = new ArrayList<>();
+        if (dbPasivo.signum() > 0) {
+            PlanCuentaEntity pasivo = config.resolverCuenta(empresaId, conceptoPasivo);
+            detalles.add(linea(pasivo.getId(), "Pago " + tipoLower + " — consumo de provisión", dbPasivo, BigDecimal.ZERO));
+        }
+        if (dbGasto.signum() > 0) {
+            PlanCuentaEntity gasto = config.resolverCuenta(empresaId, conceptoGasto);
+            detalles.add(linea(gasto.getId(), "Pago " + tipoLower + " — faltante de provisión a gasto", dbGasto, BigDecimal.ZERO));
+        }
+        // CR · banco o caja de donde sale el dinero
+        PlanCuentaEntity origen = resolverCuentaPago(empresaId, p.getMedioPago(), p.getCuentaBancariaId());
+        detalles.add(linea(origen.getId(), "Pago de " + tipoLower, BigDecimal.ZERO, valor));
+
+        java.time.LocalDate fecha = p.getFechaPago() != null
+                ? p.getFechaPago().toLocalDate() : java.time.LocalDate.now();
+        return persistir(empresaId, usuarioId, fecha, PREFIX_PRESTACION_PAGO,
+                "Pago " + tipoLower + " #" + prestacionId, "PRESTACION_PAGO",
+                prestacionId, periodo.getId(), detalles);
     }
 
     @Override
@@ -970,6 +1151,22 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     private AsientoDetalleEntity linea(Long cuentaId, String desc,
             BigDecimal debito, BigDecimal credito) {
         return linea(cuentaId, desc, debito, credito, null);
+    }
+
+    /** Agrega una línea débito de nómina resolviendo la cuenta del concepto (solo si monto {@code > 0}). */
+    private void addDebitoNomina(List<AsientoDetalleEntity> detalles, Integer empresaId,
+            ConceptoContable concepto, String desc, BigDecimal monto) {
+        if (monto == null || monto.signum() <= 0) return;
+        PlanCuentaEntity cuenta = config.resolverCuenta(empresaId, concepto);
+        detalles.add(linea(cuenta.getId(), desc, monto, BigDecimal.ZERO));
+    }
+
+    /** Agrega una línea crédito de nómina resolviendo la cuenta del concepto (solo si monto {@code > 0}). */
+    private void addCreditoNomina(List<AsientoDetalleEntity> detalles, Integer empresaId,
+            ConceptoContable concepto, String desc, BigDecimal monto) {
+        if (monto == null || monto.signum() <= 0) return;
+        PlanCuentaEntity cuenta = config.resolverCuenta(empresaId, concepto);
+        detalles.add(linea(cuenta.getId(), desc, BigDecimal.ZERO, monto));
     }
 
     private AsientoDetalleEntity linea(Long cuentaId, String desc,

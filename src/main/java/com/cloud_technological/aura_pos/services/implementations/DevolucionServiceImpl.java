@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionAgregadoDto;
 import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionDetalleDto;
 import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionDto;
 import com.cloud_technological.aura_pos.dto.devolucion.DevolucionDetalleDto;
@@ -146,6 +147,8 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucion.setEstado("COMPLETADA");
         devolucion.setMotivo(dto.getMotivo());
         devolucion.setObservaciones(dto.getObservaciones());
+        devolucion.setFechaDevolucion(dto.getFechaDevolucion() != null
+                ? dto.getFechaDevolucion() : LocalDate.now());
         devolucion.setReintegraInventario(dto.getReintegraInventario() != null ? dto.getReintegraInventario() : true);
         devolucion.setCreatedAt(LocalDateTime.now());
         devolucion.setUpdatedAt(LocalDateTime.now());
@@ -233,11 +236,61 @@ public class DevolucionServiceImpl implements DevolucionService {
             ventaDetalleRepository.save(ventaDetalle);
         }
 
+        // 6.5 Productos agregados (cambio): se SUMAN a la venta original.
+        //     Crean nuevos venta_detalle, descuentan inventario y su valor se neta
+        //     contra lo devuelto para el cálculo del faltante/sobrante.
+        BigDecimal totalAgregado = BigDecimal.ZERO;
+        BigDecimal ivaAgregado = BigDecimal.ZERO;
+        BigDecimal costoAgregado = BigDecimal.ZERO;
+        if (dto.getProductosAgregados() != null) {
+            for (CreateDevolucionAgregadoDto ag : dto.getProductosAgregados()) {
+                ProductoEntity prod = productoRepository.findById(ag.getProductoId())
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                                "Producto agregado " + ag.getProductoId() + " no encontrado"));
+
+                BigDecimal cant = ag.getCantidad();
+                BigDecimal precio = ag.getPrecioUnitario() != null ? ag.getPrecioUnitario() : BigDecimal.ZERO;
+                BigDecimal iva = (ag.getImpuestoValor() != null ? ag.getImpuestoValor() : BigDecimal.ZERO)
+                        .setScale(2, RoundingMode.HALF_UP);
+                BigDecimal subtotal = precio.multiply(cant).add(iva).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal costoUnit = prod.getCosto() != null ? prod.getCosto() : BigDecimal.ZERO;
+                BigDecimal costoLinea = costoUnit.multiply(cant).setScale(2, RoundingMode.HALF_UP);
+
+                VentaDetalleEntity nuevo = new VentaDetalleEntity();
+                nuevo.setVenta(venta);
+                nuevo.setProducto(prod);
+                nuevo.setCantidad(cant);
+                nuevo.setPrecioUnitario(precio);
+                nuevo.setMontoDescuento(BigDecimal.ZERO);
+                nuevo.setImpuestoValor(iva);
+                nuevo.setSubtotalLinea(subtotal);
+                nuevo.setCostoLinea(costoLinea);
+                ventaDetalleRepository.save(nuevo);
+                ventaDetalles.add(nuevo);
+
+                // Salida de inventario por el producto que se lleva el cliente
+                descontarStock(venta.getSucursal().getId().longValue(), prod, cant, costoUnit, dto.getVentaId());
+
+                totalAgregado = totalAgregado.add(subtotal);
+                ivaAgregado = ivaAgregado.add(iva);
+                costoAgregado = costoAgregado.add(costoLinea);
+            }
+        }
+
         // 6.c Recalcular totales de la venta a partir de los detalles actualizados
         recalcularTotalesVenta(venta, ventaDetalles);
         ventaRepository.save(venta);
 
         devolucion.setTotalDevolucion(totalDevolucion.setScale(2, RoundingMode.HALF_UP));
+        devolucion.setTotalAgregado(totalAgregado.setScale(2, RoundingMode.HALF_UP));
+        devolucion.setIvaAgregado(ivaAgregado.setScale(2, RoundingMode.HALF_UP));
+        devolucion.setCostoAgregado(costoAgregado.setScale(2, RoundingMode.HALF_UP));
+
+        // Neto: positivo = a favor del cliente (reembolso); negativo = faltante que paga el cliente.
+        BigDecimal neto = totalDevolucion.subtract(totalAgregado).setScale(2, RoundingMode.HALF_UP);
+        devolucion.setNetoDiferencia(neto);
+        BigDecimal montoAFavor = neto.compareTo(BigDecimal.ZERO) > 0 ? neto : BigDecimal.ZERO;
+        BigDecimal faltante = neto.compareTo(BigDecimal.ZERO) < 0 ? neto.negate() : BigDecimal.ZERO;
 
         // 7. Método de devolución de dinero
         devolucion.setMetodoDevolucion(dto.getMetodoDevolucion() != null
@@ -258,7 +311,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             BigDecimal saldoAntes = cxc.getSaldoPendiente() != null
                     ? cxc.getSaldoPendiente() : BigDecimal.ZERO;
             if (saldoAntes.compareTo(BigDecimal.ZERO) > 0) {
-                descuentoCartera = totalDevolucion.min(saldoAntes);
+                descuentoCartera = montoAFavor.min(saldoAntes);
                 BigDecimal nuevoSaldo = saldoAntes.subtract(descuentoCartera)
                         .setScale(2, RoundingMode.HALF_UP);
                 // Reducir la deuda total: el saldo mostrado se calcula como
@@ -280,10 +333,10 @@ public class DevolucionServiceImpl implements DevolucionService {
             devolucion.setAfectoCartera(false);
         }
 
-        // Monto efectivamente reembolsable al cliente.
+        // Monto efectivamente reembolsable al cliente (sobre el neto a favor).
         BigDecimal montoReembolso = esCredito
-                ? totalDevolucion.subtract(descuentoCartera).setScale(2, RoundingMode.HALF_UP)
-                : totalDevolucion;
+                ? montoAFavor.subtract(descuentoCartera).setScale(2, RoundingMode.HALF_UP)
+                : montoAFavor;
 
         // 9. Si es devolución TOTAL, marcar la venta
         if ("TOTAL".equals(devolucion.getTipo())) {
@@ -299,8 +352,15 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucionDetalleRepository.saveAll(detalles);
         saved.setDetalles(detalles);
 
-        // 11. Movimientos de caja y tesorería (solo por el monto reembolsable)
-        registrarMovimientosDinero(saved, usuario, usuarioId, empresaId, montoReembolso);
+        // 11. Movimientos de caja y tesorería.
+        //     Se fechan en la fecha de la VENTA original (afecta la operación de ese día).
+        LocalDate fechaMov = venta.getFechaEmision() != null
+                ? venta.getFechaEmision().toLocalDate() : LocalDate.now();
+        if (montoReembolso != null && montoReembolso.compareTo(BigDecimal.ZERO) > 0) {
+            registrarMovimientosDinero(saved, usuario, usuarioId, empresaId, montoReembolso, fechaMov);
+        } else if (faltante.compareTo(BigDecimal.ZERO) > 0) {
+            registrarIngresoFaltante(saved, usuario, usuarioId, empresaId, faltante, fechaMov);
+        }
 
         // 12. Generar el asiento contable de la devolución tras el commit.
         eventPublisher.publishEvent(
@@ -498,7 +558,7 @@ public class DevolucionServiceImpl implements DevolucionService {
      * Guarda los IDs de los movimientos en la entidad y persiste los cambios.
      */
     private void registrarMovimientosDinero(DevolucionEntity dev, UsuarioEntity usuario,
-            Long usuarioId, Integer empresaId, BigDecimal montoReembolso) {
+            Long usuarioId, Integer empresaId, BigDecimal montoReembolso, LocalDate fechaMov) {
         String metodo = dev.getMetodoDevolucion();
         if (metodo == null || "SIN_DEVOLUCION".equals(metodo) || "NOTA_CREDITO".equals(metodo)) {
             return;
@@ -548,7 +608,7 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .monto(monto)
                         .concepto(concepto)
                         .referencia(referencia)
-                        .fecha(LocalDate.now())
+                        .fecha(fechaMov)
                         .categoria("DEVOLUCION")
                         .usuarioId(usuarioId.intValue())
                         .build();
@@ -572,7 +632,7 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .monto(monto)
                         .concepto(concepto)
                         .referencia(referencia)
-                        .fecha(LocalDate.now())
+                        .fecha(fechaMov)
                         .categoria("DEVOLUCION")
                         .usuarioId(usuarioId.intValue())
                         .build();
@@ -604,11 +664,109 @@ public class DevolucionServiceImpl implements DevolucionService {
     }
 
     /**
+     * Registra el INGRESO por el faltante que paga el cliente cuando el cambio deja
+     * saldo a favor del negocio (productos agregados valen más que lo devuelto).
+     */
+    private void registrarIngresoFaltante(DevolucionEntity dev, UsuarioEntity usuario,
+            Long usuarioId, Integer empresaId, BigDecimal faltante, LocalDate fechaMov) {
+        String metodo = dev.getMetodoDevolucion();
+        if (metodo == null || "SIN_DEVOLUCION".equals(metodo) || "NOTA_CREDITO".equals(metodo)) {
+            // El faltante queda registrado en el neto pero sin movimiento de dinero.
+            return;
+        }
+
+        String concepto = "Cobro faltante cambio DEV-" + dev.getConsecutivo();
+        String referencia = "DEV-" + dev.getConsecutivo();
+        Long turnoCajaIdParaComprobante = null;
+        boolean cambios = false;
+
+        if ("EFECTIVO".equals(metodo)) {
+            Optional<TurnoCajaEntity> turno = turnoCajaRepository
+                    .findByUsuarioIdAndEstado(usuarioId, "ABIERTA");
+            if (turno.isPresent()) {
+                MovimientoCajaEntity mc = MovimientoCajaEntity.builder()
+                        .turnoCaja(turno.get())
+                        .usuario(usuario)
+                        .tipo("INGRESO")
+                        .concepto(concepto)
+                        .monto(faltante)
+                        .build();
+                dev.setMovimientoCajaId(movimientoCajaRepository.save(mc).getId());
+                turnoCajaIdParaComprobante = turno.get().getId();
+                cambios = true;
+            }
+            Optional<CuentaBancariaEntity> cuentaCaja = cuentaBancariaRepository
+                    .findFirstByEmpresaIdAndTipoAndActivaIsTrue(empresaId, "CAJA");
+            if (cuentaCaja.isPresent()) {
+                CuentaBancariaEntity cb = cuentaCaja.get();
+                cb.setSaldoActual(cb.getSaldoActual().add(faltante).setScale(2, RoundingMode.HALF_UP));
+                cuentaBancariaRepository.save(cb);
+                dev.setTesoreriaMovimientoId(tesoreriaMovimientoRepository.save(
+                        TesoreriaMovimientoEntity.builder()
+                                .empresaId(empresaId).cuentaBancariaId(cb.getId())
+                                .tipo("INGRESO").monto(faltante).concepto(concepto)
+                                .referencia(referencia).fecha(fechaMov).categoria("DEVOLUCION")
+                                .usuarioId(usuarioId.intValue()).build()).getId());
+                cambios = true;
+            }
+        } else if ("TRANSFERENCIA".equals(metodo)) {
+            Optional<CuentaBancariaEntity> cuentaBanco = cuentaBancariaRepository
+                    .findFirstByEmpresaIdAndTipoAndActivaIsTrue(empresaId, "BANCO");
+            if (cuentaBanco.isPresent()) {
+                CuentaBancariaEntity cb = cuentaBanco.get();
+                cb.setSaldoActual(cb.getSaldoActual().add(faltante).setScale(2, RoundingMode.HALF_UP));
+                cuentaBancariaRepository.save(cb);
+                dev.setTesoreriaMovimientoId(tesoreriaMovimientoRepository.save(
+                        TesoreriaMovimientoEntity.builder()
+                                .empresaId(empresaId).cuentaBancariaId(cb.getId())
+                                .tipo("INGRESO").monto(faltante).concepto(concepto)
+                                .referencia(referencia).fecha(fechaMov).categoria("DEVOLUCION")
+                                .usuarioId(usuarioId.intValue()).build()).getId());
+                cambios = true;
+            }
+        }
+
+        String clienteNombre = dev.getCliente() != null
+                ? (dev.getCliente().getNombres() != null ? dev.getCliente().getNombres() : "Consumidor Final")
+                : "Consumidor Final";
+        comprobanteCajaService.generar(empresaId, dev.getUsuario().getId(), "INGRESO",
+                concepto, faltante, metodo, clienteNombre, "DEVOLUCION", dev.getId(),
+                turnoCajaIdParaComprobante);
+
+        if (cambios) {
+            devolucionRepository.save(dev);
+        }
+    }
+
+    /** Descuenta inventario por un producto agregado (cambio) que se lleva el cliente. */
+    private void descontarStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
+            BigDecimal costoUnitario, Long ventaId) {
+        Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
+                producto.getId());
+        if (optInv.isPresent()) {
+            InventarioEntity inv = optInv.get();
+            BigDecimal saldoAnterior = inv.getStockActual();
+            BigDecimal saldoNuevo = saldoAnterior.subtract(cantidad);
+            inv.setStockActual(saldoNuevo);
+            inv.setUpdatedAt(LocalDateTime.now());
+            inventarioRepository.save(inv);
+
+            registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
+                    costoUnitario, "DEVOLUCION_CAMBIO", "Cambio en Devolución de Venta #" + ventaId);
+        }
+    }
+
+    /**
      * Revierte los movimientos de caja y tesorería al anular una devolución.
      * Anula el movimiento de tesorería y restaura el saldo de la cuenta bancaria.
      * Crea un INGRESO en caja en el turno actual del anuador (si lo hay).
      */
     private void revertirMovimientosDinero(DevolucionEntity dev, Integer empresaId) {
+        // Si el neto fue negativo, se registró un INGRESO (cobro del faltante):
+        // la reversión debe hacer lo contrario (quitar saldo / EGRESO en caja).
+        boolean fueIngreso = dev.getNetoDiferencia() != null
+                && dev.getNetoDiferencia().compareTo(BigDecimal.ZERO) < 0;
+
         // Revertir tesorería
         if (dev.getTesoreriaMovimientoId() != null) {
             tesoreriaMovimientoRepository.findById(dev.getTesoreriaMovimientoId())
@@ -616,12 +774,13 @@ public class DevolucionServiceImpl implements DevolucionService {
                         if (!Boolean.TRUE.equals(tm.getAnulado())) {
                             tm.setAnulado(true);
                             tesoreriaMovimientoRepository.save(tm);
-                            // Restaurar saldo de la cuenta bancaria
+                            // Restaurar saldo de la cuenta bancaria (opuesto al movimiento original)
                             cuentaBancariaRepository.findById(tm.getCuentaBancariaId())
                                     .ifPresent(cb -> {
-                                        cb.setSaldoActual(cb.getSaldoActual()
-                                                .add(tm.getMonto())
-                                                .setScale(2, RoundingMode.HALF_UP));
+                                        BigDecimal nuevo = fueIngreso
+                                                ? cb.getSaldoActual().subtract(tm.getMonto())
+                                                : cb.getSaldoActual().add(tm.getMonto());
+                                        cb.setSaldoActual(nuevo.setScale(2, RoundingMode.HALF_UP));
                                         cuentaBancariaRepository.save(cb);
                                     });
                         }
@@ -646,7 +805,7 @@ public class DevolucionServiceImpl implements DevolucionService {
                             MovimientoCajaEntity reverso = MovimientoCajaEntity.builder()
                                     .turnoCaja(turnoTarget)
                                     .usuario(dev.getUsuario())
-                                    .tipo("INGRESO")
+                                    .tipo(fueIngreso ? "EGRESO" : "INGRESO")
                                     .concepto("Reverso anulación DEV-" + dev.getConsecutivo())
                                     .monto(mc.getMonto())
                                     .build();
@@ -675,6 +834,9 @@ public class DevolucionServiceImpl implements DevolucionService {
         dto.setEstado(dev.getEstado());
         dto.setMotivo(dev.getMotivo());
         dto.setTotalDevolucion(dev.getTotalDevolucion());
+        dto.setTotalAgregado(dev.getTotalAgregado());
+        dto.setNetoDiferencia(dev.getNetoDiferencia());
+        dto.setFechaDevolucion(dev.getFechaDevolucion());
         dto.setReintegraInventario(dev.getReintegraInventario());
         dto.setObservaciones(dev.getObservaciones());
         dto.setMetodoDevolucion(dev.getMetodoDevolucion());

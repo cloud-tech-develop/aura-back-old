@@ -41,6 +41,8 @@ public interface ContabilidadAutoService {
      * Idempotente.
      */
     AsientoContableTableDto generarDesdeNomina(Long nominaId, Integer empresaId, Integer usuarioId);
+    AsientoContableTableDto generarDesdePagoNomina(Long nominaId, Integer empresaId, Integer usuarioId);
+    AsientoContableTableDto generarDesdePagoPrestacion(Long prestacionId, Integer empresaId, Integer usuarioId);
 
     /**
      * Asiento de cierre del período: cancela las cuentas de ingreso, costo y gasto

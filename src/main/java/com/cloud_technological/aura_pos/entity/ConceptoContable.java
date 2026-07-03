@@ -38,11 +38,34 @@ public enum ConceptoContable {
     GASTOS_FINANCIEROS("5305", "Gastos financieros (intereses)"),
 
     // ── Nómina ────────────────────────────────────────────────────────────
-    GASTOS_PERSONAL("5105", "Gastos de personal"),
+    // Legacy (agrupadoras) — se conservan por compatibilidad, ya no se usan
+    // en el asiento de nómina desglosado.
+    GASTOS_PERSONAL("5105", "Gastos de personal (agrupadora)"),
     SALARIOS_POR_PAGAR("2505", "Salarios por pagar"),
-    DEDUCCIONES_NOMINA_POR_PAGAR("2505", "Deducciones de nómina por pagar (salud/pensión empleado)"),
-    APORTES_NOMINA_POR_PAGAR("2505", "Aportes patronales de nómina por pagar"),
-    PROVISIONES_NOMINA_POR_PAGAR("2505", "Provisiones de prestaciones por pagar"),
+    DEDUCCIONES_NOMINA_POR_PAGAR("2505", "Deducciones de nómina por pagar (legacy)"),
+    APORTES_NOMINA_POR_PAGAR("2505", "Aportes patronales de nómina por pagar (legacy)"),
+    PROVISIONES_NOMINA_POR_PAGAR("2505", "Provisiones de prestaciones por pagar (legacy)"),
+
+    // ── Nómina · gasto por auxiliar (DÉBITO, cuentas 5105xx) ──────────────
+    NOMINA_SUELDOS("510506", "Nómina · sueldos y devengados"),
+    NOMINA_APORTE_SALUD("510568", "Nómina · aporte patronal salud"),
+    NOMINA_APORTE_PENSION("510569", "Nómina · aporte patronal pensión"),
+    NOMINA_ARL("510570", "Nómina · ARL"),
+    NOMINA_CAJA("510572", "Nómina · caja de compensación"),
+    NOMINA_SENA_ICBF("510575", "Nómina · SENA e ICBF"),
+    NOMINA_PRIMA("510536", "Nómina · provisión prima de servicios"),
+    NOMINA_CESANTIAS("510530", "Nómina · provisión cesantías"),
+    NOMINA_INT_CESANTIAS("510533", "Nómina · provisión intereses de cesantías"),
+    NOMINA_VACACIONES("510539", "Nómina · provisión vacaciones"),
+    NOMINA_INDEMNIZACION("510548", "Nómina · indemnización laboral (despido sin justa causa)"),
+
+    // ── Nómina · pasivo por pagar (CRÉDITO) ───────────────────────────────
+    SEGURIDAD_SOCIAL_POR_PAGAR("2370", "Nómina · seguridad social y parafiscales por pagar"),
+    OTRAS_DEDUCCIONES_POR_PAGAR("2380", "Nómina · otras deducciones por pagar (préstamos/embargos)"),
+    CESANTIAS_POR_PAGAR("2510", "Nómina · cesantías consolidadas por pagar"),
+    INT_CESANTIAS_POR_PAGAR("2515", "Nómina · intereses de cesantías por pagar"),
+    PRIMA_POR_PAGAR("2520", "Nómina · prima de servicios por pagar"),
+    VACACIONES_POR_PAGAR("2525", "Nómina · vacaciones consolidadas por pagar"),
 
     // ── Gastos / pérdidas ─────────────────────────────────────────────────
     GASTO_GENERAL("5195", "Gasto general (cuenta por defecto)"),
