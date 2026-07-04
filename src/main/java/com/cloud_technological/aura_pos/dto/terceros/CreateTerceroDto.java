@@ -24,7 +24,9 @@ public class CreateTerceroDto {
     private Boolean esCliente = true;
     private Boolean esProveedor = false;
     private Boolean esEmpleado = false;
+    private Boolean esBanco = false;
     private Long municipioId;
+    private String municipio;
     private Boolean activo = true;
     // Campos fiscales (V52)
     private String tipoPersona = "NATURAL";

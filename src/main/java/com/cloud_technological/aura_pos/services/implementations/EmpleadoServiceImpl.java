@@ -142,11 +142,14 @@ public class EmpleadoServiceImpl implements EmpleadoService {
         entity.setNumeroDocumento(dto.getNumeroDocumento());
         entity.setCargo(dto.getCargo());
         entity.setFechaIngreso(dto.getFechaIngreso());
+        entity.setFechaFinContrato("FIJO".equals(dto.getTipoContrato()) ? dto.getFechaFinContrato() : null);
         entity.setSalarioBase(dto.getSalarioBase());
         entity.setTipoContrato(dto.getTipoContrato());
         entity.setBanco(dto.getBanco());
         entity.setNumeroCuenta(dto.getNumeroCuenta());
         entity.setTipoCuenta(dto.getTipoCuenta());
+        if (dto.getRequiereControlAsistencia() != null)
+            entity.setRequiereControlAsistencia(dto.getRequiereControlAsistencia());
     }
 
     private EmpleadoDto toDto(EmpleadoEntity entity) {
@@ -159,12 +162,14 @@ public class EmpleadoServiceImpl implements EmpleadoService {
         dto.setCargo(entity.getCargo());
         dto.setFechaIngreso(entity.getFechaIngreso());
         dto.setFechaRetiro(entity.getFechaRetiro());
+        dto.setFechaFinContrato(entity.getFechaFinContrato());
         dto.setSalarioBase(entity.getSalarioBase());
         dto.setTipoContrato(entity.getTipoContrato());
         dto.setBanco(entity.getBanco());
         dto.setNumeroCuenta(entity.getNumeroCuenta());
         dto.setTipoCuenta(entity.getTipoCuenta());
         dto.setActivo(entity.getActivo());
+        dto.setRequiereControlAsistencia(entity.getRequiereControlAsistencia());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         if (entity.getArl() != null) {

@@ -49,6 +49,14 @@ public class MovimientoCajaEntity {
     @Column(precision = 15, scale = 2)
     private BigDecimal monto;
 
+    /** Concepto de caja elegido (define la cuenta contrapartida del asiento). */
+    @Column(name = "concepto_caja_id")
+    private Long conceptoCajaId;
+
+    /** EFECTIVO | TRANSFERENCIA — define si la contra-caja va a Caja o a Bancos. */
+    @Column(name = "metodo_pago", length = 30)
+    private String metodoPago;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

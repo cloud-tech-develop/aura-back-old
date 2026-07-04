@@ -61,6 +61,29 @@ public class DevolucionEntity {
     @Column(name = "total_devolucion")
     private BigDecimal totalDevolucion;
 
+    /** Fecha de registro de la devolución (control). */
+    @Column(name = "fecha_devolucion")
+    private java.time.LocalDate fechaDevolucion;
+
+    /** Valor total (con IVA) de los productos agregados en un cambio. */
+    @Column(name = "total_agregado", precision = 18, scale = 2)
+    private BigDecimal totalAgregado;
+
+    /** IVA total de los productos agregados. */
+    @Column(name = "iva_agregado", precision = 18, scale = 2)
+    private BigDecimal ivaAgregado;
+
+    /** Costo total de los productos agregados (para la contabilización). */
+    @Column(name = "costo_agregado", precision = 18, scale = 2)
+    private BigDecimal costoAgregado;
+
+    /**
+     * Neto = totalDevolucion - totalAgregado.
+     * Positivo = a favor del cliente (reembolso); negativo = faltante que paga el cliente.
+     */
+    @Column(name = "neto_diferencia", precision = 18, scale = 2)
+    private BigDecimal netoDiferencia;
+
     @Column(name = "reintegra_inventario")
     private Boolean reintegraInventario;
 

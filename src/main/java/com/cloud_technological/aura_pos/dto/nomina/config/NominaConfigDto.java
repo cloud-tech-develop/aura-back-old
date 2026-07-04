@@ -11,6 +11,7 @@ public class NominaConfigDto {
     private Long id;
     private String modoNomina;
     private String periodicidad;
+    private String modoLiquidacion;
     private BigDecimal smmlv;
     private BigDecimal auxilioTransporte;
     private BigDecimal pctSaludEmpleado;

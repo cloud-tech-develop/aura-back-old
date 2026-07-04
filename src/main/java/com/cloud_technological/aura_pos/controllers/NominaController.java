@@ -30,6 +30,9 @@ public class NominaController {
     private NominaService nominaService;
 
     @Autowired
+    private com.cloud_technological.aura_pos.services.PreliquidacionService preliquidacionService;
+
+    @Autowired
     private SecurityUtils securityUtils;
 
     @PostMapping("/page")
@@ -80,6 +83,30 @@ public class NominaController {
                 HttpStatus.OK);
     }
 
+    /**
+     * Documento de nómina de un período: cabecera con totales + empleados liquidados + novedades.
+     */
+    @GetMapping("/periodo/{periodoId}/resumen")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.nomina.nomina.PeriodoResumenDto>> resumenPeriodo(
+            @PathVariable Long periodoId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Documento de nómina", false,
+                        nominaService.obtenerResumenPeriodo(periodoId, empresaId)), HttpStatus.OK);
+    }
+
+    /**
+     * Preliquidación: vista previa por empleado con sus alertas, antes de aprobar la nómina.
+     */
+    @GetMapping("/preliquidacion/{periodoId}")
+    public ResponseEntity<ApiResponse<java.util.List<com.cloud_technological.aura_pos.dto.nomina.nomina.PreliquidacionItemDto>>> preliquidacion(
+            @PathVariable Long periodoId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Preliquidación generada", false,
+                        preliquidacionService.previsualizar(periodoId, empresaId)), HttpStatus.OK);
+    }
+
     @PostMapping("/{nominaId}/novedades")
     public ResponseEntity<ApiResponse<NominaDto>> agregarNovedad(
             @PathVariable Long nominaId,
@@ -108,6 +135,28 @@ public class NominaController {
         NominaDto result = nominaService.aprobar(id, empresaId);
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Nómina aprobada", false, result),
+                HttpStatus.OK);
+    }
+
+    @PutMapping("/{id}/pagar")
+    public ResponseEntity<ApiResponse<NominaDto>> pagar(
+            @PathVariable Long id,
+            @RequestBody(required = false) com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        NominaDto result = nominaService.pagar(id, dto, empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Nómina pagada", false, result),
+                HttpStatus.OK);
+    }
+
+    @PostMapping("/periodo/{periodoId}/pagar-todos")
+    public ResponseEntity<ApiResponse<Void>> pagarPeriodo(
+            @PathVariable Long periodoId,
+            @RequestBody(required = false) com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        nominaService.pagarPeriodo(periodoId, dto, empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Nóminas aprobadas del período pagadas", false, null),
                 HttpStatus.OK);
     }
 

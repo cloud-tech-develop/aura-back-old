@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -36,6 +37,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 public class NominaServiceImpl implements NominaService {
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     private NominaJPARepository nominaRepo;
 
     @Autowired
@@ -49,6 +53,27 @@ public class NominaServiceImpl implements NominaService {
 
     @Autowired
     private NominaConfigJPARepository configRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.asistencia.PeriodoAsistenciaJPARepository periodoAsistenciaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.asistencia.AsistenciaNovedadNominaJPARepository asistenciaNovedadRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.asistencia.AutorizacionLiquidacionJPARepository autorizacionRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.AuditoriaNominaService auditoria;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.ConfiguracionContableService configuracionContable;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
     private static final BigDecimal CIEN = new BigDecimal("100");
     private static final BigDecimal TREINTA = new BigDecimal("30");
@@ -64,6 +89,72 @@ public class NominaServiceImpl implements NominaService {
     public PageImpl<NominaTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         return nominaQueryRepo.listar(pageable, empresaId);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.cloud_technological.aura_pos.dto.nomina.nomina.PeriodoResumenDto obtenerResumenPeriodo(
+            Long periodoId, Integer empresaId) {
+        PeriodoNominaEntity periodo = periodoRepo.findByIdAndEmpresaId(periodoId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Período no encontrado"));
+
+        List<NominaEntity> nominas = nominaRepo.findByPeriodoIdAndEmpresaId(periodoId, empresaId).stream()
+                .filter(n -> !"ANULADO".equals(n.getEstado()))
+                .collect(Collectors.toList());
+
+        var dto = new com.cloud_technological.aura_pos.dto.nomina.nomina.PeriodoResumenDto();
+        dto.setPeriodoId(periodo.getId());
+        dto.setDocumento("NOM-" + periodo.getId());
+        dto.setFechaInicio(periodo.getFechaInicio());
+        dto.setFechaFin(periodo.getFechaFin());
+        dto.setEstado(periodo.getEstado());
+        dto.setCantidadEmpleados(nominas.size());
+
+        BigDecimal totalDev = BigDecimal.ZERO, totalDed = BigDecimal.ZERO, totalNeto = BigDecimal.ZERO;
+        for (NominaEntity n : nominas) {
+            totalDev = totalDev.add(nz(n.getTotalDevengado()));
+            totalDed = totalDed.add(nz(n.getTotalDeducciones()));
+            totalNeto = totalNeto.add(nz(n.getNetoPagar()));
+
+            NominaTableDto e = new NominaTableDto();
+            e.setId(n.getId());
+            e.setPeriodoId(periodo.getId());
+            e.setPeriodoFechaInicio(periodo.getFechaInicio());
+            e.setPeriodoFechaFin(periodo.getFechaFin());
+            e.setEmpleadoId(n.getEmpleado().getId());
+            e.setEmpleadoNombre(n.getEmpleado().getNombres() + " " + n.getEmpleado().getApellidos());
+            e.setEmpleadoDocumento(n.getEmpleado().getNumeroDocumento());
+            e.setCargo(n.getEmpleado().getCargo());
+            e.setBanco(n.getEmpleado().getBanco());
+            e.setNumeroCuenta(n.getEmpleado().getNumeroCuenta());
+            e.setDiasTrabajados(n.getDiasTrabajados());
+            e.setTotalDevengado(n.getTotalDevengado());
+            e.setTotalDeducciones(n.getTotalDeducciones());
+            e.setNetoPagar(n.getNetoPagar());
+            e.setEstado(n.getEstado());
+            dto.getEmpleados().add(e);
+
+            for (NominaNovedadEntity nov : n.getNovedades()) {
+                var r = new com.cloud_technological.aura_pos.dto.nomina.nomina.NovedadResumenDto();
+                r.setNominaId(n.getId());
+                r.setEmpleadoId(n.getEmpleado().getId());
+                r.setEmpleadoNombre(e.getEmpleadoNombre());
+                r.setTipo(nov.getTipo());
+                r.setDescripcion(nov.getDescripcion());
+                r.setCantidad(nov.getCantidad());
+                r.setValorUnitario(nov.getValorUnitario());
+                r.setValorTotal(nov.getValorTotal());
+                r.setEsDeduccion(nov.getEsDeduccion());
+                r.setOrigen(nov.getOrigen());
+                dto.getNovedades().add(r);
+            }
+        }
+        dto.setTotalDevengado(totalDev);
+        dto.setTotalDeducciones(totalDed);
+        dto.setTotalNeto(totalNeto);
+        return dto;
+    }
+
+    private BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
 
     @Override
     public NominaDto obtenerPorId(Long id, Integer empresaId) {
@@ -111,6 +202,17 @@ public class NominaServiceImpl implements NominaService {
         NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
                 .orElseGet(() -> configuracionPorDefecto(empresaId));
 
+        // Gating de asistencia (Fase 5): si el empleado requiere asistencia y no está
+        // aprobada ni autorizada excepcionalmente, se bloquea la liquidación.
+        if (requiereAsistencia(config, empleado)) {
+            if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "No se puede liquidar: la asistencia del período no está aprobada. " +
+                        "Apruebe la asistencia o registre una autorización excepcional.");
+            consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
+        }
+
+        nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado));
         calcular(nomina, empleado, config);
         nomina.setUpdatedAt(LocalDateTime.now());
 
@@ -158,6 +260,13 @@ public class NominaServiceImpl implements NominaService {
                 nomina.setCreatedAt(LocalDateTime.now());
             }
 
+            // Gating de asistencia por empleado; si está bloqueado, se omite del lote.
+            if (requiereAsistencia(config, empleado)) {
+                if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado)) continue;
+                consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
+            }
+
+            nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado));
             calcular(nomina, empleado, config);
             nomina.setUpdatedAt(LocalDateTime.now());
             nominaRepo.save(nomina);
@@ -227,9 +336,110 @@ public class NominaServiceImpl implements NominaService {
         if ("ANULADO".equals(nomina.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La nómina está anulada");
 
+        String estadoAnterior = nomina.getEstado();
         nomina.setEstado("APROBADO");
         nomina.setUpdatedAt(LocalDateTime.now());
+        NominaDto dto = toDto(nominaRepo.save(nomina));
+        auditar("NOMINA", nomina.getId(), "APROBAR", empresaId, estadoAnterior, "APROBADO", null);
+
+        // Asiento contable de la nómina al aprobarla, tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                        "NOMINA", nomina.getId(), empresaId, null));
+
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public NominaDto pagar(Long id, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId) {
+        NominaEntity nomina = nominaRepo.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
+
+        if (!"APROBADO".equals(nomina.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Solo se puede pagar una nómina en estado APROBADO");
+
+        aplicarPago(nomina, dto, empresaId);
+        cerrarPeriodoSiCompleto(nomina.getPeriodo(), empresaId);
         return toDto(nominaRepo.save(nomina));
+    }
+
+    @Override
+    @Transactional
+    public void pagarPeriodo(Long periodoId, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId) {
+        PeriodoNominaEntity periodo = periodoRepo.findByIdAndEmpresaId(periodoId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Período no encontrado"));
+
+        List<NominaEntity> aprobadas = nominaRepo.findByPeriodoIdAndEmpresaId(periodoId, empresaId).stream()
+                .filter(n -> "APROBADO".equals(n.getEstado()))
+                .collect(Collectors.toList());
+        if (aprobadas.isEmpty())
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No hay nóminas APROBADAS por pagar en este período");
+
+        for (NominaEntity nomina : aprobadas) {
+            aplicarPago(nomina, dto, empresaId);
+            nominaRepo.save(nomina);
+        }
+        cerrarPeriodoSiCompleto(periodo, empresaId);
+    }
+
+    /** Marca la nómina como PAGADA con su origen y dispara el asiento de pago. */
+    private void aplicarPago(NominaEntity nomina, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId) {
+        String medio = dto != null && dto.getMedioPago() != null ? dto.getMedioPago() : "EFECTIVO";
+        if ("TRANSFERENCIA".equals(medio) && (dto == null || dto.getCuentaBancariaId() == null))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Para pago por transferencia debe indicar la cuenta bancaria");
+
+        Long cuentaBancariaId = dto != null ? dto.getCuentaBancariaId() : null;
+        nomina.setEstado("PAGADO");
+        nomina.setMedioPago(medio);
+        nomina.setCuentaBancariaId(cuentaBancariaId);
+        nomina.setFechaPago(LocalDateTime.now());
+        nomina.setUpdatedAt(LocalDateTime.now());
+        nominaRepo.save(nomina);
+
+        auditar("NOMINA", nomina.getId(), "PAGAR", empresaId, "APROBADO", "PAGADO", medio);
+
+        BigDecimal neto = nomina.getNetoPagar() != null ? nomina.getNetoPagar() : BigDecimal.ZERO;
+        String beneficiario = nomina.getEmpleado() != null
+                ? nomina.getEmpleado().getNombres() + " " + nomina.getEmpleado().getApellidos() : "Empleado";
+
+        if ("TRANSFERENCIA".equals(medio) && cuentaBancariaId != null && neto.signum() > 0) {
+            // Egreso de tesorería: descuenta el saldo del banco, deja movimiento para
+            // conciliación y genera el asiento DB Salarios por pagar / CR Banco
+            // (vía la contrapartida). No se dispara NOMINA_PAGO para no duplicar.
+            Long usuarioId = null;
+            try { usuarioId = securityUtils.getUsuarioId(); } catch (Exception ignored) {}
+            Long cuentaSalarios = configuracionContable.resolverCuenta(
+                    empresaId, com.cloud_technological.aura_pos.entity.ConceptoContable.SALARIOS_POR_PAGAR).getId();
+
+            var mov = new com.cloud_technological.aura_pos.dto.tesoreria.CreateMovimientoDto();
+            mov.setCuentaBancariaId(cuentaBancariaId);
+            mov.setMonto(neto);
+            mov.setConcepto("Pago nómina — " + beneficiario);
+            mov.setBeneficiario(beneficiario);
+            mov.setFecha(java.time.LocalDate.now());
+            mov.setCategoria("NOMINA");
+            mov.setContrapartidaCuentaId(cuentaSalarios);
+            tesoreriaService.crearEgreso(empresaId, usuarioId != null ? usuarioId.intValue() : null, mov);
+        } else {
+            // Efectivo (caja): solo asiento contable DB Salarios por pagar / CR Caja.
+            eventPublisher.publishEvent(
+                    new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                            "NOMINA_PAGO", nomina.getId(), empresaId, null));
+        }
+    }
+
+    private void cerrarPeriodoSiCompleto(PeriodoNominaEntity periodo, Integer empresaId) {
+        boolean quedanPendientes = nominaRepo.findByPeriodoIdAndEmpresaId(periodo.getId(), empresaId)
+                .stream()
+                .anyMatch(n -> !"PAGADO".equals(n.getEstado()) && !"ANULADO".equals(n.getEstado()));
+        if (!quedanPendientes && !"ANULADO".equals(periodo.getEstado())) {
+            periodo.setEstado("PAGADO");
+            periodoRepo.save(periodo);
+        }
     }
 
     @Override
@@ -241,9 +451,18 @@ public class NominaServiceImpl implements NominaService {
         if ("PAGADO".equals(nomina.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede anular una nómina ya pagada");
 
+        String estadoAnterior = nomina.getEstado();
         nomina.setEstado("ANULADO");
         nomina.setUpdatedAt(LocalDateTime.now());
-        return toDto(nominaRepo.save(nomina));
+        NominaDto dto = toDto(nominaRepo.save(nomina));
+        auditar("NOMINA", nomina.getId(), "ANULAR", empresaId, estadoAnterior, "ANULADO", null);
+
+        // Reversar el asiento de la nómina tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "NOMINA", nomina.getId(), empresaId, null));
+
+        return dto;
     }
 
     // ─── Motor de cálculo ─────────────────────────────────────────────────────
@@ -327,15 +546,18 @@ public class NominaServiceImpl implements NominaService {
         }
         nomina.setAporteArl(porcentaje(totalDevengado, pctArl));
 
-        // Provisiones sobre salario proporcional (base sin auxilio de transporte)
-        nomina.setProvisionPrima(porcentaje(salarioProporcional, PCT_PRIMA));
-        nomina.setProvisionCesantias(porcentaje(salarioProporcional, PCT_CESANTIAS));
+        // Prima y cesantías: base = salario proporcional + auxilio de transporte
+        BigDecimal baseConAuxilio = salarioProporcional.add(nz(nomina.getAuxilioTransporte()));
+        nomina.setProvisionPrima(porcentaje(baseConAuxilio, PCT_PRIMA));
+        nomina.setProvisionCesantias(porcentaje(baseConAuxilio, PCT_CESANTIAS));
+        // Intereses de cesantías: sobre las cesantías provisionadas
         nomina.setProvisionIntCesantias(
                 nomina.getProvisionCesantias()
                         .multiply(PCT_INT_CESANTIAS)
                         .divide(CIEN, 2, RoundingMode.HALF_UP)
                         .divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
         );
+        // Vacaciones: solo salario (sin auxilio)
         nomina.setProvisionVacaciones(porcentaje(salarioProporcional, PCT_VACACIONES));
     }
 
@@ -365,6 +587,138 @@ public class NominaServiceImpl implements NominaService {
         return base.multiply(pct).divide(CIEN, 2, RoundingMode.HALF_UP);
     }
 
+    private void auditar(String entidad, Long entidadId, String accion, Integer empresaId,
+                         String valorAnterior, String valorNuevo, String motivo) {
+        Long usuarioId = null;
+        try { usuarioId = securityUtils.getUsuarioId(); } catch (Exception ignored) {}
+        auditoria.registrar(empresaId, entidad, entidadId, accion,
+                usuarioId != null ? usuarioId.intValue() : null, valorAnterior, valorNuevo, motivo);
+    }
+
+    // ─── Gating de asistencia (Fase 5) ────────────────────────────────────────
+
+    // Factores de recargo/hora extra (Colombia). Deben validarse contra la
+    // normatividad vigente; idealmente parametrizables por fecha en config.
+    private static final BigDecimal HORAS_MES = new BigDecimal("240"); // 30 días × 8h
+    private static final BigDecimal F_EXTRA_DIURNA = new BigDecimal("1.25");
+    private static final BigDecimal F_EXTRA_NOCTURNA = new BigDecimal("1.75");
+    private static final BigDecimal F_RECARGO_NOCTURNO = new BigDecimal("0.35");
+    private static final BigDecimal F_RECARGO_DOMINICAL = new BigDecimal("0.75");
+
+    /** ¿Este empleado debe pasar por control de asistencia antes de liquidar? */
+    private boolean requiereAsistencia(NominaConfigEntity config, EmpleadoEntity empleado) {
+        String modo = config.getModoLiquidacion();
+        if ("CON_ASISTENCIA_OBLIGATORIA".equals(modo)) return true;
+        if ("MIXTA".equals(modo)) return Boolean.TRUE.equals(empleado.getRequiereControlAsistencia());
+        return false; // SIN_ASISTENCIA
+    }
+
+    /** La asistencia del período está aprobada, o existe autorización excepcional activa. */
+    private boolean asistenciaAprobadaOAutorizada(Integer empresaId, PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
+        if (autorizacionRepo.existsByEmpresaIdAndEmpleadoIdAndPeriodoNominaIdAndEstado(
+                empresaId, empleado.getId(), periodo.getId(), "ACTIVA"))
+            return true;
+        return periodoAsistenciaRepo.findByEmpresaIdOrderByFechaInicioDesc(empresaId).stream()
+                .anyMatch(pa ->
+                        ("APROBADO".equals(pa.getEstado()) || "ENVIADO_A_NOMINA".equals(pa.getEstado()))
+                        && !pa.getFechaInicio().isAfter(periodo.getFechaInicio())
+                        && !pa.getFechaFin().isBefore(periodo.getFechaFin()));
+    }
+
+    /**
+     * Convierte las novedades de asistencia aprobadas (staging) en novedades de nómina
+     * valorizadas y las adjunta a la nómina. Idempotente: reemplaza las de origen ASISTENCIA.
+     */
+    private void consumirNovedadesAsistencia(NominaEntity nomina, PeriodoNominaEntity periodo,
+                                             EmpleadoEntity empleado, Integer empresaId) {
+        nomina.getNovedades().removeIf(n -> "ASISTENCIA".equals(n.getOrigen()));
+
+        var staged = asistenciaNovedadRepo.findByEmpresaIdAndPeriodoNominaIdAndEmpleadoId(
+                empresaId, periodo.getId(), empleado.getId());
+        for (var s : staged) {
+            if (!"APROBADA".equals(s.getEstado()) && !"ENVIADA_A_NOMINA".equals(s.getEstado())) continue;
+            NominaNovedadEntity nv = construirNovedadDesdeStaged(s, empleado.getSalarioBase());
+            if (nv == null) continue;
+            nv.setNomina(nomina);
+            nomina.getNovedades().add(nv);
+            s.setEstado("ENVIADA_A_NOMINA");
+            asistenciaNovedadRepo.save(s);
+        }
+    }
+
+    private NominaNovedadEntity construirNovedadDesdeStaged(
+            com.cloud_technological.aura_pos.entity.AsistenciaNovedadNominaEntity s, BigDecimal salarioBase) {
+
+        BigDecimal cantidad = s.getCantidad() != null ? s.getCantidad() : BigDecimal.ZERO;
+        if (cantidad.compareTo(BigDecimal.ZERO) <= 0) return null;
+
+        BigDecimal valorHora = salarioBase.divide(HORAS_MES, 6, RoundingMode.HALF_UP);
+        BigDecimal valorDia = salarioBase.divide(TREINTA, 6, RoundingMode.HALF_UP);
+        BigDecimal valorMinuto = valorHora.divide(new BigDecimal("60"), 6, RoundingMode.HALF_UP);
+
+        BigDecimal valorUnitario;
+        boolean deduccion;
+        switch (s.getTipoNovedad()) {
+            case "HORA_EXTRA_DIURNA" -> { valorUnitario = valorHora.multiply(F_EXTRA_DIURNA); deduccion = false; }
+            case "HORA_EXTRA_NOCTURNA" -> { valorUnitario = valorHora.multiply(F_EXTRA_NOCTURNA); deduccion = false; }
+            case "RECARGO_NOCTURNO" -> { valorUnitario = valorHora.multiply(F_RECARGO_NOCTURNO); deduccion = false; }
+            case "RECARGO_DOMINICAL_FESTIVO" -> { valorUnitario = valorHora.multiply(F_RECARGO_DOMINICAL); deduccion = false; }
+            case "AUSENCIA_NO_JUSTIFICADA" -> { valorUnitario = valorDia; deduccion = true; }
+            case "LLEGADA_TARDE_DESCONTADA" -> { valorUnitario = valorMinuto; deduccion = true; }
+            default -> { return null; }
+        }
+
+        BigDecimal valorTotal = valorUnitario.multiply(cantidad).setScale(2, RoundingMode.HALF_UP);
+        NominaNovedadEntity nv = new NominaNovedadEntity();
+        nv.setTipo(s.getTipoNovedad());
+        nv.setDescripcion("Generada desde asistencia");
+        nv.setCantidad(cantidad);
+        nv.setValorUnitario(valorUnitario.setScale(2, RoundingMode.HALF_UP));
+        nv.setValorTotal(valorTotal);
+        nv.setEsDeduccion(deduccion);
+        nv.setNaturaleza(deduccion ? "DEDUCCION" : "DEVENGADO");
+        nv.setOrigen("ASISTENCIA");
+        nv.setEstado("APLICADA");
+        nv.setRequiereAprobacion(false);
+        return nv;
+    }
+
+    /**
+     * Días a liquidar tomados del período (no siempre 30). Aplica la convención
+     * colombiana base-30 (mes = 30 días, quincena = 15) y recorta por la fecha de
+     * ingreso/retiro del empleado cuando caen dentro del período.
+     */
+    private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
+        LocalDate inicio = periodo.getFechaInicio();
+        LocalDate fin = periodo.getFechaFin();
+
+        if (empleado.getFechaIngreso() != null && empleado.getFechaIngreso().isAfter(inicio))
+            inicio = empleado.getFechaIngreso();
+        if (empleado.getFechaRetiro() != null && empleado.getFechaRetiro().isBefore(fin))
+            fin = empleado.getFechaRetiro();
+
+        if (fin.isBefore(inicio)) return 0;
+        return diasBase30(inicio, fin);
+    }
+
+    /**
+     * Cuenta días entre dos fechas (ambas inclusive) usando el criterio base-30:
+     * el día 31 y el último día del mes se tratan como día 30, de modo que un mes
+     * completo son 30 días y cada quincena son 15.
+     */
+    private int diasBase30(LocalDate inicio, LocalDate fin) {
+        int d1 = inicio.getDayOfMonth();
+        int d2 = fin.getDayOfMonth();
+
+        if (d1 == 31) d1 = 30;
+        boolean finDeMes = fin.getDayOfMonth() == fin.lengthOfMonth();
+        if (d2 == 31 || finDeMes) d2 = 30;
+
+        int meses = (fin.getYear() - inicio.getYear()) * 12
+                + (fin.getMonthValue() - inicio.getMonthValue());
+        return meses * 30 + (d2 - d1) + 1;
+    }
+
     private boolean esDeduccion(String tipo) {
         return switch (tipo) {
             case "PRESTAMO", "EMBARGO", "OTRO_DESCUENTO" -> true;
@@ -391,6 +745,9 @@ public class NominaServiceImpl implements NominaService {
         dto.setEmpleadoDocumento(entity.getEmpleado().getNumeroDocumento());
         dto.setCargo(entity.getEmpleado().getCargo());
         dto.setTipoContrato(entity.getEmpleado().getTipoContrato());
+        dto.setBanco(entity.getEmpleado().getBanco());
+        dto.setNumeroCuenta(entity.getEmpleado().getNumeroCuenta());
+        dto.setTipoCuenta(entity.getEmpleado().getTipoCuenta());
         dto.setSalarioBase(entity.getSalarioBase());
         dto.setDiasTrabajados(entity.getDiasTrabajados());
         dto.setSalarioProporcional(entity.getSalarioProporcional());

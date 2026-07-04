@@ -48,6 +48,7 @@ public class CuentaCobrarQueryRepository {
             SELECT
                 cc.id,
                 cc.numero_cuenta,
+                cc.tercero_id AS cliente_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS cliente_nombre,
                 t.numero_documento AS cliente_documento,
                 cc.fecha_emision,
@@ -57,6 +58,7 @@ public class CuentaCobrarQueryRepository {
                 cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,
@@ -122,6 +124,7 @@ public class CuentaCobrarQueryRepository {
             SELECT
                 cc.id,
                 cc.numero_cuenta,
+                cc.tercero_id AS cliente_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS cliente_nombre,
                 t.numero_documento AS cliente_documento,
                 cc.fecha_emision,
@@ -131,6 +134,7 @@ public class CuentaCobrarQueryRepository {
                 cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,
@@ -272,6 +276,7 @@ public class CuentaCobrarQueryRepository {
             SELECT
                 cc.id,
                 cc.numero_cuenta,
+                cc.tercero_id AS cliente_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS cliente_nombre,
                 t.numero_documento AS cliente_documento,
                 cc.fecha_emision,
@@ -281,6 +286,7 @@ public class CuentaCobrarQueryRepository {
                 cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,

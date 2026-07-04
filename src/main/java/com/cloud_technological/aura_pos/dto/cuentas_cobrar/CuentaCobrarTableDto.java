@@ -11,6 +11,7 @@ import lombok.Setter;
 public class CuentaCobrarTableDto {
     private Long id;
     private String numeroCuenta;
+    private Long clienteId;
     private String clienteNombre;
     private String clienteDocumento;
     private LocalDateTime fechaEmision;

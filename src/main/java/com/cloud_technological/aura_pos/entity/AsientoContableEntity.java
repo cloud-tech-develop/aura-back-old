@@ -55,6 +55,32 @@ public class AsientoContableEntity {
     @Builder.Default
     private String estado = "CONTABILIZADO";
 
+    // ── Cabecera de comprobante manual (CD/CE/RC) ────────────────────────
+    /** CD=Diario, CE=Egreso, RC=Ingreso/Recibo de caja. Define el prefijo del consecutivo. */
+    @Column(name = "tipo_comprobante", length = 20)
+    private String tipoComprobante;
+
+    /** Beneficiario del comprobante (tercero) y snapshot de sus datos para impresión. */
+    @Column(name = "beneficiario_tercero_id")
+    private Long beneficiarioTerceroId;
+
+    @Column(name = "beneficiario_nombre", length = 200)
+    private String beneficiarioNombre;
+
+    @Column(name = "beneficiario_direccion", length = 200)
+    private String beneficiarioDireccion;
+
+    @Column(name = "beneficiario_telefono", length = 50)
+    private String beneficiarioTelefono;
+
+    /** Ciudad donde se genera el comprobante. */
+    @Column(length = 100)
+    private String ciudad;
+
+    /** Fecha de vencimiento del comprobante (opcional). */
+    @Column(name = "fecha_vencimiento")
+    private LocalDate fechaVencimiento;
+
     @Column(name = "usuario_id")
     private Integer usuarioId;
 

@@ -1,0 +1,15 @@
+package com.cloud_technological.aura_pos.repositories.asistencia;
+
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.cloud_technological.aura_pos.entity.AuditoriaNominaAsistenciaEntity;
+
+public interface AuditoriaNominaAsistenciaJPARepository extends JpaRepository<AuditoriaNominaAsistenciaEntity, Long> {
+
+    List<AuditoriaNominaAsistenciaEntity> findByEmpresaIdAndEntidadAndEntidadIdOrderByFechaHoraDesc(
+            Integer empresaId, String entidad, Long entidadId);
+
+    List<AuditoriaNominaAsistenciaEntity> findTop200ByEmpresaIdOrderByFechaHoraDesc(Integer empresaId);
+}

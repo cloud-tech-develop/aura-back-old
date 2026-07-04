@@ -16,6 +16,9 @@ public interface CuentaCobrarService {
     PageImpl<CuentaCobrarTableDto> listarConFiltros(PageableDto<Object> pageable, Integer empresaId, 
             String fechaDesde, String fechaHasta, Long clienteId, String estado);
     CuentaCobrarDto obtenerPorId(Long id, Integer empresaId);
+
+    /** Aplica un cruce (abono) desde un comprobante, sin generar contabilidad propia. */
+    void aplicarCruce(Long cuentaId, java.math.BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia);
     CuentaCobrarDto crear(CreateCuentaCobrarDto dto, Integer empresaId, Long usuarioId);
     CuentaCobrarDto actualizar(Long id, CreateCuentaCobrarDto dto, Integer empresaId);
     

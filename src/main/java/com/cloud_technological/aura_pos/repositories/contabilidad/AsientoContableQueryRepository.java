@@ -87,7 +87,7 @@ public class AsientoContableQueryRepository {
                 ad.debito,
                 ad.credito,
                 ad.tercero_id,
-                t.nombre   AS tercero_nombre,
+                COALESCE(t.razon_social, CONCAT(COALESCE(t.nombres,''), ' ', COALESCE(t.apellidos,'')), 'Sin nombre') AS tercero_nombre,
                 ad.centro_costo_id,
                 cc.nombre  AS centro_costo_nombre
             FROM asiento_detalle ad
@@ -120,18 +120,72 @@ public class AsientoContableQueryRepository {
      * Formato: {PREFIX}-{6 dígitos}  ej: CD-000001
      */
     public String siguienteNumeroComprobante(Integer empresaId, String prefix) {
+        // Contador UNIFICADO por prefijo: considera tanto los asientos contables como
+        // los comprobantes de caja, para que ambas fuentes compartan la misma serie
+        // (evita que el comprobante contable reinicie en 1 cuando la caja ya va en N).
         String sql = """
-            SELECT COALESCE(MAX(
-                CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER)
-            ), 0) + 1
-            FROM asiento_contable
-            WHERE empresa_id = :empresaId
-              AND numero_comprobante LIKE :prefixLike
+            SELECT COALESCE(MAX(n), 0) + 1 FROM (
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM asiento_contable
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+                UNION ALL
+                SELECT CAST(SUBSTRING(numero_comprobante FROM LENGTH(:prefix) + 2) AS INTEGER) AS n
+                FROM comprobante_caja
+                WHERE empresa_id = :empresaId AND numero_comprobante LIKE :prefixLike
+            ) t
             """;
         Integer siguiente = jdbc.queryForObject(sql,
                 Map.of("empresaId", empresaId, "prefix", prefix, "prefixLike", prefix + "-%"),
                 Integer.class);
         return String.format("%s-%06d", prefix, siguiente != null ? siguiente : 1);
+    }
+
+    /**
+     * Saldos acumulados (débito/crédito) por cuenta de Ingreso/Costo/Gasto en un
+     * período, para construir el asiento de cierre. Excluye los propios asientos
+     * de cierre para que el cálculo sea idempotente.
+     */
+    public List<com.cloud_technological.aura_pos.dto.contabilidad.SaldoCuentaDto>
+            saldosResultadoPorPeriodo(Integer empresaId, Long periodoId) {
+        String sql = """
+            SELECT ad.cuenta_id,
+                   SUM(ad.debito)  AS debito,
+                   SUM(ad.credito) AS credito
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.periodo_contable_id = :periodoId
+              AND a.estado = 'CONTABILIZADO'
+              AND a.tipo_origen <> 'CIERRE'
+              AND pc.tipo IN ('INGRESO', 'COSTO', 'GASTO')
+            GROUP BY ad.cuenta_id
+            """;
+        return jdbc.query(sql,
+                new MapSqlParameterSource()
+                        .addValue("empresaId", empresaId)
+                        .addValue("periodoId", periodoId),
+                (rs, i) -> new com.cloud_technological.aura_pos.dto.contabilidad.SaldoCuentaDto(
+                        rs.getLong("cuenta_id"),
+                        rs.getBigDecimal("debito"),
+                        rs.getBigDecimal("credito")));
+    }
+
+    /**
+     * Saldo del mayor (débito − crédito) de una cuenta hasta hoy, considerando
+     * solo asientos contabilizados. Para cuentas de activo (11xx) es el saldo real.
+     */
+    public BigDecimal saldoCuenta(Integer empresaId, Long cuentaId) {
+        String sql = """
+            SELECT COALESCE(SUM(ad.debito - ad.credito), 0)
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            WHERE a.empresa_id = :empresaId
+              AND ad.cuenta_id = :cuentaId
+              AND a.estado = 'CONTABILIZADO'
+            """;
+        return jdbc.queryForObject(sql,
+                Map.of("empresaId", empresaId, "cuentaId", cuentaId), BigDecimal.class);
     }
 
     public Map<String, Object> balanceGeneral(Integer empresaId, String hasta) {
@@ -171,6 +225,7 @@ public class AsientoContableQueryRepository {
             WHERE a.empresa_id = :empresaId
               AND a.fecha BETWEEN CAST(:desde AS DATE) AND CAST(:hasta AS DATE)
               AND a.estado = 'CONTABILIZADO'
+              AND a.tipo_origen <> 'CIERRE'
               AND pc.tipo IN ('INGRESO', 'COSTO', 'GASTO')
             GROUP BY pc.tipo, pc.codigo, pc.nombre
             ORDER BY pc.tipo, pc.codigo

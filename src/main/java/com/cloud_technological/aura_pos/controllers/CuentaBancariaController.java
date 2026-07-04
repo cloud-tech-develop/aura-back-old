@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.cloud_technological.aura_pos.dto.tesoreria.ConciliacionMayorDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CreateCuentaBancariaDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CuentaBancariaDto;
 import com.cloud_technological.aura_pos.services.CuentaBancariaService;
@@ -55,5 +56,12 @@ public class CuentaBancariaController {
         Integer empresaId = securityUtils.getEmpresaId();
         cuentaBancariaService.toggleActiva(id, empresaId);
         return ResponseEntity.ok(new ApiResponse<>(200, "Estado actualizado", false, null));
+    }
+
+    @GetMapping("/conciliacion-mayor")
+    public ResponseEntity<ApiResponse<List<ConciliacionMayorDto>>> conciliacionMayor() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<ConciliacionMayorDto> data = cuentaBancariaService.conciliarConMayor(empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, data));
     }
 }

@@ -18,12 +18,14 @@ public class EmpleadoDto {
     private String cargo;
     private LocalDate fechaIngreso;
     private LocalDate fechaRetiro;
+    private LocalDate fechaFinContrato;
     private BigDecimal salarioBase;
     private String tipoContrato;
     private String banco;
     private String numeroCuenta;
     private String tipoCuenta;
     private Boolean activo;
+    private Boolean requiereControlAsistencia;
     private Integer nivelRiesgoArl;
     private BigDecimal porcentajeArl;
     private LocalDateTime createdAt;

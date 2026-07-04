@@ -24,6 +24,12 @@ public class CreateCuentaBancariaDto {
     private String numeroCuenta;
     private String titular;
 
+    /** El banco como tercero (persona jurídica). Opcional. */
+    private Long terceroId;
+
+    /** Cuenta contable del PUC asociada (1110xx). Opcional pero recomendado. */
+    private Long cuentaContableId;
+
     @NotNull
     private BigDecimal saldoInicial;
 }

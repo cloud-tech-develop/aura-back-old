@@ -6,10 +6,14 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.cloud_technological.aura_pos.event.ContabilidadReversaEvent;
+import com.cloud_technological.aura_pos.event.OperacionContabilizableEvent;
 
 import com.cloud_technological.aura_pos.dto.tesoreria.ConciliacionResumenDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CreateMovimientoDto;
@@ -28,6 +32,9 @@ public class TesoreriaServiceImpl implements TesoreriaService {
 
     @Autowired
     private CuentaBancariaJPARepository cuentaRepo;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Override
     public List<TesoreriaMovimientoDto> listarEgresos(Integer empresaId, Long cuentaId, LocalDate desde, LocalDate hasta) {
@@ -58,9 +65,12 @@ public class TesoreriaServiceImpl implements TesoreriaService {
                 .referencia(dto.getReferencia())
                 .fecha(dto.getFecha())
                 .categoria(dto.getCategoria())
+                .contrapartidaCuentaId(dto.getContrapartidaCuentaId())
                 .usuarioId(usuarioId)
                 .build();
-        return toDto(movRepo.save(mov));
+        TesoreriaMovimientoEntity saved = movRepo.save(mov);
+        publicarContabilizacion(saved, empresaId, usuarioId);
+        return toDto(saved);
     }
 
     @Override
@@ -80,9 +90,12 @@ public class TesoreriaServiceImpl implements TesoreriaService {
                 .referencia(dto.getReferencia())
                 .fecha(dto.getFecha())
                 .categoria(dto.getCategoria())
+                .contrapartidaCuentaId(dto.getContrapartidaCuentaId())
                 .usuarioId(usuarioId)
                 .build();
-        return toDto(movRepo.save(mov));
+        TesoreriaMovimientoEntity saved = movRepo.save(mov);
+        publicarContabilizacion(saved, empresaId, usuarioId);
+        return toDto(saved);
     }
 
     @Override
@@ -106,6 +119,24 @@ public class TesoreriaServiceImpl implements TesoreriaService {
         cuentaRepo.save(cuenta);
         mov.setAnulado(true);
         movRepo.save(mov);
+
+        // Reversar el asiento contable si el movimiento se había contabilizado.
+        if (mov.getContrapartidaCuentaId() != null) {
+            eventPublisher.publishEvent(new ContabilidadReversaEvent(
+                    "TESORERIA", mov.getId(), empresaId, mov.getUsuarioId()));
+        }
+    }
+
+    /**
+     * Publica el evento de contabilización del movimiento (AFTER_COMMIT). Solo se
+     * contabiliza si el movimiento trae cuenta de contrapartida; si no, queda solo
+     * registrado en tesorería.
+     */
+    private void publicarContabilizacion(TesoreriaMovimientoEntity mov, Integer empresaId, Integer usuarioId) {
+        if (mov.getContrapartidaCuentaId() != null) {
+            eventPublisher.publishEvent(new OperacionContabilizableEvent(
+                    "TESORERIA", mov.getId(), empresaId, usuarioId));
+        }
     }
 
     @Override

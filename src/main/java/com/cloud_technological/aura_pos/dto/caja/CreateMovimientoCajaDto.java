@@ -29,6 +29,9 @@ public class CreateMovimientoCajaDto {
 
     private Long cuentaPagarId;
 
+    /** Concepto de caja (para un movimiento manual que debe contabilizarse). */
+    private Long conceptoCajaId;
+
     /** EFECTIVO | TRANSFERENCIA */
     private String metodoPago;
 

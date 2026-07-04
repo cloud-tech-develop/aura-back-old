@@ -7,4 +7,6 @@ import com.cloud_technological.aura_pos.entity.ComprobanteCajaEntity;
 public interface ComprobanteCajaJPARepository extends JpaRepository<ComprobanteCajaEntity, Long> {
     Optional<ComprobanteCajaEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
     Optional<ComprobanteCajaEntity> findByNumeroComprobante(String numeroComprobante);
+    Optional<ComprobanteCajaEntity> findFirstByEmpresaIdAndOrigenAndOrigenId(
+            Integer empresaId, String origen, Long origenId);
 }

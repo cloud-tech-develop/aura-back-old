@@ -39,7 +39,8 @@ public class ComprobanteCajaServiceImpl implements ComprobanteCajaService {
             String metodoPago, String entregadoA,
             String origen, Long origenId, Long turnoCajaId) {
 
-        String prefix = "INGRESO".equals(tipo) ? "CI" : "CE";
+        // Numeración unificada con los comprobantes contables: RC ingreso, CE egreso.
+        String prefix = "INGRESO".equals(tipo) ? "RC" : "CE";
         String numero = queryRepo.siguienteNumeroComprobante(empresaId, prefix);
 
         ComprobanteCajaEntity comprobante = ComprobanteCajaEntity.builder()

@@ -48,4 +48,19 @@ public class NominaNovedadEntity {
 
     @Column(name = "es_deduccion", nullable = false)
     private Boolean esDeduccion = false;
+
+    @Column(name = "naturaleza", length = 20, nullable = false)
+    private String naturaleza = "DEVENGADO";
+    // DEVENGADO | DEDUCCION | INFORMATIVO | PROVISION | APORTE_EMPLEADOR
+
+    @Column(name = "origen", length = 20, nullable = false)
+    private String origen = "MANUAL";
+    // MANUAL | ASISTENCIA | IMPORTACION | AJUSTE_ADMIN | RELIQUIDACION | SISTEMA
+
+    @Column(name = "estado", length = 20, nullable = false)
+    private String estado = "APLICADA";
+    // PENDIENTE | APROBADA | RECHAZADA | APLICADA | ANULADA
+
+    @Column(name = "requiere_aprobacion", nullable = false)
+    private Boolean requiereAprobacion = false;
 }

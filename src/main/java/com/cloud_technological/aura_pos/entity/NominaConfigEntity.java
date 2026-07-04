@@ -35,6 +35,10 @@ public class NominaConfigEntity {
     @Column(name = "periodicidad", length = 20, nullable = false)
     private String periodicidad = "MENSUAL"; // MENSUAL | QUINCENAL | SEMANAL
 
+    @Column(name = "modo_liquidacion", length = 30, nullable = false)
+    private String modoLiquidacion = "SIN_ASISTENCIA";
+    // SIN_ASISTENCIA | CON_ASISTENCIA_OBLIGATORIA | MIXTA
+
     @Column(name = "smmlv", nullable = false, precision = 15, scale = 2)
     private BigDecimal smmlv = new BigDecimal("1423500");
 
