@@ -146,13 +146,11 @@ public class FacturaServiceImpl implements FacturaService {
 
         factura = facturaJPARepository.save(factura);
 
-        // Registrar evento de creación de factura (Post-Commit)
-        java.util.Map<String, Object> retryPayload = new java.util.HashMap<>();
-        retryPayload.put("action", "crearDesdeVenta");
-        retryPayload.put("ventaId", ventaId);
-        retryPayload.put("empresaId", empresaId);
-        retryPayload.put("usuarioId", usuarioId);
-
+        // Registrar evento de creación de factura (Post-Commit).
+        // NO se adjunta retryPayload: una factura ya creada nunca debe reintentar
+        // "crearDesdeVenta" (el guard de duplicado la rechazaría). Adjuntar el payload
+        // aquí provocaba que el scheduler reintentara indefinidamente cada factura sana
+        // en estado PENDIENTE y fallara con "Ya existe una factura para esta venta".
         eventPublisher.publishEvent(new FacturaLogEvent(
             factura.getId(),
             FacturaLogEvento.CREACION,
@@ -161,7 +159,7 @@ public class FacturaServiceImpl implements FacturaService {
             buildFacturaData(factura),
             usuarioId,
             "Factura creada automáticamente desde venta #" + ventaId,
-            retryPayload
+            null
         ));
 
         // Copiar pagos de VentaPago a ReciboPago

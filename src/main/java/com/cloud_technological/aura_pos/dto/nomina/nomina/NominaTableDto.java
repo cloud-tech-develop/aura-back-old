@@ -17,6 +17,8 @@ public class NominaTableDto {
     private String empleadoNombre;
     private String empleadoDocumento;
     private String cargo;
+    private String banco;
+    private String numeroCuenta;
     private Integer diasTrabajados;
     private BigDecimal totalDevengado;
     private BigDecimal totalDeducciones;

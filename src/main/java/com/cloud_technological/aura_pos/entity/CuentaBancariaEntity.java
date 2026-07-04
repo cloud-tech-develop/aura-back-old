@@ -45,6 +45,14 @@ public class CuentaBancariaEntity {
     @Column(length = 300)
     private String titular;
 
+    /** El banco como tercero (persona jurídica). Opcional. */
+    @Column(name = "tercero_id")
+    private Long terceroId;
+
+    /** Cuenta contable del PUC (1110xx) que representa esta cuenta bancaria. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     @Column(name = "saldo_inicial", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal saldoInicial = BigDecimal.ZERO;

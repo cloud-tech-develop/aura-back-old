@@ -22,6 +22,9 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
     @Autowired
     private PlanCuentaJPARepository repo;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.services.ConfiguracionContableService configuracionContableService;
+
     @Override
     public List<PlanCuentaDto> listar(Integer empresaId) {
         return repo.findByEmpresaIdOrderByCodigoAsc(empresaId)
@@ -78,8 +81,15 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
     @Override
     @Transactional
     public void seedPUC(Integer empresaId) {
-        if (!repo.findByEmpresaIdOrderByCodigoAsc(empresaId).isEmpty()) return;
+        if (repo.findByEmpresaIdOrderByCodigoAsc(empresaId).isEmpty()) {
+            seedCuentas(empresaId);
+        }
+        // Siembra/actualiza el mapeo concepto→cuenta por defecto (idempotente),
+        // también para empresas que ya tenían PUC pero no configuración.
+        configuracionContableService.seedDefaults(empresaId);
+    }
 
+    private void seedCuentas(Integer empresaId) {
         // Clase → nombre, tipo, naturaleza
         Object[][] clases = {
             { "1", "Activo",                         "ACTIVO",     "DEBITO"  },
@@ -93,31 +103,55 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             { "9", "Cuentas de Orden Acreedoras",    "ORDEN",      "CREDITO" },
         };
 
-        // Subcuentas comunes
+        // Subcuentas comunes. IMPORTANTE: cada cuenta padre (nivel 2) debe
+        // aparecer ANTES que sus hijas, porque el padreId se resuelve de forma
+        // incremental sobre idsByCodigo a medida que se recorre el arreglo.
         Object[][] grupos = {
             // código, nombre, tipo, naturaleza, nivel, codigoPadre
-            { "11", "Disponible",                "ACTIVO",  "DEBITO",  2, "1" },
-            { "1105", "Caja",                    "ACTIVO",  "DEBITO",  3, "11" },
-            { "1110", "Bancos",                  "ACTIVO",  "DEBITO",  3, "11" },
-            { "13", "Deudores",                  "ACTIVO",  "DEBITO",  2, "1" },
-            { "1305", "Clientes",                "ACTIVO",  "DEBITO",  3, "13" },
-            { "14", "Inventarios",               "ACTIVO",  "DEBITO",  2, "1" },
-            { "1435", "Mercancias no Fabricadas","ACTIVO",  "DEBITO",  3, "14" },
-            { "22", "Proveedores",               "PASIVO",  "CREDITO", 2, "2" },
-            { "2205", "Proveedores Nacionales",  "PASIVO",  "CREDITO", 3, "22" },
-            { "23", "Cuentas por Pagar",         "PASIVO",  "CREDITO", 2, "2" },
-            { "24", "Impuestos por Pagar",       "PASIVO",  "CREDITO", 2, "2" },
-            { "2408", "IVA por Pagar",           "PASIVO",  "CREDITO", 3, "24" },
-            { "31", "Capital Social",            "PATRIMONIO","CREDITO",2, "3" },
-            { "3605","Utilidad del Ejercicio",   "PATRIMONIO","CREDITO",3, "36" },
-            { "36", "Resultados del Ejercicio",  "PATRIMONIO","CREDITO",2, "3" },
-            { "41", "Operacionales",             "INGRESO", "CREDITO", 2, "4" },
-            { "4135","Comercio al por Menor",    "INGRESO", "CREDITO", 3, "41" },
-            { "51", "Gastos Operacionales Admón","GASTO",   "DEBITO",  2, "5" },
-            { "5105","Gastos de Personal",       "GASTO",   "DEBITO",  3, "51" },
-            { "5195","Otros Gastos",             "GASTO",   "DEBITO",  3, "51" },
-            { "61", "Costo de Ventas y Prest.",  "COSTO",   "DEBITO",  2, "6" },
-            { "6135","Costo de Mercancias Vend.","COSTO",   "DEBITO",  3, "61" },
+            // ── Clase 1 · Activo ──────────────────────────────────────────────
+            { "11", "Disponible",                       "ACTIVO",  "DEBITO",  2, "1" },
+            { "1105", "Caja",                           "ACTIVO",  "DEBITO",  3, "11" },
+            { "1110", "Bancos",                         "ACTIVO",  "DEBITO",  3, "11" },
+            { "13", "Deudores",                         "ACTIVO",  "DEBITO",  2, "1" },
+            { "1305", "Clientes",                       "ACTIVO",  "DEBITO",  3, "13" },
+            { "1355", "Anticipo de Impuestos y Retenciones","ACTIVO","DEBITO",3, "13" },
+            { "14", "Inventarios",                      "ACTIVO",  "DEBITO",  2, "1" },
+            { "1435", "Mercancias no Fabricadas",       "ACTIVO",  "DEBITO",  3, "14" },
+            { "15", "Propiedad Planta y Equipo",        "ACTIVO",  "DEBITO",  2, "1" },
+            { "1592", "Depreciacion Acumulada",         "ACTIVO",  "CREDITO", 3, "15" },
+            // ── Clase 2 · Pasivo ──────────────────────────────────────────────
+            { "21", "Obligaciones Financieras",         "PASIVO",  "CREDITO", 2, "2" },
+            { "2105", "Bancos Nacionales",              "PASIVO",  "CREDITO", 3, "21" },
+            { "22", "Proveedores",                      "PASIVO",  "CREDITO", 2, "2" },
+            { "2205", "Proveedores Nacionales",         "PASIVO",  "CREDITO", 3, "22" },
+            { "23", "Cuentas por Pagar",                "PASIVO",  "CREDITO", 2, "2" },
+            { "2365", "Retencion en la Fuente",         "PASIVO",  "CREDITO", 3, "23" },
+            { "2367", "Impuesto a las Ventas Retenido", "PASIVO",  "CREDITO", 3, "23" },
+            { "2368", "Impuesto de Industria y Comercio Retenido","PASIVO","CREDITO",3,"23" },
+            { "24", "Impuestos Gravamenes y Tasas",     "PASIVO",  "CREDITO", 2, "2" },
+            { "2408", "IVA por Pagar",                  "PASIVO",  "CREDITO", 3, "24" },
+            { "25", "Obligaciones Laborales",           "PASIVO",  "CREDITO", 2, "2" },
+            { "2505", "Salarios por Pagar",             "PASIVO",  "CREDITO", 3, "25" },
+            // ── Clase 3 · Patrimonio ──────────────────────────────────────────
+            { "31", "Capital Social",                   "PATRIMONIO","CREDITO",2, "3" },
+            { "3105","Capital",                         "PATRIMONIO","CREDITO",3, "31" },
+            { "36", "Resultados del Ejercicio",         "PATRIMONIO","CREDITO",2, "3" },
+            { "3605","Utilidad del Ejercicio",          "PATRIMONIO","CREDITO",3, "36" },
+            { "37", "Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",2, "3" },
+            { "3705","Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",3, "37" },
+            // ── Clase 4 · Ingresos ────────────────────────────────────────────
+            { "41", "Operacionales",                    "INGRESO", "CREDITO", 2, "4" },
+            { "4135","Comercio al por Menor",           "INGRESO", "CREDITO", 3, "41" },
+            // ── Clase 5 · Gastos ──────────────────────────────────────────────
+            { "51", "Gastos Operacionales Admon",       "GASTO",   "DEBITO",  2, "5" },
+            { "5105","Gastos de Personal",              "GASTO",   "DEBITO",  3, "51" },
+            { "5160","Depreciaciones",                  "GASTO",   "DEBITO",  3, "51" },
+            { "5195","Otros Gastos",                    "GASTO",   "DEBITO",  3, "51" },
+            { "53", "Gastos No Operacionales",          "GASTO",   "DEBITO",  2, "5" },
+            { "5305","Financieros",                     "GASTO",   "DEBITO",  3, "53" },
+            // ── Clase 6 · Costos ──────────────────────────────────────────────
+            { "61", "Costo de Ventas y Prest.",         "COSTO",   "DEBITO",  2, "6" },
+            { "6135","Costo de Mercancias Vend.",       "COSTO",   "DEBITO",  3, "61" },
         };
 
         // Guardar clases principales

@@ -22,7 +22,9 @@ public class TerceroDto {
     private Boolean esCliente;
     private Boolean esProveedor;
     private Boolean esEmpleado;
+    private Boolean esBanco;
     private Long municipioId;
+    private String municipio;
     private Boolean activo;
     // Campos fiscales (V52)
     private String tipoPersona;

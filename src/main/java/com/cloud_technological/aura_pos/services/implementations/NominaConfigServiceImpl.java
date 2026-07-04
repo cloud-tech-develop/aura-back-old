@@ -34,6 +34,7 @@ public class NominaConfigServiceImpl implements NominaConfigService {
 
         if (dto.getModoNomina() != null) entity.setModoNomina(dto.getModoNomina());
         if (dto.getPeriodicidad() != null) entity.setPeriodicidad(dto.getPeriodicidad());
+        if (dto.getModoLiquidacion() != null) entity.setModoLiquidacion(dto.getModoLiquidacion());
         if (dto.getSmmlv() != null) entity.setSmmlv(dto.getSmmlv());
         if (dto.getAuxilioTransporte() != null) entity.setAuxilioTransporte(dto.getAuxilioTransporte());
         if (dto.getPctSaludEmpleado() != null) entity.setPctSaludEmpleado(dto.getPctSaludEmpleado());
@@ -65,6 +66,7 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         dto.setId(entity.getId());
         dto.setModoNomina(entity.getModoNomina());
         dto.setPeriodicidad(entity.getPeriodicidad());
+        dto.setModoLiquidacion(entity.getModoLiquidacion());
         dto.setSmmlv(entity.getSmmlv());
         dto.setAuxilioTransporte(entity.getAuxilioTransporte());
         dto.setPctSaludEmpleado(entity.getPctSaludEmpleado());

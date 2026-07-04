@@ -45,6 +45,9 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class MermaServiceImpl implements MermaService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final MermaQueryRepository mermaRepository;
     private final MermaJPARepository mermaJPARepository;
     private final MermaDetalleJPARepository detalleJPARepository;
@@ -182,6 +185,11 @@ public class MermaServiceImpl implements MermaService {
         merma.setCostoTotal(costoTotal);
         mermaJPARepository.save(merma);
 
+        // Asiento contable de la merma tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                        "MERMA", merma.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+
         return obtenerPorId(merma.getId(), empresaId);
     }
 
@@ -222,6 +230,11 @@ public class MermaServiceImpl implements MermaService {
 
         merma.setEstado("ANULADA");
         mermaJPARepository.save(merma);
+
+        // Reversar el asiento de la merma tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "MERMA", merma.getId(), empresaId, null));
     }
 
     private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,

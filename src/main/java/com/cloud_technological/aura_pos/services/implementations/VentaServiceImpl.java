@@ -12,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.CreateCuentaCobrarDto;
-import com.cloud_technological.aura_pos.dto.facturacion.FacturaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDetalleDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaPagoDto;
@@ -63,7 +62,6 @@ import com.cloud_technological.aura_pos.dto.cartera.ValidacionCreditoDto;
 import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
-import com.cloud_technological.aura_pos.services.FacturaService;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -93,11 +91,13 @@ public class VentaServiceImpl implements VentaService {
     private final VentaPagoMapper pagoMapper;
     private final ProductoComposicionJPARepository composicionJPARepository;
     private final ProductoPresentacionJPARepository presentacionJPARepository;
-    private final FacturaService facturaService;
     private final CuentaCobrarService cuentaCobrarService;
     private final ComisionService comisionService;
     private final CarteraService carteraService;
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
+
+    @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     private PedidoVendedorJPARepository pedidoVendedorJPARepository;
@@ -126,7 +126,6 @@ public class VentaServiceImpl implements VentaService {
             ProductoPresentacionJPARepository presentacionJPARepository,
             VentaDetalleMapper detalleMapper,
             VentaPagoMapper pagoMapper,
-            FacturaService facturaService,
             CuentaCobrarService cuentaCobrarService,
             ComisionService comisionService,
             CarteraService carteraService,
@@ -151,7 +150,6 @@ public class VentaServiceImpl implements VentaService {
         this.ventaMapper = ventaMapper;
         this.detalleMapper = detalleMapper;
         this.pagoMapper = pagoMapper;
-        this.facturaService = facturaService;
         this.cuentaCobrarService = cuentaCobrarService;
         this.comisionService = comisionService;
         this.carteraService = carteraService;
@@ -356,6 +354,10 @@ public class VentaServiceImpl implements VentaService {
             detalle.setImpuestoValor(impuestoLinea);
 
             detalle.setSubtotalLinea(subtotalLinea);
+
+            // Costo de la línea en unidades base (para el asiento de costo de venta).
+            // Se captura el costo vigente al momento de la venta.
+            detalle.setCostoLinea(calcularCostoBase(producto, cantidadBase));
 
             // Asignar presentación al detalle si aplica
             if (presentacion != null) {
@@ -588,17 +590,21 @@ public class VentaServiceImpl implements VentaService {
             cuentaCobrarService.crear(cuentaCobrarDto, empresaId, usuarioId);
         }
 
-        // 9. Crear factura automáticamente desde la venta
-        FacturaDto facturaDto = facturaService.crearDesdeVenta(venta.getId(), empresaId, usuarioId.intValue());
-
-        // 9. Obtener venta con factura asignada
+        // 9. La factura interna NO se crea automáticamente. Se genera on-demand
+        //    cuando el usuario la solicite (FacturaController POST /facturas/desde-venta).
+        //    Así solo se factura la venta que se elija, no todas.
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
-        ventaDto.setFacturaId(facturaDto.getId());
 
         // 10. Si el vendedor tiene un empleado vinculado, crear automáticamente un pedido_vendedor COBRADA
         if (usuario.getEmpleado() != null) {
             crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
         }
+
+        // 11. Disparar la generación del asiento contable tras el commit de la venta.
+        //     Si la contabilización falla, la venta NO se revierte (se registra en ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.VentaContabilizableEvent(
+                        venta.getId(), empresaId, usuarioId.intValue()));
 
         return ventaDto;
     }
@@ -739,9 +745,35 @@ public class VentaServiceImpl implements VentaService {
 
         venta.setEstadoVenta("ANULADA");
         ventaJPARepository.save(venta);
+
+        // Reversar el asiento contable de la venta tras el commit de la anulación.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "VENTA", venta.getId(), empresaId, null));
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
+
+    /**
+     * Costo total de una línea en unidades base. Para productos compuestos suma
+     * el costo de cada componente; para simples usa el costo del producto.
+     */
+    private BigDecimal calcularCostoBase(ProductoEntity producto, BigDecimal cantidadBase) {
+        List<ProductoComposicionEntity> componentes
+                = composicionJPARepository.findByProductoPadreId(producto.getId());
+        if (!componentes.isEmpty()) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (ProductoComposicionEntity comp : componentes) {
+                ProductoEntity hijo = comp.getProductoHijo();
+                BigDecimal costoHijo = hijo.getCosto() != null ? hijo.getCosto() : BigDecimal.ZERO;
+                total = total.add(cantidadBase.multiply(comp.getCantidad()).multiply(costoHijo));
+            }
+            return total.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal costo = producto.getCosto() != null ? producto.getCosto() : BigDecimal.ZERO;
+        return cantidadBase.multiply(costo).setScale(2, RoundingMode.HALF_UP);
+    }
+
     private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {

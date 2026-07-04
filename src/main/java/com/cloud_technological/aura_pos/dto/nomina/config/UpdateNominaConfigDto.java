@@ -10,6 +10,7 @@ import lombok.Setter;
 public class UpdateNominaConfigDto {
     private String modoNomina;      // COMPLETO | SIMPLIFICADO
     private String periodicidad;    // MENSUAL | QUINCENAL | SEMANAL
+    private String modoLiquidacion; // SIN_ASISTENCIA | CON_ASISTENCIA_OBLIGATORIA | MIXTA
     private BigDecimal smmlv;
     private BigDecimal auxilioTransporte;
     private BigDecimal pctSaludEmpleado;

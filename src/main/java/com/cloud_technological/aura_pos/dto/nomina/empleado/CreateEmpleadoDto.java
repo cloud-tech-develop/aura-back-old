@@ -15,10 +15,12 @@ public class CreateEmpleadoDto {
     private String numeroDocumento;
     private String cargo;
     private LocalDate fechaIngreso;
+    private LocalDate fechaFinContrato; // requerido cuando tipoContrato = FIJO
     private BigDecimal salarioBase;
     private String tipoContrato; // INDEFINIDO | FIJO | OBRA_LABOR | PRESTACION_SERVICIOS
     private String banco;
     private String numeroCuenta;
     private String tipoCuenta; // AHORROS | CORRIENTE
     private Integer nivelRiesgoArl; // 1 al 5 (opcional, default 1)
+    private Boolean requiereControlAsistencia; // opcional, default false
 }

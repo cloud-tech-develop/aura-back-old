@@ -57,6 +57,10 @@ public class AbonoPagarEntity {
     @Column(length = 100)
     private String banco;
 
+    /** Cuenta bancaria DE DONDE salió el dinero del abono (origen del pago). */
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 

@@ -56,6 +56,9 @@ public class EmpleadoEntity {
     @Column(name = "fecha_retiro")
     private LocalDate fechaRetiro;
 
+    @Column(name = "fecha_fin_contrato")
+    private LocalDate fechaFinContrato; // aplica a contratos a término FIJO
+
     @Column(name = "salario_base", nullable = false, precision = 15, scale = 2)
     private BigDecimal salarioBase;
 
@@ -73,6 +76,9 @@ public class EmpleadoEntity {
 
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
+
+    @Column(name = "requiere_control_asistencia", nullable = false)
+    private Boolean requiereControlAsistencia = false;
 
     @OneToOne(mappedBy = "empleado", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private EmpleadoArlEntity arl;

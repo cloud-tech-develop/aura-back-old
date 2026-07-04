@@ -39,6 +39,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @Service
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final CuentaCobrarQueryRepository queryRepository;
     private final CuentaCobrarJPARepository jpaRepository;
     private final AbonoCobrarJPARepository abonoJpaRepository;
@@ -206,7 +209,48 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
         jpaRepository.save(cuenta);
 
+        // Asiento contable del recaudo tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                        "COBRO", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+
         return toAbonoDto(abono);
+    }
+
+    @Override
+    @Transactional
+    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia) {
+        CuentaCobrarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por cobrar #" + cuentaId + " no encontrada"));
+        if ("pagada".equals(cuenta.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta por cobrar #" + cuentaId + " ya está pagada");
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto aplicado debe ser mayor a 0");
+        if (monto.compareTo(cuenta.getSaldoPendiente()) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El monto aplicado (" + monto + ") supera el saldo pendiente de la cuenta #" + cuentaId);
+
+        UsuarioEntity usuario = usuarioId != null ? usuarioRepository.findById(usuarioId).orElse(null) : null;
+        AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
+                .cuentaCobrar(cuenta)
+                .usuario(usuario)
+                .monto(monto)
+                .metodoPago("COMPROBANTE")
+                .referencia(referencia)
+                .fechaPago(LocalDateTime.now())
+                .build();
+        abonoJpaRepository.save(abono);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(monto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(monto));
+        if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
+            cuenta.setSaldoPendiente(BigDecimal.ZERO);
+            cuenta.setEstado("pagada");
+        } else {
+            cuenta.setEstado("parcial");
+        }
+        jpaRepository.save(cuenta);
+        // Sin evento contable: el comprobante ya generó el asiento.
     }
 
     @Override

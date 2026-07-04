@@ -18,6 +18,10 @@ public class CuentaBancariaDto {
     private String banco;
     private String numeroCuenta;
     private String titular;
+    private Long terceroId;
+    private String terceroNombre;
+    private Long cuentaContableId;
+    private String cuentaContableNombre;
     private BigDecimal saldoInicial;
     private BigDecimal saldoActual;
     private Boolean activa;

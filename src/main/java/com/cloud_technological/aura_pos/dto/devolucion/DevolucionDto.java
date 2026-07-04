@@ -23,6 +23,9 @@ public class DevolucionDto {
     private String estado;
     private String motivo;
     private BigDecimal totalDevolucion;
+    private BigDecimal totalAgregado;
+    private BigDecimal netoDiferencia;
+    private java.time.LocalDate fechaDevolucion;
     private Boolean reintegraInventario;
     private String observaciones;
     private String metodoDevolucion;

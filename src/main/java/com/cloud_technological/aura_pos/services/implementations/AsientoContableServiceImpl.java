@@ -15,6 +15,7 @@ import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoDetalleDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaDto;
@@ -24,10 +25,13 @@ import com.cloud_technological.aura_pos.dto.contabilidad.LibroMayorLineaDto;
 import com.cloud_technological.aura_pos.entity.AsientoContableEntity;
 import com.cloud_technological.aura_pos.entity.AsientoDetalleEntity;
 import com.cloud_technological.aura_pos.entity.PeriodoContableEntity;
+import com.cloud_technological.aura_pos.entity.TerceroEntity;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
+import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
+import com.cloud_technological.aura_pos.utils.AsientoBalanceValidator;
 
 @Service
 public class AsientoContableServiceImpl implements AsientoContableService {
@@ -40,6 +44,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @Autowired
     private PeriodoContableJPARepository periodoRepo;
+
+    @Autowired
+    private TerceroJPARepository terceroRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CuentaCobrarService cuentaCobrarService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
 
     @Override
     public List<AsientoContableTableDto> listar(Integer empresaId, String desde, String hasta,
@@ -66,10 +79,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .map(d -> d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (totalDebito.compareTo(totalCredito) != 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El asiento no está cuadrado: débito=" + totalDebito + " crédito=" + totalCredito);
-        }
+        AsientoBalanceValidator.validarCuadre(totalDebito, totalCredito);
 
         // Validar período contable abierto
         PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
@@ -111,6 +121,112 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         AsientoContableTableDto result = toTableDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
         return result;
+    }
+
+    @Override
+    @Transactional
+    public AsientoContableTableDto crearComprobante(Integer empresaId, Integer usuarioId,
+            CreateComprobanteDto dto) {
+        BigDecimal totalDebito = dto.getDetalles().stream()
+                .map(d -> d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredito = dto.getDetalles().stream()
+                .map(d -> d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        AsientoBalanceValidator.validarCuadre(totalDebito, totalCredito);
+
+        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No hay un período contable ABIERTO. Abra un período antes de registrar comprobantes."));
+
+        String tipo = dto.getTipoComprobante().trim().toUpperCase();
+
+        // Snapshot del beneficiario: si viene el tercero y faltan datos, se completan desde su ficha.
+        String benefNombre = dto.getBeneficiarioNombre();
+        String benefDireccion = dto.getBeneficiarioDireccion();
+        String benefTelefono = dto.getBeneficiarioTelefono();
+        if (dto.getBeneficiarioTerceroId() != null) {
+            TerceroEntity t = terceroRepo.findByIdAndEmpresaId(dto.getBeneficiarioTerceroId(), empresaId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Beneficiario (tercero) no encontrado"));
+            if (isBlank(benefNombre)) benefNombre = nombreTercero(t);
+            if (isBlank(benefDireccion)) benefDireccion = t.getDireccion();
+            if (isBlank(benefTelefono)) benefTelefono = t.getTelefono();
+        }
+
+        List<AsientoDetalleEntity> detalles = dto.getDetalles().stream()
+                .map(d -> AsientoDetalleEntity.builder()
+                        .cuentaId(d.getCuentaId())
+                        .descripcion(d.getDescripcion())
+                        .debito(d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO)
+                        .credito(d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
+                        .terceroId(d.getTerceroId())
+                        .centroCostoId(d.getCentroCostoId())
+                        .build())
+                .collect(Collectors.toList());
+
+        String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, tipo);
+
+        AsientoContableEntity asiento = AsientoContableEntity.builder()
+                .empresaId(empresaId)
+                .fecha(dto.getFecha())
+                .descripcion(dto.getConcepto().trim())
+                .tipoOrigen("MANUAL")
+                .tipoComprobante(tipo)
+                .beneficiarioTerceroId(dto.getBeneficiarioTerceroId())
+                .beneficiarioNombre(benefNombre)
+                .beneficiarioDireccion(benefDireccion)
+                .beneficiarioTelefono(benefTelefono)
+                .ciudad(dto.getCiudad())
+                .fechaVencimiento(dto.getFechaVencimiento())
+                .periodoContableId(periodo.getId())
+                .numeroComprobante(comprobante)
+                .totalDebito(totalDebito)
+                .totalCredito(totalCredito)
+                .estado("CONTABILIZADO")
+                .usuarioId(usuarioId)
+                .detalles(detalles)
+                .build();
+
+        detalles.forEach(d -> d.setAsiento(asiento));
+
+        AsientoContableEntity saved = repo.save(asiento);
+
+        // ── Cruce de cartera (aplicación del pago) en la misma transacción ──
+        if (dto.getAplicaciones() != null) {
+            for (var ap : dto.getAplicaciones()) {
+                if (ap == null || ap.getCuentaId() == null
+                        || ap.getMonto() == null || ap.getMonto().signum() <= 0) continue;
+                String referencia = "Comprobante " + comprobante;
+                if ("CXP".equalsIgnoreCase(ap.getTipo())) {
+                    cuentaPagarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                } else if ("CXC".equalsIgnoreCase(ap.getTipo())) {
+                    cuentaCobrarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                }
+            }
+        }
+
+        AsientoContableTableDto result = toTableDto(saved);
+        result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
+        return result;
+    }
+
+    @Override
+    public String siguienteConsecutivo(Integer empresaId, String tipoComprobante) {
+        String tipo = tipoComprobante != null ? tipoComprobante.trim().toUpperCase() : "CD";
+        return queryRepo.siguienteNumeroComprobante(empresaId, tipo);
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static String nombreTercero(TerceroEntity t) {
+        if (!isBlank(t.getRazonSocial())) return t.getRazonSocial();
+        String nombre = ((t.getNombres() != null ? t.getNombres() : "") + " "
+                + (t.getApellidos() != null ? t.getApellidos() : "")).trim();
+        return nombre.isEmpty() ? null : nombre;
     }
 
     @Override
@@ -264,6 +380,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         dto.setTotalCredito(e.getTotalCredito());
         dto.setEstado(e.getEstado());
         dto.setCreatedAt(e.getCreatedAt() != null ? e.getCreatedAt().toString() : null);
+        dto.setTipoComprobante(e.getTipoComprobante());
+        dto.setBeneficiarioTerceroId(e.getBeneficiarioTerceroId());
+        dto.setBeneficiarioNombre(e.getBeneficiarioNombre());
+        dto.setBeneficiarioDireccion(e.getBeneficiarioDireccion());
+        dto.setBeneficiarioTelefono(e.getBeneficiarioTelefono());
+        dto.setCiudad(e.getCiudad());
+        dto.setFechaVencimiento(e.getFechaVencimiento() != null ? e.getFechaVencimiento().toString() : null);
         return dto;
     }
 }

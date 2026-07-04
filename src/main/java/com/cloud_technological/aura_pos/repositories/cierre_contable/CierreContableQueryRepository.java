@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import com.cloud_technological.aura_pos.dto.cierre_contable.CierreContableDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.MovimientoCierreDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.ReporteIvaDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.SaldoDisponibleDto;
 
 @Repository
 public class CierreContableQueryRepository {
@@ -174,10 +175,37 @@ public class CierreContableQueryRepository {
               AND cp.saldo_pendiente > 0
             """, params);
 
+        // ── Posición de efectivo: saldo del mayor de las cuentas del disponible ─
+        // (11xx: caja/bancos) hasta la fecha de corte. Refleja el saldo contable
+        // real de cada banco/caja según los asientos contabilizados.
+        List<SaldoDisponibleDto> disponible = jdbc.query("""
+            SELECT
+                pc.codigo,
+                pc.nombre,
+                COALESCE(SUM(ad.debito - ad.credito), 0) AS saldo
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.estado = 'CONTABILIZADO'
+              AND a.fecha <= CAST(:fechaHasta AS DATE)
+              AND pc.codigo LIKE '11%'
+            GROUP BY pc.codigo, pc.nombre
+            HAVING COALESCE(SUM(ad.debito - ad.credito), 0) <> 0
+            ORDER BY pc.codigo
+            """, params, (rs, i) -> new SaldoDisponibleDto(
+                rs.getString("codigo"),
+                rs.getString("nombre"),
+                rs.getBigDecimal("saldo")));
+
         // ── Armar DTO ─────────────────────────────────────────
         CierreContableDto dto = new CierreContableDto();
         dto.setFechaDesde(fechaDesde);
         dto.setFechaHasta(fechaHasta);
+        dto.setDisponible(disponible);
+        dto.setTotalDisponible(disponible.stream()
+                .map(SaldoDisponibleDto::getSaldo)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         // Ventas
         dto.setCantidadVentas(toInt(ventas.get("cantidad_ventas")));
@@ -186,6 +214,10 @@ public class CierreContableQueryRepository {
         dto.setTotalImpuestos(toBD(ventas.get("total_impuestos")));
         dto.setTotalVentasNeto(toBD(ventas.get("total_ventas_neto")));
         dto.setTotalVentasSinIva(toBD(ventas.get("total_ventas_sin_iva")));
+
+        // Ventas brutas + disponible de caja/bancos (activos del período)
+        dto.setVentasBrutasConDisponible(
+                dto.getTotalVentasBruto().add(dto.getTotalDisponible()));
 
         // Compras
         dto.setCantidadCompras(toInt(compras.get("cantidad_compras")));

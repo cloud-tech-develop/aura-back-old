@@ -23,6 +23,7 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
 
     @Autowired private PeriodoContableJPARepository jpaRepo;
     @Autowired private PeriodoContableQueryRepository queryRepo;
+    @Autowired private com.cloud_technological.aura_pos.services.ContabilidadAutoService autoService;
 
     @Override
     public List<PeriodoContableTableDto> listar(Integer empresaId) {
@@ -81,6 +82,10 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
                 "No se puede cerrar el período. Los siguientes comprobantes no cuadran (débito ≠ crédito): "
                 + String.join(", ", sinCuadre));
         }
+
+        // Asiento de cierre: cancela ingresos/costos/gastos contra la utilidad del
+        // ejercicio. Dentro de la misma transacción: si falla, no se cierra el período.
+        autoService.generarCierre(id, empresaId, usuarioId != null ? usuarioId.intValue() : null);
 
         periodo.setEstado("CERRADO");
         periodo.setFechaCierre(LocalDate.now());

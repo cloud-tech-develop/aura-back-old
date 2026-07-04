@@ -77,6 +77,9 @@ public class CompraServiceImpl implements CompraService {
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
     public CompraServiceImpl(CompraQueryRepository compraRepository,
             CompraJPARepository compraJPARepository,
             CompraPagoJPARepository compraPagoJPARepository,
@@ -250,8 +253,13 @@ public class CompraServiceImpl implements CompraService {
         compra.setNetaAPagar(totalBruto.subtract(totalRetenciones));
         compraJPARepository.save(compra);
 
-        // 4. Procesar pagos y generar notas contables (HU-008)
-        if (dto.getPagos() != null && !dto.getPagos().isEmpty()) {
+        // 4. Procesar pagos y generar notas contables (HU-008).
+        // Una compra a CRÉDITO no tiene salida de dinero al momento de la compra:
+        // toda la obligación queda con el proveedor. Por eso se ignoran los pagos
+        // que pudieran venir en el payload (evita líneas a Bancos/Caja en el asiento,
+        // descontar saldo bancario sin movimiento real y CxP inconsistentes).
+        boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
+        if (!esCredito && dto.getPagos() != null && !dto.getPagos().isEmpty()) {
             UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
@@ -302,12 +310,15 @@ public class CompraServiceImpl implements CompraService {
             }
         }
 
-        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO
-        if ("CREDITO".equalsIgnoreCase(compra.getFormaPago())) {
+        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
+        // La deuda con el proveedor es la neta a pagar (total menos retenciones
+        // practicadas), igual que la línea de Proveedores del asiento contable.
+        if (esCredito) {
             CreateCuentaPagarDto cuentaPagarDto = new CreateCuentaPagarDto();
             cuentaPagarDto.setProveedorId(dto.getProveedorId());
             cuentaPagarDto.setCompraId(compra.getId());
-            cuentaPagarDto.setTotalDeuda(compra.getTotal());
+            cuentaPagarDto.setTotalDeuda(compra.getNetaAPagar() != null
+                    ? compra.getNetaAPagar() : compra.getTotal());
             cuentaPagarDto.setFechaEmision(compra.getFecha());
             cuentaPagarDto.setFechaVencimiento(dto.getFechaVencimiento() != null ? dto.getFechaVencimiento() : compra.getFecha().plusDays(30));
             cuentaPagarDto.setObservaciones("Compra #" + compra.getId() + " - Compra a crédito");
@@ -335,6 +346,12 @@ public class CompraServiceImpl implements CompraService {
                     });
             }
         }
+
+        // Disparar la generación del asiento contable tras el commit de la compra.
+        // Si la contabilización falla, la compra NO se revierte (se registra en ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.CompraContabilizableEvent(
+                        compra.getId(), empresaId, usuarioId.intValue()));
 
         return obtenerPorId(compra.getId(), empresaId);
     }
@@ -383,6 +400,11 @@ public class CompraServiceImpl implements CompraService {
 
         compra.setEstado("ANULADA");
         compraJPARepository.save(compra);
+
+        // Reversar el asiento contable de la compra tras el commit de la anulación.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "COMPRA", compra.getId(), empresaId, null));
     }
 
     @Override
@@ -409,7 +431,10 @@ public class CompraServiceImpl implements CompraService {
             if (inventario != null) {
                 BigDecimal saldoAnterior = inventario.getStockActual();
                 BigDecimal saldoNuevo = saldoAnterior.subtract(detalle.getCantidad());
-                inventario.setStockActual(saldoNuevo.max(BigDecimal.ZERO));
+                // El kardex debe ser secuencial: el stock puede quedar negativo de forma
+                // transitoria tras la reversión para que el siguiente movimiento continúe
+                // desde este saldo (no se clava en 0).
+                inventario.setStockActual(saldoNuevo);
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
                 registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),

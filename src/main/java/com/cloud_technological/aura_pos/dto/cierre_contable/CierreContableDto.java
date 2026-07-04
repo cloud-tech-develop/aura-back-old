@@ -21,6 +21,7 @@ public class CierreContableDto {
     private BigDecimal totalImpuestos;         // IVA cobrado
     private BigDecimal totalVentasNeto;        // total_pagar (legacy, con IVA)
     private BigDecimal totalVentasSinIva;      // subtotal − descuentos (base real)
+    private BigDecimal ventasBrutasConDisponible; // totalVentasBruto + totalDisponible (caja/bancos)
 
     // ── Compras del período ────────────────────────────────
     private Integer    cantidadCompras;
@@ -76,4 +77,8 @@ public class CierreContableDto {
     private BigDecimal totalGastosDeducibles;
     private BigDecimal totalGastosNoDeducibles;
     private BigDecimal totalGastos;
+
+    // ── Posición de efectivo (saldos del mayor: caja/bancos 11xx a fechaHasta) ──
+    private List<SaldoDisponibleDto> disponible = new ArrayList<>();
+    private BigDecimal totalDisponible;
 }

@@ -20,6 +20,9 @@ public class NominaDto {
     private String empleadoDocumento;
     private String cargo;
     private String tipoContrato;
+    private String banco;
+    private String numeroCuenta;
+    private String tipoCuenta;
     // Devengados
     private BigDecimal salarioBase;
     private Integer diasTrabajados;

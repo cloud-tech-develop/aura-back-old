@@ -37,6 +37,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @Service
 public class CuentaPagarServiceImpl implements CuentaPagarService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final CuentaPagarQueryRepository queryRepository;
     private final CuentaPagarJPARepository jpaRepository;
     private final AbonoPagarJPARepository abonoJpaRepository;
@@ -44,6 +47,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
     private final TerceroJPARepository terceroRepository;
     private final UsuarioJPARepository usuarioRepository;
     private final TurnoCajaJPARepository turnoCajaRepository;
+    private final com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository;
     private final CuentaPagarMapper mapper;
 
     @Autowired
@@ -54,6 +58,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
             TerceroJPARepository terceroRepository,
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
+            com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository,
             CuentaPagarMapper mapper) {
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
@@ -62,6 +67,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         this.terceroRepository = terceroRepository;
         this.usuarioRepository = usuarioRepository;
         this.turnoCajaRepository = turnoCajaRepository;
+        this.cuentaBancariaRepository = cuentaBancariaRepository;
         this.mapper = mapper;
     }
 
@@ -181,10 +187,20 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                 .metodoPago(dto.getMetodoPago())
                 .referencia(dto.getReferencia())
                 .banco(dto.getBanco())
+                .cuentaBancariaId(dto.getCuentaBancariaId())
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
 
         abono = abonoJpaRepository.save(abono);
+
+        // Si el abono sale de una cuenta bancaria, descontar su saldo real.
+        if (dto.getCuentaBancariaId() != null) {
+            cuentaBancariaRepository.findByIdAndEmpresaId(dto.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().subtract(dto.getMonto()));
+                        cuentaBancariaRepository.save(cb);
+                    });
+        }
 
         // Actualizar cuenta
         cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
@@ -197,7 +213,48 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
 
         jpaRepository.save(cuenta);
 
+        // Asiento contable del pago a proveedor tras el commit.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
+                        "PAGO", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+
         return toAbonoDto(abono);
+    }
+
+    @Override
+    @Transactional
+    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia) {
+        CuentaPagarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por pagar #" + cuentaId + " no encontrada"));
+        if ("pagada".equals(cuenta.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta por pagar #" + cuentaId + " ya está pagada");
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto aplicado debe ser mayor a 0");
+        if (monto.compareTo(cuenta.getSaldoPendiente()) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El monto aplicado (" + monto + ") supera el saldo pendiente de la cuenta #" + cuentaId);
+
+        UsuarioEntity usuario = usuarioId != null ? usuarioRepository.findById(usuarioId).orElse(null) : null;
+        AbonoPagarEntity abono = AbonoPagarEntity.builder()
+                .cuentaPagar(cuenta)
+                .usuario(usuario)
+                .monto(monto)
+                .metodoPago("COMPROBANTE")
+                .referencia(referencia)
+                .fechaPago(LocalDateTime.now())
+                .build();
+        abonoJpaRepository.save(abono);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(monto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(monto));
+        if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
+            cuenta.setSaldoPendiente(BigDecimal.ZERO);
+            cuenta.setEstado("pagada");
+        } else {
+            cuenta.setEstado("parcial");
+        }
+        jpaRepository.save(cuenta);
+        // Sin evento contable: el comprobante ya generó el asiento.
     }
 
     @Override
@@ -234,6 +291,15 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
         cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
         cuenta.setEstado("activa");
+
+        // Si el abono salió de una cuenta bancaria, devolverle el saldo.
+        if (abono.getCuentaBancariaId() != null) {
+            cuentaBancariaRepository.findByIdAndEmpresaId(abono.getCuentaBancariaId(), empresaId)
+                    .ifPresent(cb -> {
+                        cb.setSaldoActual(cb.getSaldoActual().add(abono.getMonto()));
+                        cuentaBancariaRepository.save(cb);
+                    });
+        }
 
         jpaRepository.save(cuenta);
         abonoJpaRepository.delete(abono);
@@ -330,6 +396,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         dto.setMetodoPago(entity.getMetodoPago());
         dto.setReferencia(entity.getReferencia());
         dto.setBanco(entity.getBanco());
+        dto.setCuentaBancariaId(entity.getCuentaBancariaId());
         dto.setFechaPago(entity.getFechaPago());
         dto.setCreatedAt(entity.getCreatedAt());
         

@@ -91,6 +91,10 @@ public class TerceroEntity {
     @Column(name = "es_empleado")
     private Boolean esEmpleado;
 
+    /** Entidad financiera / banco. Exclusivo: no tiene rol comercial. */
+    @Column(name = "es_banco")
+    private Boolean esBanco;
+
     private Boolean activo;
 
     @Column(name = "created_at", nullable = false, updatable = false)
