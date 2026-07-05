@@ -47,6 +47,9 @@ public class TurnoTrabajoEntity {
     @Column(name = "cruza_medianoche", nullable = false)
     private Boolean cruzaMedianoche = false;
 
+    @Column(name = "horas_ordinarias_programadas", precision = 5, scale = 2)
+    private java.math.BigDecimal horasOrdinariasProgramadas = new java.math.BigDecimal("8");
+
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 

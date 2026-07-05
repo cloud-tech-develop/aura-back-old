@@ -25,6 +25,7 @@ public class R2StorageService {
             "image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"
     );
     private static final long MAX_BYTES = 10L * 1024 * 1024; // 10 MB
+    private static final long MAX_PDF_BYTES = 15L * 1024 * 1024; // 15 MB
 
     @Autowired(required = false)
     @Nullable
@@ -63,6 +64,41 @@ public class R2StorageService {
         String base = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
         String url = base + "/" + key;
         log.info("Imagen subida: {}", url);
+        return url;
+    }
+
+    /** Sube un PDF (soporte de asistencia) al bucket y devuelve la URL pública. */
+    public String subirPdf(MultipartFile file, String carpeta) {
+        if (s3Client == null)
+            throw new GlobalException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "El almacenamiento de archivos no está configurado en este entorno.");
+        if (file == null || file.isEmpty())
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo no puede estar vacío");
+        if (!"application/pdf".equals(file.getContentType()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Solo se aceptan archivos PDF");
+        if (file.getSize() > MAX_PDF_BYTES)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El archivo supera el tamaño máximo permitido de 15 MB");
+
+        String key = carpeta + "/" + UUID.randomUUID() + ".pdf";
+        try {
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType("application/pdf")
+                            .build(),
+                    RequestBody.fromBytes(file.getBytes())
+            );
+        } catch (Exception e) {
+            log.error("Error subiendo PDF a R2: {}", e.getMessage(), e);
+            throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo subir el PDF. Intenta de nuevo.");
+        }
+
+        String base = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
+        String url = base + "/" + key;
+        log.info("PDF subido: {}", url);
         return url;
     }
 
