@@ -64,6 +64,12 @@ public class NominaServiceImpl implements NominaService {
     private com.cloud_technological.aura_pos.repositories.asistencia.AutorizacionLiquidacionJPARepository autorizacionRepo;
 
     @Autowired
+    private com.cloud_technological.aura_pos.repositories.asistencia_frente.AsistenciaFrenteQueryRepository frenteQueryRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.implementations.LaboralConfigService laboralConfigService;
+
+    @Autowired
     private com.cloud_technological.aura_pos.services.AuditoriaNominaService auditoria;
 
     @Autowired
@@ -212,7 +218,7 @@ public class NominaServiceImpl implements NominaService {
             consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
         }
 
-        nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado));
+        nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, empresaId));
         calcular(nomina, empleado, config);
         nomina.setUpdatedAt(LocalDateTime.now());
 
@@ -266,7 +272,7 @@ public class NominaServiceImpl implements NominaService {
                 consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
             }
 
-            nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado));
+            nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, empresaId));
             calcular(nomina, empleado, config);
             nomina.setUpdatedAt(LocalDateTime.now());
             nominaRepo.save(nomina);
@@ -597,13 +603,13 @@ public class NominaServiceImpl implements NominaService {
 
     // ─── Gating de asistencia (Fase 5) ────────────────────────────────────────
 
-    // Factores de recargo/hora extra (Colombia). Deben validarse contra la
-    // normatividad vigente; idealmente parametrizables por fecha en config.
-    private static final BigDecimal HORAS_MES = new BigDecimal("240"); // 30 días × 8h
-    private static final BigDecimal F_EXTRA_DIURNA = new BigDecimal("1.25");
-    private static final BigDecimal F_EXTRA_NOCTURNA = new BigDecimal("1.75");
-    private static final BigDecimal F_RECARGO_NOCTURNO = new BigDecimal("0.35");
-    private static final BigDecimal F_RECARGO_DOMINICAL = new BigDecimal("0.75");
+    // Valores por DEFECTO (fallback) si no existe configuración legal vigente en la empresa.
+    // La fuente real de verdad es jornada_laboral_config (parametrizable por vigencia, G1/G3).
+    private static final BigDecimal HORAS_MES_DEFAULT = new BigDecimal("240"); // 30 días × 8h
+    private static final BigDecimal PCT_EXTRA_DIURNA_DEFAULT = new BigDecimal("25");
+    private static final BigDecimal PCT_EXTRA_NOCTURNA_DEFAULT = new BigDecimal("75");
+    private static final BigDecimal PCT_RECARGO_NOCTURNO_DEFAULT = new BigDecimal("35");
+    private static final BigDecimal PCT_RECARGO_DOMINICAL_DEFAULT = new BigDecimal("75");
 
     /** ¿Este empleado debe pasar por control de asistencia antes de liquidar? */
     private boolean requiereAsistencia(NominaConfigEntity config, EmpleadoEntity empleado) {
@@ -615,9 +621,21 @@ public class NominaServiceImpl implements NominaService {
 
     /** La asistencia del período está aprobada, o existe autorización excepcional activa. */
     private boolean asistenciaAprobadaOAutorizada(Integer empresaId, PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
+        // 1) Autorización excepcional activa: permite liquidar aunque falte asistencia.
         if (autorizacionRepo.existsByEmpresaIdAndEmpleadoIdAndPeriodoNominaIdAndEstado(
                 empresaId, empleado.getId(), periodo.getId(), "ACTIVA"))
             return true;
+
+        // 2) Asistencia por PROYECTO/FRENTE: si hay pendientes en el período → bloquea;
+        //    si está aprobada/enviada a nómina → OK. (Aditivo: no afecta empresas por turnos.)
+        if (frenteQueryRepo.tieneFrentePendiente(empresaId, empleado.getId(),
+                periodo.getFechaInicio(), periodo.getFechaFin()))
+            return false;
+        if (frenteQueryRepo.tieneFrenteConsolidada(empresaId, empleado.getId(),
+                periodo.getFechaInicio(), periodo.getFechaFin()))
+            return true;
+
+        // 3) Asistencia por TURNOS: período de asistencia aprobado que cubre el período.
         return periodoAsistenciaRepo.findByEmpresaIdOrderByFechaInicioDesc(empresaId).stream()
                 .anyMatch(pa ->
                         ("APROBADO".equals(pa.getEstado()) || "ENVIADO_A_NOMINA".equals(pa.getEstado()))
@@ -631,38 +649,65 @@ public class NominaServiceImpl implements NominaService {
      */
     private void consumirNovedadesAsistencia(NominaEntity nomina, PeriodoNominaEntity periodo,
                                              EmpleadoEntity empleado, Integer empresaId) {
-        nomina.getNovedades().removeIf(n -> "ASISTENCIA".equals(n.getOrigen()));
+        nomina.getNovedades().removeIf(n -> "ASISTENCIA".equals(n.getOrigen())
+                || "PROYECTO_FRENTE".equals(n.getOrigen()));
 
-        var staged = asistenciaNovedadRepo.findByEmpresaIdAndPeriodoNominaIdAndEmpleadoId(
-                empresaId, periodo.getId(), empleado.getId());
+        // Recargos/horas extra valorizados según la configuración legal VIGENTE en el
+        // período (Ley 2101/2466), no con factores quemados. Se resuelve una vez por período.
+        com.cloud_technological.aura_pos.dto.laboral.JornadaConfigDto cfg =
+                laboralConfigService.vigente(empresaId, periodo.getFechaFin());
+
+        // Se emparejan por FECHA trabajada dentro del rango del período (no por el FK de período,
+        // que pudo quedar anclado a otro período que cubre la misma fecha). Al consumirlas se
+        // "re-anclan" a este período para que el re-liquidar sea idempotente y no haya doble pago.
+        var staged = asistenciaNovedadRepo.findConsumiblesParaPeriodo(
+                empresaId, empleado.getId(), periodo.getId(),
+                periodo.getFechaInicio(), periodo.getFechaFin());
         for (var s : staged) {
-            if (!"APROBADA".equals(s.getEstado()) && !"ENVIADA_A_NOMINA".equals(s.getEstado())) continue;
-            NominaNovedadEntity nv = construirNovedadDesdeStaged(s, empleado.getSalarioBase());
+            NominaNovedadEntity nv = construirNovedadDesdeStaged(s, empleado.getSalarioBase(), cfg);
             if (nv == null) continue;
             nv.setNomina(nomina);
             nomina.getNovedades().add(nv);
+            s.setPeriodoNomina(periodo);
             s.setEstado("ENVIADA_A_NOMINA");
             asistenciaNovedadRepo.save(s);
         }
     }
 
     private NominaNovedadEntity construirNovedadDesdeStaged(
-            com.cloud_technological.aura_pos.entity.AsistenciaNovedadNominaEntity s, BigDecimal salarioBase) {
+            com.cloud_technological.aura_pos.entity.AsistenciaNovedadNominaEntity s, BigDecimal salarioBase,
+            com.cloud_technological.aura_pos.dto.laboral.JornadaConfigDto cfg) {
 
         BigDecimal cantidad = s.getCantidad() != null ? s.getCantidad() : BigDecimal.ZERO;
         if (cantidad.compareTo(BigDecimal.ZERO) <= 0) return null;
 
-        BigDecimal valorHora = salarioBase.divide(HORAS_MES, 6, RoundingMode.HALF_UP);
+        // Base horaria según horas_mensuales_base vigente (Ley 2101: 210 con 42h/sem), fallback 240.
+        BigDecimal horasMes = cfg != null && cfg.getHorasMensualesBase() != null
+                && cfg.getHorasMensualesBase().signum() > 0
+                ? cfg.getHorasMensualesBase() : HORAS_MES_DEFAULT;
+        BigDecimal valorHora = salarioBase.divide(horasMes, 6, RoundingMode.HALF_UP);
         BigDecimal valorDia = salarioBase.divide(TREINTA, 6, RoundingMode.HALF_UP);
         BigDecimal valorMinuto = valorHora.divide(new BigDecimal("60"), 6, RoundingMode.HALF_UP);
+
+        // Factores derivados de los % configurados. Horas EXTRA se pagan completas
+        // (base + recargo → 1 + pct/100); los RECARGOS solo el sobrecargo (pct/100),
+        // porque la jornada base ya se paga por DÍA.
+        BigDecimal fExtraDiurna = factorExtra(cfg != null ? cfg.getRecargoExtraDiurna() : null, PCT_EXTRA_DIURNA_DEFAULT);
+        BigDecimal fExtraNocturna = factorExtra(cfg != null ? cfg.getRecargoExtraNocturna() : null, PCT_EXTRA_NOCTURNA_DEFAULT);
+        BigDecimal fRecargoNoct = factorRecargo(cfg != null ? cfg.getRecargoNocturno() : null, PCT_RECARGO_NOCTURNO_DEFAULT);
+        BigDecimal fRecargoDom = factorRecargo(cfg != null ? cfg.getRecargoDominicalFestivo() : null, PCT_RECARGO_DOMINICAL_DEFAULT);
 
         BigDecimal valorUnitario;
         boolean deduccion;
         switch (s.getTipoNovedad()) {
-            case "HORA_EXTRA_DIURNA" -> { valorUnitario = valorHora.multiply(F_EXTRA_DIURNA); deduccion = false; }
-            case "HORA_EXTRA_NOCTURNA" -> { valorUnitario = valorHora.multiply(F_EXTRA_NOCTURNA); deduccion = false; }
-            case "RECARGO_NOCTURNO" -> { valorUnitario = valorHora.multiply(F_RECARGO_NOCTURNO); deduccion = false; }
-            case "RECARGO_DOMINICAL_FESTIVO" -> { valorUnitario = valorHora.multiply(F_RECARGO_DOMINICAL); deduccion = false; }
+            case "HORA_EXTRA_DIURNA" -> { valorUnitario = valorHora.multiply(fExtraDiurna); deduccion = false; }
+            case "HORA_EXTRA_NOCTURNA" -> { valorUnitario = valorHora.multiply(fExtraNocturna); deduccion = false; }
+            case "RECARGO_NOCTURNO" -> { valorUnitario = valorHora.multiply(fRecargoNoct); deduccion = false; }
+            case "RECARGO_DOMINICAL_FESTIVO" -> { valorUnitario = valorHora.multiply(fRecargoDom); deduccion = false; }
+            case "HORA_EXTRA_DOMINICAL_FESTIVA" -> {
+                // Hora extra en domingo/festivo: se paga completa (extra) + recargo dom/fest.
+                valorUnitario = valorHora.multiply(fExtraDiurna.add(fRecargoDom)); deduccion = false;
+            }
             case "AUSENCIA_NO_JUSTIFICADA" -> { valorUnitario = valorDia; deduccion = true; }
             case "LLEGADA_TARDE_DESCONTADA" -> { valorUnitario = valorMinuto; deduccion = true; }
             default -> { return null; }
@@ -677,10 +722,22 @@ public class NominaServiceImpl implements NominaService {
         nv.setValorTotal(valorTotal);
         nv.setEsDeduccion(deduccion);
         nv.setNaturaleza(deduccion ? "DEDUCCION" : "DEVENGADO");
-        nv.setOrigen("ASISTENCIA");
+        nv.setOrigen(s.getOrigen() != null ? s.getOrigen() : "ASISTENCIA");
         nv.setEstado("APLICADA");
         nv.setRequiereAprobacion(false);
         return nv;
+    }
+
+    /** Factor para hora EXTRA (se paga completa): 1 + pct/100. Usa el default si no hay config. */
+    private BigDecimal factorExtra(BigDecimal pctConfig, BigDecimal pctDefault) {
+        BigDecimal pct = (pctConfig != null) ? pctConfig : pctDefault;
+        return BigDecimal.ONE.add(pct.divide(CIEN, 6, RoundingMode.HALF_UP));
+    }
+
+    /** Factor para RECARGO (solo el sobrecargo, la base ya se paga por día): pct/100. */
+    private BigDecimal factorRecargo(BigDecimal pctConfig, BigDecimal pctDefault) {
+        BigDecimal pct = (pctConfig != null) ? pctConfig : pctDefault;
+        return pct.divide(CIEN, 6, RoundingMode.HALF_UP);
     }
 
     /**
@@ -688,7 +745,7 @@ public class NominaServiceImpl implements NominaService {
      * colombiana base-30 (mes = 30 días, quincena = 15) y recorta por la fecha de
      * ingreso/retiro del empleado cuando caen dentro del período.
      */
-    private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
+    private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado, Integer empresaId) {
         LocalDate inicio = periodo.getFechaInicio();
         LocalDate fin = periodo.getFechaFin();
 
@@ -698,6 +755,15 @@ public class NominaServiceImpl implements NominaService {
             fin = empleado.getFechaRetiro();
 
         if (fin.isBefore(inicio)) return 0;
+
+        // Pago por asistencia de frente: los jornaleros (requiere_control_asistencia = true)
+        // se pagan por los DÍAS efectivamente trabajados en el frente (las horas solo son
+        // control). Fallback seguro: si el empleado marcado no tiene asistencia de frente
+        // consolidada en el período, se paga el período completo como siempre.
+        if (Boolean.TRUE.equals(empleado.getRequiereControlAsistencia())
+                && frenteQueryRepo.tieneFrenteConsolidada(empresaId, empleado.getId(), inicio, fin)) {
+            return frenteQueryRepo.contarDiasTrabajadosFrente(empresaId, empleado.getId(), inicio, fin);
+        }
         return diasBase30(inicio, fin);
     }
 
