@@ -68,4 +68,20 @@ public class AsistenciaNovedadNominaEntity {
 
     @Column(name = "generado_por")
     private Integer generadoPor;
+
+    // ── Traza cuando la novedad viene del módulo Proyecto/Frente (origen=PROYECTO_FRENTE) ──
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
+
+    @Column(name = "asistencia_frente_id")
+    private Long asistenciaFrenteId;
+
+    @Column(name = "asistencia_frente_detalle_id")
+    private Long asistenciaFrenteDetalleId;
+
+    @Column(name = "soporte_pdf_id")
+    private Long soportePdfId;
 }
