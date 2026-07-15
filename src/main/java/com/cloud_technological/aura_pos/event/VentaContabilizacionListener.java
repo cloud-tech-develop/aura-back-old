@@ -12,7 +12,12 @@ import com.cloud_technological.aura_pos.services.ErrorLogService;
  * Genera el asiento contable de una venta DESPUÉS de que la venta hizo commit.
  * Al correr en AFTER_COMMIT, un fallo en la contabilización no revierte la
  * venta: se registra en ErrorLog para reproceso posterior.
+ *
+ * @deprecated E1 (ADR-003): reemplazado por el listener único
+ *             {@code ContabilizacionListener} del módulo contabilidad.
+ *             Se conserva mientras exista el evento legacy; se elimina en E11.
  */
+@Deprecated
 @Component
 public class VentaContabilizacionListener {
 

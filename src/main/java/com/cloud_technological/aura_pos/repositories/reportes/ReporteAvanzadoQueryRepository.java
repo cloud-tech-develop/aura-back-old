@@ -220,24 +220,6 @@ public class ReporteAvanzadoQueryRepository {
         LocalDate hastaAnterior = desde.minusDays(1);
 
         // KPIs del período actual
-        String sqlPeriodo = """
-                SELECT
-                    COALESCE(SUM(v.total_pagar), 0) AS total,
-                    COUNT(v.id) AS cantidad,
-                    COALESCE(AVG(v.total_pagar), 0) AS ticket,
-                    COALESCE(SUM(v.total_pagar) - SUM(
-                        SELECT COALESCE(SUM(vd2.cantidad * COALESCE(p2.costo, 0)), 0)
-                        FROM venta_detalle vd2
-                        INNER JOIN producto p2 ON vd2.producto_id = p2.id
-                        WHERE vd2.venta_id = v.id
-                    ), 0) AS margen
-                FROM venta v
-                WHERE v.empresa_id = :empresaId
-                  AND v.estado_venta = 'COMPLETADA'
-                  AND v.fecha_emision::date BETWEEN :desde AND :hasta
-                """;
-
-        // Query simplificado para KPIs
         String sqlKpis = """
                 SELECT
                     COALESCE(SUM(v.total_pagar), 0) AS total_ventas,
@@ -298,9 +280,13 @@ public class ReporteAvanzadoQueryRepository {
         BigDecimal totalCompras = jdbc.queryForObject(sqlCompras, p, BigDecimal.class);
         dto.setTotalComprasPeriodo(totalCompras != null ? totalCompras : BigDecimal.ZERO);
 
-        // Margen bruto
+        // Margen bruto = ingreso NETO (sin IVA) − costo. subtotal_linea incluye el
+        // IVA de la línea, por eso se descuenta impuesto_valor antes de restar el costo.
         String sqlMargen = """
-                SELECT COALESCE(SUM(vd.subtotal_linea - (vd.cantidad * COALESCE(pr.costo, 0))), 0)
+                SELECT COALESCE(SUM(
+                        (vd.subtotal_linea - COALESCE(vd.impuesto_valor, 0))
+                        - (vd.cantidad * COALESCE(pr.costo, 0))
+                    ), 0)
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto pr ON vd.producto_id = pr.id

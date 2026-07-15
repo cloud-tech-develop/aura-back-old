@@ -212,6 +212,15 @@ public class AsientoContableQueryRepository {
     /** Estado de Resultados: saldos agrupados por cuenta (INGRESO, COSTO, GASTO) */
     public List<EstadoResultadosLineaDto> estadoResultados(Integer empresaId,
             String desde, String hasta) {
+        return estadoResultados(empresaId, desde, hasta, null, null, null);
+    }
+
+    /**
+     * Estado de resultados con filtros de dimensión opcionales (E7):
+     * centro de costo, proyecto y/o frente — rentabilidad por obra.
+     */
+    public List<EstadoResultadosLineaDto> estadoResultados(Integer empresaId,
+            String desde, String hasta, Long centroCostoId, Long proyectoId, Long frenteId) {
         String sql = """
             SELECT
                 pc.tipo,
@@ -227,10 +236,20 @@ public class AsientoContableQueryRepository {
               AND a.estado = 'CONTABILIZADO'
               AND a.tipo_origen <> 'CIERRE'
               AND pc.tipo IN ('INGRESO', 'COSTO', 'GASTO')
+              AND (:centroCostoId::bigint IS NULL OR ad.centro_costo_id = :centroCostoId)
+              AND (:proyectoId::bigint IS NULL OR ad.proyecto_id = :proyectoId)
+              AND (:frenteId::bigint IS NULL OR ad.frente_id = :frenteId)
             GROUP BY pc.tipo, pc.codigo, pc.nombre
             ORDER BY pc.tipo, pc.codigo
             """;
-        return jdbc.query(sql, Map.of("empresaId", empresaId, "desde", desde, "hasta", hasta),
+        java.util.Map<String, Object> params = new java.util.HashMap<>();
+        params.put("empresaId", empresaId);
+        params.put("desde", desde);
+        params.put("hasta", hasta);
+        params.put("centroCostoId", centroCostoId);
+        params.put("proyectoId", proyectoId);
+        params.put("frenteId", frenteId);
+        return jdbc.query(sql, params,
             (rs, i) -> {
                 EstadoResultadosLineaDto dto = new EstadoResultadosLineaDto();
                 dto.setTipo(rs.getString("tipo"));
@@ -341,6 +360,15 @@ public class AsientoContableQueryRepository {
     /** Libro Mayor: movimientos de una cuenta con saldo acumulado */
     public List<LibroMayorLineaDto> libroMayor(Integer empresaId, Long cuentaId,
             String desde, String hasta) {
+        return libroMayor(empresaId, cuentaId, desde, hasta, null, null, null);
+    }
+
+    /**
+     * Libro mayor (auxiliar) con filtros de dimensión opcionales (E7):
+     * centro de costo, proyecto y/o frente.
+     */
+    public List<LibroMayorLineaDto> libroMayor(Integer empresaId, Long cuentaId,
+            String desde, String hasta, Long centroCostoId, Long proyectoId, Long frenteId) {
         String sql = """
             SELECT
                 a.fecha,
@@ -359,10 +387,20 @@ public class AsientoContableQueryRepository {
               AND ad.cuenta_id  = :cuentaId
               AND a.fecha BETWEEN CAST(:desde AS DATE) AND CAST(:hasta AS DATE)
               AND a.estado = 'CONTABILIZADO'
+              AND (:centroCostoId::bigint IS NULL OR ad.centro_costo_id = :centroCostoId)
+              AND (:proyectoId::bigint IS NULL OR ad.proyecto_id = :proyectoId)
+              AND (:frenteId::bigint IS NULL OR ad.frente_id = :frenteId)
             ORDER BY a.fecha, a.id
             """;
-        return jdbc.query(sql,
-            Map.of("empresaId", empresaId, "cuentaId", cuentaId, "desde", desde, "hasta", hasta),
+        java.util.Map<String, Object> params = new java.util.HashMap<>();
+        params.put("empresaId", empresaId);
+        params.put("cuentaId", cuentaId);
+        params.put("desde", desde);
+        params.put("hasta", hasta);
+        params.put("centroCostoId", centroCostoId);
+        params.put("proyectoId", proyectoId);
+        params.put("frenteId", frenteId);
+        return jdbc.query(sql, params,
             (rs, i) -> {
                 LibroMayorLineaDto dto = new LibroMayorLineaDto();
                 dto.setFecha(rs.getString("fecha"));
@@ -375,6 +413,100 @@ public class AsientoContableQueryRepository {
                 dto.setSaldoAcumulado(rs.getBigDecimal("saldo_acumulado"));
                 return dto;
             });
+    }
+
+    // ── Estados financieros NIIF (E10) ───────────────────────────────────────
+
+    /**
+     * Estado de cambios en el patrimonio: cuentas clase 3 con saldo inicial
+     * (antes de :desde), aumentos (créditos) y disminuciones (débitos) del
+     * período. Incluye los asientos de CIERRE — son los que llevan el
+     * resultado del ejercicio a 3605.
+     */
+    public List<com.cloud_technological.aura_pos.dto.contabilidad.CambioPatrimonioLineaDto>
+            cambiosPatrimonio(Integer empresaId, String desde, String hasta) {
+        String sql = """
+            SELECT
+                pc.codigo,
+                pc.nombre,
+                COALESCE(SUM(CASE WHEN a.fecha < CAST(:desde AS DATE)
+                                  THEN ad.credito - ad.debito END), 0) AS saldo_inicial,
+                COALESCE(SUM(CASE WHEN a.fecha >= CAST(:desde AS DATE)
+                                  THEN ad.credito END), 0) AS aumentos,
+                COALESCE(SUM(CASE WHEN a.fecha >= CAST(:desde AS DATE)
+                                  THEN ad.debito END), 0) AS disminuciones
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.fecha <= CAST(:hasta AS DATE)
+              AND a.estado = 'CONTABILIZADO'
+              AND pc.codigo LIKE '3%'
+            GROUP BY pc.codigo, pc.nombre
+            ORDER BY pc.codigo
+            """;
+        return jdbc.query(sql,
+            Map.of("empresaId", empresaId, "desde", desde, "hasta", hasta),
+            (rs, i) -> {
+                BigDecimal inicial = rs.getBigDecimal("saldo_inicial");
+                BigDecimal aumentos = rs.getBigDecimal("aumentos");
+                BigDecimal disminuciones = rs.getBigDecimal("disminuciones");
+                return new com.cloud_technological.aura_pos.dto.contabilidad.CambioPatrimonioLineaDto(
+                        rs.getString("codigo"), rs.getString("nombre"),
+                        inicial, aumentos, disminuciones,
+                        inicial.add(aumentos).subtract(disminuciones));
+            });
+    }
+
+    /**
+     * Movimientos acumulados por cuenta en un período, excluyendo los asientos
+     * de CIERRE (E10 · EFE): la utilidad se toma del estado de resultados y
+     * las variaciones de balance no deben duplicar el traslado del cierre.
+     */
+    public List<com.cloud_technological.aura_pos.dto.contabilidad.MovimientoCuentaDto>
+            movimientosPorCuenta(Integer empresaId, String desde, String hasta) {
+        String sql = """
+            SELECT
+                pc.codigo,
+                pc.nombre,
+                pc.tipo,
+                COALESCE(SUM(ad.debito), 0)  AS debito,
+                COALESCE(SUM(ad.credito), 0) AS credito
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.fecha BETWEEN CAST(:desde AS DATE) AND CAST(:hasta AS DATE)
+              AND a.estado = 'CONTABILIZADO'
+              AND a.tipo_origen <> 'CIERRE'
+            GROUP BY pc.codigo, pc.nombre, pc.tipo
+            ORDER BY pc.codigo
+            """;
+        return jdbc.query(sql,
+            Map.of("empresaId", empresaId, "desde", desde, "hasta", hasta),
+            (rs, i) -> new com.cloud_technological.aura_pos.dto.contabilidad.MovimientoCuentaDto(
+                    rs.getString("codigo"), rs.getString("nombre"), rs.getString("tipo"),
+                    rs.getBigDecimal("debito"), rs.getBigDecimal("credito")));
+    }
+
+    /**
+     * Saldo acumulado (débito − crédito) de las cuentas cuyo código empieza
+     * por el prefijo, hasta la fecha inclusive (E10: efectivo inicial/final).
+     */
+    public BigDecimal saldoPorPrefijo(Integer empresaId, String prefijo, String hasta) {
+        String sql = """
+            SELECT COALESCE(SUM(ad.debito - ad.credito), 0)
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.fecha <= CAST(:hasta AS DATE)
+              AND a.estado = 'CONTABILIZADO'
+              AND pc.codigo LIKE :prefijoLike
+            """;
+        return jdbc.queryForObject(sql,
+                Map.of("empresaId", empresaId, "hasta", hasta, "prefijoLike", prefijo + "%"),
+                BigDecimal.class);
     }
 
     // ── Balance de Comprobación por período ──────────────────────────────────

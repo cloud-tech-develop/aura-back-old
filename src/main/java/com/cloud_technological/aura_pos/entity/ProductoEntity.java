@@ -81,6 +81,25 @@ public class ProductoEntity {
     @Column(name = "iva_incluido")
     private Boolean ivaIncluido = false;
 
+    /** Impuesto parametrizable (E5); null → se usa iva_porcentaje legacy. */
+    @Column(name = "impuesto_id")
+    private Long impuestoId;
+
+    // ── Contabilidad por categoría (E4) ──────────────────────────────────
+    /** Categoría contable; null → categoría "General" de la empresa. */
+    @Column(name = "categoria_contable_id")
+    private Long categoriaContableId;
+
+    /** Overrides excepcionales por producto (normalmente NULL). */
+    @Column(name = "cuenta_ingreso_id")
+    private Long cuentaIngresoId;
+
+    @Column(name = "cuenta_costo_id")
+    private Long cuentaCostoId;
+
+    @Column(name = "cuenta_inventario_id")
+    private Long cuentaInventarioId;
+
     private BigDecimal impoconsumo;
     private Boolean activo;
     @Column(name = "visible_en_pos")

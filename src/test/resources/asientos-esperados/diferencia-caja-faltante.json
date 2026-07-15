@@ -1,0 +1,7 @@
+{
+  "descripcion": "Faltante de caja — cierre turno #40",
+  "partidas": [
+    { "cuenta": 5195, "debito": 15000.00, "credito": 0, "tercero": null },
+    { "cuenta": 1105, "debito": 0, "credito": 15000.00, "tercero": null }
+  ]
+}

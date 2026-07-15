@@ -56,6 +56,14 @@ public class EmpresaEntity {
 
     private Boolean activa = true;
 
+    /**
+     * Modo de contabilización (E3): AUTOMATICO → asientos nacen
+     * CONTABILIZADO; REVISION → nacen BORRADOR y el contador aprueba.
+     */
+    @Column(name = "modo_contabilizacion", nullable = false, length = 15)
+    @lombok.Builder.Default
+    private String modoContabilizacion = "AUTOMATICO";
+
     @Column(name = "factura_electronica", nullable = false)
     private boolean facturaElectronica = false;
 

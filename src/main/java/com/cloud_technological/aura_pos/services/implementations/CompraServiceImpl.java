@@ -80,6 +80,34 @@ public class CompraServiceImpl implements CompraService {
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
+    private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaRepo;
+
+    /**
+     * Guardarraíl del destino contable de la compra (E2): la cuenta débito
+     * alternativa debe ser auxiliar, activa y de clase 1/5/6/7 (activo,
+     * gasto o costo) — nunca pasivo, patrimonio ni ingreso.
+     */
+    private void validarCuentaDestino(Integer empresaId, Long cuentaContableId) {
+        if (cuentaContableId == null) {
+            return;
+        }
+        var cuenta = planCuentaRepo.findByIdAndEmpresaId(cuentaContableId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La cuenta contable destino de la compra no existe."));
+        if (!Boolean.TRUE.equals(cuenta.getActiva()) || !Boolean.TRUE.equals(cuenta.getAuxiliar())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cuenta destino debe ser una cuenta de movimiento activa.");
+        }
+        String codigo = cuenta.getCodigo() != null ? cuenta.getCodigo() : "";
+        if (!(codigo.startsWith("1") || codigo.startsWith("5")
+                || codigo.startsWith("6") || codigo.startsWith("7"))) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cuenta destino de una compra debe ser de activo (1xxx), gasto (5xxx) "
+                            + "o costo (6xxx/7xxx); la cuenta " + codigo + " no aplica.");
+        }
+    }
+
+    @Autowired
     public CompraServiceImpl(CompraQueryRepository compraRepository,
             CompraJPARepository compraJPARepository,
             CompraPagoJPARepository compraPagoJPARepository,
@@ -172,6 +200,11 @@ public class CompraServiceImpl implements CompraService {
         compra.setFormaPago(dto.getFormaPago() != null ? dto.getFormaPago() : "CONTADO");
         compra.setTipoDocumento(dto.getTipoDocumento() != null ? dto.getTipoDocumento() : "FACTURA_COMPRA");
         compra.setFletes(dto.getFletes() != null ? dto.getFletes() : BigDecimal.ZERO);
+        validarCuentaDestino(empresaId, dto.getCuentaContableId());
+        compra.setCentroCostoId(dto.getCentroCostoId());
+        compra.setCuentaContableId(dto.getCuentaContableId());
+        compra.setProyectoId(dto.getProyectoId());
+        compra.setFrenteId(dto.getFrenteId());
         compra.setCreatedAt(LocalDateTime.now());
         compra = compraJPARepository.save(compra);
 
@@ -460,6 +493,11 @@ public class CompraServiceImpl implements CompraService {
         compra.setObservaciones(dto.getObservaciones());
         compra.setTipoDocumento(dto.getTipoDocumento() != null ? dto.getTipoDocumento() : "FACTURA_COMPRA");
         compra.setFletes(dto.getFletes() != null ? dto.getFletes() : BigDecimal.ZERO);
+        validarCuentaDestino(empresaId, dto.getCuentaContableId());
+        compra.setCentroCostoId(dto.getCentroCostoId());
+        compra.setCuentaContableId(dto.getCuentaContableId());
+        compra.setProyectoId(dto.getProyectoId());
+        compra.setFrenteId(dto.getFrenteId());
 
         BigDecimal subtotalBruto = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;

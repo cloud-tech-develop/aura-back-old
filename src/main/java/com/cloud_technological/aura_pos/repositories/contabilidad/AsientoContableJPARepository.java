@@ -17,4 +17,19 @@ public interface AsientoContableJPARepository extends JpaRepository<AsientoConta
     Optional<AsientoContableEntity> findFirstByEmpresaIdAndTipoOrigen(Integer empresaId, String tipoOrigen);
 
     long countByEmpresaIdAndTipoOrigenNot(Integer empresaId, String tipoOrigen);
+
+    // ── E3 · modo revisión ───────────────────────────────────────────────
+    java.util.List<AsientoContableEntity> findByEmpresaIdAndEstadoOrderByFechaDescIdDesc(
+            Integer empresaId, String estado);
+
+    java.util.List<AsientoContableEntity> findByEmpresaIdAndEstadoAndFechaBetweenOrderByFechaAscIdAsc(
+            Integer empresaId, String estado, java.time.LocalDate desde, java.time.LocalDate hasta);
+
+    boolean existsByEmpresaIdAndPeriodoContableIdAndEstado(
+            Integer empresaId, Long periodoContableId, String estado);
+
+    /** Red de seguridad: no debería existir ninguno (el validador lo impide). */
+    @org.springframework.data.jpa.repository.Query(
+            "select a from AsientoContableEntity a where a.empresaId = ?1 and a.totalDebito <> a.totalCredito")
+    java.util.List<AsientoContableEntity> findDescuadrados(Integer empresaId);
 }

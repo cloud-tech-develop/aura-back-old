@@ -151,12 +151,13 @@ respeta edades y nace en borrador.
 
 ## E7 — C5 Dimensiones proyecto/frente — tamaño M
 
-- [ ] V90: `asiento_detalle` += proyectoId + frenteId
-- [ ] Nómina: repartir gasto 5105xx por proyecto/frente según horas de asistencia
+- [x] V92: `asiento_detalle` += proyectoId + frenteId
+- [x] Nómina: repartir gasto 5105xx por proyecto/frente según horas de asistencia
       (datos ya existen en novedades PROYECTO_FRENTE)
-- [ ] Compras/gastos: proyectoId opcional en form; ventas: centro de costo desde caja/sucursal
-- [ ] Reportes: filtros opcionales centroCosto/proyecto/frente en estado de resultados y
-      auxiliares (`WHERE :x IS NULL OR ...` en `AsientoContableQueryRepository`)
+- [x] Compras/gastos: proyectoId opcional en form; ventas: centro de costo desde caja/sucursal
+- [x] Reportes: filtros opcionales centroCosto/proyecto/frente en estado de resultados y
+      libro mayor (`WHERE :x IS NULL OR ...` en `AsientoContableQueryRepository`;
+      expuestos como query params en `/estado-resultados` y `/libro-mayor`)
 - [ ] Front: filtros de dimensión en reportes
 
 **Aceptación:** estado de resultados filtrado por obra muestra la rentabilidad del
@@ -164,54 +165,97 @@ proyecto incluyendo su nómina real por horas.
 
 ## E8 — C9 Cierre anual fiscal — tamaño M  ⚠️ listo ANTES del primer diciembre de un cliente
 
-- [ ] Conceptos: GASTO_IMPUESTO_RENTA(5405), IMPUESTO_RENTA_POR_PAGAR(2404),
+- [x] Conceptos: GASTO_IMPUESTO_RENTA(5405), IMPUESTO_RENTA_POR_PAGAR(2404),
       RESERVA_LEGAL(330505), DIVIDENDOS_POR_PAGAR(2360) + seed cuentas
-- [ ] Wizard "cierre de ejercicio": paso 1 provisión renta (sistema sugiere
+      (V93 + seedPUC: 54/5405, 2404, 2360, 33/3305/330505)
+- [x] Wizard "cierre de ejercicio": paso 1 provisión renta (sistema sugiere
       utilidad×tarifa, el contador DIGITA el valor — renta fiscal ≠ contable) →
       DB 5405·CR 2404; paso 2 cierre a 3605 (ya existe)
-- [ ] Apertura de año: traslado 3605→3705
-- [ ] Pantalla "distribución de utilidades" (post-asamblea): reserva legal 10% (tope 50%
+      (GET/POST `/api/contabilidad/cierre-anual/provision-renta`)
+- [x] Apertura de año: traslado 3605→3705 (POST `/cierre-anual/traslado`;
+      utilidad DB 3605·CR 3705, pérdida al revés)
+- [x] Pantalla "distribución de utilidades" (post-asamblea): reserva legal 10% (tope 50%
       del capital), dividendos DB 3705·CR 2360, pago de dividendos
-- [ ] Front: wizard + pantalla distribución
+      (`/cierre-anual/distribucion` + `/cierre-anual/dividendos/pagos`;
+      generadores CIERRE_ANUAL/DISTRIBUCION_UTILIDAD/DIVIDENDO_PAGO en el registry,
+      siempre CONTABILIZADOS)
+- [x] Front: wizard cierre de ejercicio + pantalla distribución con pagos
+      (`aura-frontend/features/contabilidad/cierre-anual`, ruta /contabilidad/cierre-anual)
 
 **Aceptación:** cierre de diciembre deja renta provisionada, 3605 neto; en enero 3605=0 y
 3705 acumula; distribución genera reserva y dividendos por pagar correctamente.
 
 ## E9 — C6 Conciliación bancaria — tamaño M/L
 
-- [ ] V91 `extracto_bancario` + `extracto_linea` (ver diseño §8)
-- [ ] Import CSV/Excel genérico (fecha, descripción, valor)
-- [ ] Matching sugerido (valor exacto, fecha ±3 días) contra movimientos de la cuenta
-      contable del banco; confirmación manual
-- [ ] Ajustes desde la pantalla: GASTOS_BANCARIOS(530515), GMF(530595), intereses
-- [ ] Cierre del extracto exige saldo libro conciliado = saldo extracto
-- [ ] Front: pantalla conciliación (dos columnas libro vs extracto)
+- [x] V94 `extracto_bancario` + `extracto_linea` (ver diseño §8; el diseño decía V91,
+      esa numeración ya la tomó devengo) + cuentas 530515/530595/421005 para empresas
+      existentes y en seedPUC
+- [x] Import CSV genérico (fecha, descripción, valor; separadores `;`/`,`/tab, fechas
+      dd/MM/yyyy, montos $1.234.567,89) y/o líneas JSON ya estructuradas
+- [x] Matching sugerido (valor exacto, fecha ±3 días) contra movimientos de la cuenta
+      contable del banco; confirmación manual línea a línea (conciliar/desconciliar)
+- [x] Ajustes desde la pantalla: GASTOS_BANCARIOS(530515), GMF(530595), INTERES
+      (cargo→5305 / abono→421005) — generador AJUSTE_BANCARIO (prefijo AB), siempre
+      CONTABILIZADO, en el registry
+- [x] Cierre del extracto exige: cero pendientes, ajustes con asiento y saldo inicial
+      + líneas conciliadas/ajustadas = saldo final (endpoint /resumen expone además
+      partidas en tránsito del libro)
+- [x] Guardarraíl inverso: `cerrarPeriodo` bloquea si el mes tiene extractos
+      bancarios ABIERTOS (concíliense o elimínense — DELETE /extractos/{id}, solo
+      ABIERTO y sin líneas de ajuste contabilizadas)
+- [x] Front: pantalla conciliación dos columnas con import CSV, sugerencias,
+      ajustes y cierre (`features/contabilidad/conciliacion`, /contabilidad/conciliacion)
+
+API: `/api/contabilidad/conciliacion/extractos` (+ `/lineas`, `/sugerencias`,
+`/movimientos-libro`, `/lineas/{id}/conciliar|desconciliar|ajuste`, `/resumen`,
+`/cerrar`). Servicio en `contabilidad/infrastructure/conciliacion/`.
 
 **Aceptación:** extracto real de un banco se concilia completo; comisiones y 4x1000
 quedan contabilizados desde la misma pantalla.
 
 ## E10 — C10 Estados financieros NIIF completos — tamaño M
 
-- [ ] Estado de cambios en el patrimonio (clase 3 por concepto: inicial/aumentos/
-      disminuciones/final) desde `asiento_detalle`
-- [ ] Estado de flujos de efectivo método indirecto (utilidad ± no monetarias ±
-      Δ capital de trabajo + inversión + financiación, entre dos cortes)
+- [x] Estado de cambios en el patrimonio (clase 3 por cuenta: inicial/aumentos/
+      disminuciones/final) desde `asiento_detalle` — incluye asientos de CIERRE
+      (son los que llevan el resultado a 3605)
+- [x] Estado de flujos de efectivo método indirecto (utilidad ± depreciación 5160 y
+      deterioro 5199 ± Δ capital de trabajo 13/14/17·22–28 + inversión 12/15/16/18/19
+      + financiación 21/29/clase 3, entre dos cortes; excluye asientos CIERRE y las
+      contra-cuentas 1399/1499/1592 para no duplicar los add-backs) — devuelve
+      `cuadra` validando flujo neto = Δ saldo clase 11
 - [ ] (Opcional) Notas: plantilla exportable con cifras inyectadas
-- [ ] Front: dos reportes nuevos en módulo Contabilidad
+- [x] Front: dos reportes en tabs (`features/contabilidad/eeff`, /contabilidad/eeff)
+
+API: GET `/api/contabilidad/eeff/cambios-patrimonio?desde&hasta` y
+`/api/contabilidad/eeff/flujo-efectivo?desde&hasta`. Servicio en
+`contabilidad/infrastructure/reportes/EstadosFinancierosService`.
 
 **Aceptación:** con E0–E8 hechos, los 5 componentes de NIIF pymes Sección 3 salen del
 sistema y cruzan entre sí (EFE cuadra con Δ disponible del balance).
 
 ## E11 — C7 Información exógena DIAN — tamaño L (venderla como cierre de año)
 
-- [ ] V92 tablas exógena (formato, concepto, mapeo_cuenta por rangos, lote, línea, error)
-- [ ] Seed formatos 1001/1005/1006/1007/1008/1009/2276 + mapeos default sobre el PUC seed
-- [ ] Validador previo: terceros incompletos (NIT/DV/municipio/dirección), cuentas sin
-      mapeo, comprobantes en borrador, períodos abiertos
-- [ ] Generación de lote: agrupa asiento_detalle por tercero×concepto; cuantías menores
-      (222222222); export Excel columnas prevalidador DIAN
-- [ ] Aprobación bloquea el lote (versionado)
-- [ ] Front: wizard exógena (validar → revisar errores → generar → aprobar)
+- [x] V95 tablas exógena (formato, concepto, mapeo_cuenta por prefijo/rango, lote
+      versionado, línea, error) — el diseño decía V92, esa numeración ya la tomaron
+      las dimensiones
+- [x] Seed formatos 1001/1005/1006/1007/1008/1009/2276 con conceptos + mapeos default
+      sobre el PUC seed (migración para empresas existentes + `seedDefaults` en seedPUC);
+      el mapeo más específico gana (5105→5001 le gana a 51→5016)
+- [x] Validador previo: terceros incompletos (documento/DV/municipio/dirección),
+      cuentas con movimiento sin mapeo (de las clases del formato), comprobantes en
+      borrador, períodos abiertos y movimientos sin tercero en cuentas mapeadas
+- [x] Generación de lote: agrupa asiento_detalle por tercero×concepto (MOVIMIENTO_DB/CR
+      del año, SALDO_DB/CR a dic 31, excluyendo asientos CIERRE); cuantías menores por
+      umbral configurable (default $100.000) al NIT 222222222; export Excel (POI)
+      columnas prevalidador DIAN
+- [x] Aprobación bloquea el lote y exige cero hallazgos; regenerar un BORRADOR lo
+      reutiliza, regenerar sobre APROBADO crea la versión siguiente
+- [x] Front: wizard exógena (validar → generar → revisar → aprobar → Excel) +
+      tab de mapeos (`features/contabilidad/exogena`, /contabilidad/exogena)
+
+API: `/api/contabilidad/exogena` (formatos, mapeos CRUD + seed, validar, lotes
+generar/listar/lineas/errores/aprobar/export). Servicio y calculadora pura en
+`contabilidad/infrastructure/exogena/`.
 
 **Aceptación:** formatos 1001/1007/1008/1009 de una empresa real pasan el prevalidador
 DIAN sin ediciones manuales del Excel.

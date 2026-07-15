@@ -15,4 +15,8 @@ public interface PeriodoContableJPARepository extends JpaRepository<PeriodoConta
     boolean existsByEmpresaIdAndAnioAndMes(Integer empresaId, Short anio, Short mes);
 
     boolean existsByEmpresaIdAndEstado(Integer empresaId, String estado);
+
+    /** Último período en el estado dado (por año/mes descendente). */
+    Optional<PeriodoContableEntity> findFirstByEmpresaIdAndEstadoOrderByAnioDescMesDesc(
+            Integer empresaId, String estado);
 }

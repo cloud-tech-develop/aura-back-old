@@ -90,6 +90,22 @@ public class CompraEntity {
     @Column(name = "fletes")
     private BigDecimal fletes;
 
+    // ── Destino contable (E2 · pieza 4) ─────────────────────────────────
+    /** Centro de costo que se propaga a todas las líneas del asiento. */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
+    /** Cuenta débito de la compra (gasto/activo); null → inventario. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    // ── Dimensiones proyecto/frente (E7) ─────────────────────────────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

@@ -1,0 +1,7 @@
+{
+  "descripcion": "Traslado pérdida del ejercicio 2025 a resultados acumulados",
+  "partidas": [
+    { "cuenta": 3705, "debito": 8000000, "credito": 0, "tercero": null },
+    { "cuenta": 3605, "debito": 0, "credito": 8000000, "tercero": null }
+  ]
+}

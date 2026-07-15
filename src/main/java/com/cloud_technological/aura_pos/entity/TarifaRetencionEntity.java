@@ -44,6 +44,10 @@ public class TarifaRetencionEntity {
     @Column(name = "base_minima", nullable = false, precision = 18, scale = 2)
     private BigDecimal baseMinima = BigDecimal.ZERO;
 
+    /** Cuenta contable propia de la tarifa (E5); null → concepto 2365/2367/2368. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     @Column(nullable = false)
     private Boolean activo = true;
 

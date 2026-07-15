@@ -12,10 +12,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.cloud_technological.aura_pos.dto.contabilidad.ConfigLogDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CuentaConfigDto;
 import com.cloud_technological.aura_pos.entity.ConceptoContable;
+import com.cloud_technological.aura_pos.entity.ContabilidadConfigLogEntity;
 import com.cloud_technological.aura_pos.entity.CuentaConfigEntity;
 import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.ContabilidadConfigLogJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.CuentaConfigJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.services.ConfiguracionContableService;
@@ -28,6 +31,12 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
 
     @Autowired
     private PlanCuentaJPARepository planRepo;
+
+    @Autowired
+    private ContabilidadConfigLogJPARepository logRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository empresaRepo;
 
     @Override
     public PlanCuentaEntity resolverCuenta(Integer empresaId, ConceptoContable concepto) {
@@ -93,7 +102,8 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
 
     @Override
     @Transactional
-    public CuentaConfigDto actualizar(Integer empresaId, ConceptoContable concepto, Long cuentaId) {
+    public CuentaConfigDto actualizar(Integer empresaId, ConceptoContable concepto, Long cuentaId,
+            Long usuarioId) {
         PlanCuentaEntity cuenta = planRepo.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "La cuenta " + cuentaId + " no existe en el plan de cuentas de la empresa"));
@@ -101,14 +111,38 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "No se puede asignar una cuenta inactiva");
         }
+        // Guardarraíles (ADR-006): solo cuentas de movimiento y de la clase
+        // PUC permitida — se remapea el destino, nunca la lógica del asiento.
+        if (!Boolean.TRUE.equals(cuenta.getAuxiliar())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La cuenta " + cuenta.getCodigo() + " - " + cuenta.getNombre()
+                            + " no es de movimiento. Elija una cuenta auxiliar (último nivel).");
+        }
+        if (!concepto.permiteCodigo(cuenta.getCodigo())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El concepto '" + concepto.getDescripcion() + "' solo admite cuentas "
+                            + concepto.prefijosLegibles() + "; la cuenta " + cuenta.getCodigo()
+                            + " - " + cuenta.getNombre() + " no pertenece a esa clase.");
+        }
 
         CuentaConfigEntity config = configRepo.findByEmpresaIdAndConcepto(empresaId, concepto)
                 .orElseGet(() -> CuentaConfigEntity.builder()
                         .empresaId(empresaId)
                         .concepto(concepto)
                         .build());
+        Long cuentaAnteriorId = config.getCuentaId();
         config.setCuentaId(cuentaId);
         configRepo.save(config);
+
+        if (!cuentaId.equals(cuentaAnteriorId)) {
+            logRepo.save(ContabilidadConfigLogEntity.builder()
+                    .empresaId(empresaId)
+                    .concepto(concepto)
+                    .cuentaAnteriorId(cuentaAnteriorId)
+                    .cuentaNuevaId(cuentaId)
+                    .usuarioId(usuarioId)
+                    .build());
+        }
 
         return CuentaConfigDto.builder()
                 .concepto(concepto.name())
@@ -118,6 +152,56 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
                 .nombreCuenta(cuenta.getNombre())
                 .porDefecto(false)
                 .build();
+    }
+
+    @Override
+    public List<ConfigLogDto> listarLog(Integer empresaId) {
+        return logRepo.findByEmpresaIdOrderByCreatedAtDesc(empresaId).stream()
+                .map(log -> ConfigLogDto.builder()
+                        .id(log.getId())
+                        .concepto(log.getConcepto().name())
+                        .descripcionConcepto(log.getConcepto().getDescripcion())
+                        .cuentaAnteriorId(log.getCuentaAnteriorId())
+                        .cuentaAnterior(etiquetaCuenta(empresaId, log.getCuentaAnteriorId()))
+                        .cuentaNuevaId(log.getCuentaNuevaId())
+                        .cuentaNueva(etiquetaCuenta(empresaId, log.getCuentaNuevaId()))
+                        .usuarioId(log.getUsuarioId())
+                        .fecha(log.getCreatedAt() != null ? log.getCreatedAt().toString() : null)
+                        .build())
+                .toList();
+    }
+
+    @Override
+    public String obtenerModo(Integer empresaId) {
+        return empresaRepo.findById(empresaId)
+                .map(e -> e.getModoContabilizacion() != null
+                        ? e.getModoContabilizacion() : "AUTOMATICO")
+                .orElse("AUTOMATICO");
+    }
+
+    @Override
+    @Transactional
+    public String actualizarModo(Integer empresaId, String modo) {
+        String normalizado = modo != null ? modo.trim().toUpperCase() : "";
+        if (!"AUTOMATICO".equals(normalizado) && !"REVISION".equals(normalizado)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Modo de contabilización inválido: use AUTOMATICO o REVISION.");
+        }
+        var empresa = empresaRepo.findById(empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Empresa no encontrada"));
+        empresa.setModoContabilizacion(normalizado);
+        empresaRepo.save(empresa);
+        return normalizado;
+    }
+
+    private String etiquetaCuenta(Integer empresaId, Long cuentaId) {
+        if (cuentaId == null) {
+            return null;
+        }
+        return planRepo.findByIdAndEmpresaId(cuentaId, empresaId)
+                .map(c -> c.getCodigo() + " - " + c.getNombre())
+                .orElse("#" + cuentaId);
     }
 
     @Override

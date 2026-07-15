@@ -270,8 +270,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     @Override
-    public EstadoResultadosDto estadoResultados(Integer empresaId, String desde, String hasta) {
-        List<EstadoResultadosLineaDto> lineas = queryRepo.estadoResultados(empresaId, desde, hasta);
+    public EstadoResultadosDto estadoResultados(Integer empresaId, String desde, String hasta,
+            Long centroCostoId, Long proyectoId, Long frenteId) {
+        List<EstadoResultadosLineaDto> lineas = queryRepo.estadoResultados(
+                empresaId, desde, hasta, centroCostoId, proyectoId, frenteId);
 
         List<EstadoResultadosLineaDto> ingresos = lineas.stream()
                 .filter(l -> "INGRESO".equals(l.getTipo())).collect(Collectors.toList());
@@ -311,8 +313,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @Override
     public List<LibroMayorLineaDto> libroMayor(Integer empresaId, Long cuentaId,
-            String desde, String hasta) {
-        return queryRepo.libroMayor(empresaId, cuentaId, desde, hasta);
+            String desde, String hasta, Long centroCostoId, Long proyectoId, Long frenteId) {
+        return queryRepo.libroMayor(empresaId, cuentaId, desde, hasta,
+                centroCostoId, proyectoId, frenteId);
     }
 
     @Override

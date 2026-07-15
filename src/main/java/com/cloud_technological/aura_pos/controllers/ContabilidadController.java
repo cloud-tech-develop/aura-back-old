@@ -223,14 +223,17 @@ public class ContabilidadController {
     @GetMapping("/estado-resultados")
     public ResponseEntity<ApiResponse<EstadoResultadosDto>> estadoResultados(
             @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) {
+            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) Long centroCostoId,
+            @RequestParam(required = false) Long proyectoId,
+            @RequestParam(required = false) Long frenteId) {
         Integer empresaId = securityUtils.getEmpresaId();
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate hoy = LocalDate.now();
         String d = (desde != null && !desde.isBlank()) ? desde : hoy.withDayOfMonth(1).format(fmt);
         String h = (hasta != null && !hasta.isBlank()) ? hasta : hoy.format(fmt);
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
-                asientoService.estadoResultados(empresaId, d, h)));
+                asientoService.estadoResultados(empresaId, d, h, centroCostoId, proyectoId, frenteId)));
     }
 
     // ── Libro Mayor ──────────────────────────────────────────────────
@@ -239,14 +242,18 @@ public class ContabilidadController {
     public ResponseEntity<ApiResponse<List<LibroMayorLineaDto>>> libroMayor(
             @RequestParam Long cuentaId,
             @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) {
+            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) Long centroCostoId,
+            @RequestParam(required = false) Long proyectoId,
+            @RequestParam(required = false) Long frenteId) {
         Integer empresaId = securityUtils.getEmpresaId();
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate hoy = LocalDate.now();
         String d = (desde != null && !desde.isBlank()) ? desde : hoy.withDayOfMonth(1).format(fmt);
         String h = (hasta != null && !hasta.isBlank()) ? hasta : hoy.format(fmt);
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
-                asientoService.libroMayor(empresaId, cuentaId, d, h)));
+                asientoService.libroMayor(empresaId, cuentaId, d, h,
+                        centroCostoId, proyectoId, frenteId)));
     }
 
     // ── Flujo de Caja ────────────────────────────────────────────────

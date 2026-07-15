@@ -21,7 +21,11 @@ public interface AsientoContableService {
     String siguienteConsecutivo(Integer empresaId, String tipoComprobante);
     void anular(Long id, Integer empresaId);
     BalanceGeneralDto balanceGeneral(Integer empresaId, String hasta);
-    EstadoResultadosDto estadoResultados(Integer empresaId, String desde, String hasta);
-    List<LibroMayorLineaDto> libroMayor(Integer empresaId, Long cuentaId, String desde, String hasta);
+    /** Estado de resultados con filtros de dimensión opcionales (E7): centro de costo, proyecto, frente. */
+    EstadoResultadosDto estadoResultados(Integer empresaId, String desde, String hasta,
+            Long centroCostoId, Long proyectoId, Long frenteId);
+    /** Libro mayor (auxiliar) con filtros de dimensión opcionales (E7). */
+    List<LibroMayorLineaDto> libroMayor(Integer empresaId, Long cuentaId, String desde, String hasta,
+            Long centroCostoId, Long proyectoId, Long frenteId);
     FlujoCajaDto flujoCaja(Integer empresaId, String desde, String hasta);
 }

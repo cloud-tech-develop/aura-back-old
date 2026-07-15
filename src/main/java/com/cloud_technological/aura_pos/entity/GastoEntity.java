@@ -68,6 +68,21 @@ public class GastoEntity {
     @Column(name = "centro_costo_id")
     private Long centroCostoId;
 
+    // ── Dimensiones proyecto/frente (E7) ────────────────────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
+
+    // ── Diferidos (E6) ──────────────────────────────────────────
+    /** true → el pago va a 1705 y se amortiza mes a mes. */
+    @Column(name = "es_diferido", nullable = false)
+    private Boolean esDiferido = Boolean.FALSE;
+
+    @Column(name = "meses_diferido")
+    private Integer mesesDiferido;
+
     @Column(name = "base_iva", precision = 18, scale = 2)
     private BigDecimal baseIva = BigDecimal.ZERO;
 

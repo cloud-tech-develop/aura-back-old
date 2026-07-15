@@ -25,6 +25,18 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
     @Autowired
     private com.cloud_technological.aura_pos.services.ConfiguracionContableService configuracionContableService;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.services.FormaPagoContableService formaPagoContableService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CategoriaContableProductoService categoriaContableProductoService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.ImpuestoService impuestoService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.ExogenaService exogenaService;
+
     @Override
     public List<PlanCuentaDto> listar(Integer empresaId) {
         return repo.findByEmpresaIdOrderByCodigoAsc(empresaId)
@@ -87,6 +99,10 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         // Siembra/actualiza el mapeo concepto→cuenta por defecto (idempotente),
         // también para empresas que ya tenían PUC pero no configuración.
         configuracionContableService.seedDefaults(empresaId);
+        formaPagoContableService.seedDefaults(empresaId);
+        categoriaContableProductoService.seedDefaults(empresaId);
+        impuestoService.seedDefaults(empresaId);
+        exogenaService.seedDefaults(empresaId);
     }
 
     private void seedCuentas(Integer empresaId) {
@@ -125,30 +141,59 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             { "22", "Proveedores",                      "PASIVO",  "CREDITO", 2, "2" },
             { "2205", "Proveedores Nacionales",         "PASIVO",  "CREDITO", 3, "22" },
             { "23", "Cuentas por Pagar",                "PASIVO",  "CREDITO", 2, "2" },
+            { "2360", "Dividendos o Participaciones por Pagar","PASIVO","CREDITO",3,"23" },
             { "2365", "Retencion en la Fuente",         "PASIVO",  "CREDITO", 3, "23" },
             { "2367", "Impuesto a las Ventas Retenido", "PASIVO",  "CREDITO", 3, "23" },
             { "2368", "Impuesto de Industria y Comercio Retenido","PASIVO","CREDITO",3,"23" },
             { "24", "Impuestos Gravamenes y Tasas",     "PASIVO",  "CREDITO", 2, "2" },
+            { "2404", "Impuesto de Renta por Pagar",    "PASIVO",  "CREDITO", 3, "24" },
             { "2408", "IVA por Pagar",                  "PASIVO",  "CREDITO", 3, "24" },
+            // E5: el IVA generado y el descontable van a subcuentas separadas
+            // para que el reporte de IVA neto no se mezcle en 2408.
+            { "240801", "IVA Generado",                 "PASIVO",  "CREDITO", 4, "2408" },
+            { "240802", "IVA Descontable",              "PASIVO",  "CREDITO", 4, "2408" },
             { "25", "Obligaciones Laborales",           "PASIVO",  "CREDITO", 2, "2" },
             { "2505", "Salarios por Pagar",             "PASIVO",  "CREDITO", 3, "25" },
             // ── Clase 3 · Patrimonio ──────────────────────────────────────────
             { "31", "Capital Social",                   "PATRIMONIO","CREDITO",2, "3" },
             { "3105","Capital",                         "PATRIMONIO","CREDITO",3, "31" },
+            // ── Cierre anual (E8) ─────────────────────────────────────────────
+            { "33", "Reservas",                         "PATRIMONIO","CREDITO",2, "3" },
+            { "3305","Reservas Obligatorias",           "PATRIMONIO","CREDITO",3, "33" },
+            { "330505","Reserva Legal",                 "PATRIMONIO","CREDITO",4, "3305" },
             { "36", "Resultados del Ejercicio",         "PATRIMONIO","CREDITO",2, "3" },
             { "3605","Utilidad del Ejercicio",          "PATRIMONIO","CREDITO",3, "36" },
             { "37", "Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",2, "3" },
             { "3705","Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",3, "37" },
+            // ── Devengo (E6) ──────────────────────────────────────────────────
+            { "1330","Anticipos a Proveedores",         "ACTIVO",  "DEBITO",  3, "13" },
+            { "1399","Provisión Cartera (deterioro)",   "ACTIVO",  "CREDITO", 3, "13" },
+            { "1499","Provisión Inventarios",           "ACTIVO",  "CREDITO", 3, "14" },
+            { "17",  "Diferidos",                       "ACTIVO",  "DEBITO",  2, "1" },
+            { "1705","Gastos Pagados por Anticipado",   "ACTIVO",  "DEBITO",  3, "17" },
+            { "28",  "Otros Pasivos",                   "PASIVO",  "CREDITO", 2, "2" },
+            { "2805","Anticipos de Clientes",           "PASIVO",  "CREDITO", 3, "28" },
             // ── Clase 4 · Ingresos ────────────────────────────────────────────
             { "41", "Operacionales",                    "INGRESO", "CREDITO", 2, "4" },
             { "4135","Comercio al por Menor",           "INGRESO", "CREDITO", 3, "41" },
+            { "42", "No Operacionales",                 "INGRESO", "CREDITO", 2, "4" },
+            { "4210","Financieros",                     "INGRESO", "CREDITO", 3, "42" },
+            // E9: intereses que abona el banco (ajuste de conciliación)
+            { "421005","Intereses",                     "INGRESO", "CREDITO", 4, "4210" },
+            { "4295","Ingresos Diversos",               "INGRESO", "CREDITO", 3, "42" },
             // ── Clase 5 · Gastos ──────────────────────────────────────────────
             { "51", "Gastos Operacionales Admon",       "GASTO",   "DEBITO",  2, "5" },
             { "5105","Gastos de Personal",              "GASTO",   "DEBITO",  3, "51" },
             { "5160","Depreciaciones",                  "GASTO",   "DEBITO",  3, "51" },
             { "5195","Otros Gastos",                    "GASTO",   "DEBITO",  3, "51" },
+            { "5199","Provisiones y Deterioros",        "GASTO",   "DEBITO",  3, "51" },
             { "53", "Gastos No Operacionales",          "GASTO",   "DEBITO",  2, "5" },
             { "5305","Financieros",                     "GASTO",   "DEBITO",  3, "53" },
+            // E9: cargos del banco que nacen del extracto (conciliación)
+            { "530515","Comisiones",                    "GASTO",   "DEBITO",  4, "5305" },
+            { "530595","Gravamen a los Movimientos Financieros","GASTO","DEBITO",4,"5305" },
+            { "54", "Impuesto de Renta y Complementarios","GASTO", "DEBITO",  2, "5" },
+            { "5405","Impuesto de Renta y Complementarios","GASTO","DEBITO",  3, "54" },
             // ── Clase 6 · Costos ──────────────────────────────────────────────
             { "61", "Costo de Ventas y Prest.",         "COSTO",   "DEBITO",  2, "6" },
             { "6135","Costo de Mercancias Vend.",       "COSTO",   "DEBITO",  3, "61" },
