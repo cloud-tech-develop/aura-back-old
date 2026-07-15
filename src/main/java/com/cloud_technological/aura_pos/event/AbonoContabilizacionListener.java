@@ -12,7 +12,12 @@ import com.cloud_technological.aura_pos.services.ErrorLogService;
  * Genera el asiento contable de un abono (cobro de cartera o pago a proveedor)
  * DESPUÉS de que el abono hizo commit. Un fallo contable no revierte el abono:
  * se registra en ErrorLog para reproceso.
+ *
+ * @deprecated E2 (ADR-003): reemplazado por el listener único
+ *             {@code ContabilizacionListener} + generadores RC/EG del registry.
+ *             Se conserva mientras exista el evento legacy; se elimina en E11.
  */
+@Deprecated
 @Component
 public class AbonoContabilizacionListener {
 

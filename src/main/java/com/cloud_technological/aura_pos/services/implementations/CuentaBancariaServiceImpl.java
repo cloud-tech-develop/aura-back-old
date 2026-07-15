@@ -56,6 +56,8 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
                 .cuentaContableId(dto.getCuentaContableId())
                 .saldoInicial(dto.getSaldoInicial())
                 .saldoActual(dto.getSaldoInicial())
+                .permiteSobregiro(Boolean.TRUE.equals(dto.getPermiteSobregiro()))
+                .cupoSobregiro(dto.getCupoSobregiro())
                 .build();
         return toDto(repo.save(entity));
     }
@@ -73,6 +75,10 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
         entity.setTitular(dto.getTitular());
         entity.setTerceroId(dto.getTerceroId());
         entity.setCuentaContableId(dto.getCuentaContableId());
+        if (dto.getPermiteSobregiro() != null) {
+            entity.setPermiteSobregiro(dto.getPermiteSobregiro());
+        }
+        entity.setCupoSobregiro(dto.getCupoSobregiro());
 
         // Solo actualiza saldo_inicial si cambió y no hay movimientos aún
         if (entity.getSaldoActual().compareTo(entity.getSaldoInicial()) == 0) {
@@ -174,6 +180,8 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
                 .saldoInicial(e.getSaldoInicial())
                 .saldoActual(e.getSaldoActual())
                 .activa(e.getActiva())
+                .permiteSobregiro(e.getPermiteSobregiro())
+                .cupoSobregiro(e.getCupoSobregiro())
                 .build();
     }
 }

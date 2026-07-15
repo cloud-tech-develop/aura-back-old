@@ -46,4 +46,12 @@ public class CreateGastoDto {
     private BigDecimal valorReteica   = BigDecimal.ZERO;
     private String tipoDocSoporte;
     private String numeroDocSoporte;
+
+    // Diferidos (E6): el pago va a 1705 y se amortiza mes a mes.
+    private Boolean esDiferido;
+    private Integer mesesDiferido;
+
+    // Dimensiones proyecto/frente (E7).
+    private Long proyectoId;
+    private Long frenteId;
 }

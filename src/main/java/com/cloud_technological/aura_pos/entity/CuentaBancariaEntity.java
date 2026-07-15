@@ -61,6 +61,16 @@ public class CuentaBancariaEntity {
     @Builder.Default
     private BigDecimal saldoActual = BigDecimal.ZERO;
 
+    // ── Sobregiro (E2 · pieza 5) ─────────────────────────────────────────
+    /** Si es true, el saldo puede quedar negativo hasta el cupo. */
+    @Column(name = "permite_sobregiro", nullable = false)
+    @Builder.Default
+    private Boolean permiteSobregiro = Boolean.FALSE;
+
+    /** Cupo máximo de sobregiro (positivo); null = sin límite. */
+    @Column(name = "cupo_sobregiro", precision = 18, scale = 2)
+    private BigDecimal cupoSobregiro;
+
     @Column(nullable = false)
     @Builder.Default
     private Boolean activa = true;

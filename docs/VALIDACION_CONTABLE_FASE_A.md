@@ -111,6 +111,35 @@ ORDER BY id DESC LIMIT 20;
 - [ ] Esperado: asiento `CE-…` que **cancela** todas las cuentas de Ingreso/Costo/Gasto y lleva la diferencia a **Utilidad del Ejercicio (3605)** (CR si ganancia, DB si pérdida).
 - [ ] Cuadra. El **Estado de Resultados** del período sigue mostrando el resultado real; el **Balance** muestra la utilidad ya en patrimonio (3605).
 
+## 14. PAGO de nómina (prefijo `PN`, tipoOrigen `NOMINA_PAGO`)
+- [ ] RRHH → pagar la nómina aprobada del paso 10 (efectivo o banco).
+- [ ] Esperado: **DB Salarios por pagar (2505)** / **CR Caja o cuenta del banco** por el neto.
+- [ ] Cuadra.
+
+## 15. PAGO de prestación (prefijo `PP`, tipoOrigen `PRESTACION_PAGO`)
+- [ ] RRHH → pagar una prestación (prima/cesantías/vacaciones) en efectivo.
+- [ ] Esperado: **DB pasivo provisionado (25xx)** por lo disponible + **DB gasto (5105xx)** por el faltante / **CR Caja** por el total.
+- [ ] Cuadra.
+
+## 16. MOVIMIENTO de caja (tipoOrigen `MOVIMIENTO_CAJA`)
+- [ ] Caja → registrar un ingreso y un egreso manual con concepto contable.
+- [ ] Esperado ingreso: **DB Caja / CR cuenta del concepto**; egreso: al revés. El asiento reutiliza el número del comprobante de caja.
+- [ ] Cuadra.
+
+## 17. TESORERÍA (prefijo `TS`, tipoOrigen `TESORERIA`)
+- [ ] Tesorería → registrar un recaudo y un egreso bancario con contrapartida.
+- [ ] Esperado: **DB Banco / CR contrapartida** (recaudo) y **DB contrapartida / CR Banco** (egreso). Banco = cuenta contable de la cuenta bancaria.
+- [ ] Cuadra.
+
+## 18. SALDOS INICIALES / apertura
+- [ ] Contabilidad → Apertura → cargar saldos iniciales (caja, bancos, inventario, cartera, proveedores, capital).
+- [ ] Esperado: asiento de apertura cuadrado; el Balance arranca con `ecuacionContable ≈ 0`.
+- [ ] Reejecutar la apertura no duplica (idempotente).
+
+## 19. REVERSAS restantes (prefijo `RV`)
+- [ ] Anular gasto, merma, nómina y devolución → contraasiento `ANULACION_*` con débito/crédito intercambiados; anular dos veces no duplica.
+- [ ] Reabrir el período cerrado y verificar que el cierre no se duplica al volver a cerrar.
+
 ---
 
 ## ✅ Cierre de la Fase A
@@ -119,3 +148,31 @@ ORDER BY id DESC LIMIT 20;
 - [ ] Consulta **D**: `ecuacionContable ≈ 0` antes y después del cierre.
 
 Si los tres se cumplen → el motor es confiable y podemos pasar a la **Fase B** (config UI + saldos iniciales).
+
+---
+
+## Matriz caso → asiento esperado → asiento real (E0)
+
+Registrar aquí el resultado de cada corrida. El **asiento esperado** de cada
+flujo queda codificado como golden file en
+`src/test/resources/asientos-esperados/` (ADR-004) a medida que su generador
+migra al motor nuevo — la venta ya tiene los suyos
+(`venta-contado-efectivo.json`, `venta-credito.json`, `venta-mixta-multipago.json`).
+
+| # | Flujo | Documento probado | Comprobante | Esperado = real | Notas |
+|---|---|---|---|---|---|
+| 1 | Venta contado | | VT- | ☐ | motor nuevo (VentaGenerador) |
+| 2 | Venta crédito/mixta | | VT- | ☐ | motor nuevo (VentaGenerador) |
+| 3 | Compra (± retenciones) | | CO- | ☐ | |
+| 4 | Gasto con IVA/retenciones | | GT- | ☐ | |
+| 5 | Merma | | MM- | ☐ | |
+| 6 | Abono cartera | | RC- | ☐ | |
+| 7 | Pago proveedor | | EG- | ☐ | |
+| 8 | Devolución | | DV- | ☐ | |
+| 9 | Anulaciones (venta/compra/…) | | RV- | ☐ | |
+| 10 | Nómina aprobada | | NO- | ☐ | |
+| 11 | Pago nómina / prestación | | PN- / PP- | ☐ | |
+| 12 | Obligación + cuota | | OB- / CU- | ☐ | |
+| 13 | Mov. caja / tesorería | | RC-/CE- / TS- | ☐ | |
+| 14 | Saldos iniciales | | — | ☐ | |
+| 15 | Cierre de período | | CE- | ☐ | |

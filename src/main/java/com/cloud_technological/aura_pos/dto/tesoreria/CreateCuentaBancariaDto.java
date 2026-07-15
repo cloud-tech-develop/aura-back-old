@@ -32,4 +32,8 @@ public class CreateCuentaBancariaDto {
 
     @NotNull
     private BigDecimal saldoInicial;
+
+    // Sobregiro (E2): saldo negativo permitido hasta el cupo.
+    private Boolean permiteSobregiro;
+    private BigDecimal cupoSobregiro;
 }

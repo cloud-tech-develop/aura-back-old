@@ -1,0 +1,7 @@
+{
+  "descripcion": "Conciliación bancaria — GMF 4X1000",
+  "partidas": [
+    { "cuenta": 530595, "debito": 4000.00, "credito": 0, "tercero": 33 },
+    { "cuenta": 111005, "debito": 0, "credito": 4000.00, "tercero": null }
+  ]
+}

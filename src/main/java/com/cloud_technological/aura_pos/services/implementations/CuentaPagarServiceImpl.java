@@ -213,10 +213,10 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
 
         jpaRepository.save(cuenta);
 
-        // Asiento contable del pago a proveedor tras el commit.
+        // Asiento contable del pago a proveedor tras el commit (evento único, ADR-003).
         eventPublisher.publishEvent(
-                new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
-                        "PAGO", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+                new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                        "ABONO_PAGAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toAbonoDto(abono);
     }

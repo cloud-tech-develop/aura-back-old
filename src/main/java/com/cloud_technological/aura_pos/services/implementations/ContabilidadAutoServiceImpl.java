@@ -84,6 +84,12 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private com.cloud_technological.aura_pos.repositories.conceptos_caja.ConceptoCajaJPARepository conceptoCajaRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.comprobante_caja.ComprobanteCajaJPARepository comprobanteCajaRepo;
     @Autowired private ConfiguracionContableService config;
+    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago resolucionCuentaPago;
+    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.port.ConfigContabilizacion configContabilizacion;
+    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaProducto resolucionCuentaProducto;
+    @Autowired private com.cloud_technological.aura_pos.repositories.detalle_compras.CompraDetalleJPARepository compraDetalleRepo;
+    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionImpuesto resolucionImpuesto;
+    @Autowired private com.cloud_technological.aura_pos.repositories.asistencia.AsistenciaNovedadNominaJPARepository novedadNominaRepo;
 
     // ────────────────────────────────────────────────────────────────────────
     //  Prefijos de comprobante (Regla 1)
@@ -104,6 +110,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired
     private com.cloud_technological.aura_pos.repositories.nomina.LiquidacionPrestacionJPARepository prestacionRepo;
     private static final String PREFIX_CIERRE     = "CE";
+    private static final String PREFIX_SOBREGIRO  = "SB";
     private static final String PREFIX_OBLIGACION = "OB";
     private static final String PREFIX_CUOTA      = "CU";
     private static final String PREFIX_TESORERIA  = "TS";
@@ -233,16 +240,68 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
-        // ── DÉBITO · inventario (costo + fletes − descuento) ──────────────────
+        // ── DÉBITO · destino de la compra ─────────────────────────────────────
+        // Prioridad: cuenta destino explícita de la compra (E2) → agrupado por
+        // categoría contable de cada producto (E4) → inventario por defecto.
+        // El delta por fletes/descuento de cabecera se ajusta al grupo mayor.
         if (costoInventario.signum() != 0) {
-            PlanCuentaEntity inv = config.resolverCuenta(empresaId, ConceptoContable.INVENTARIO);
-            detalles.add(linea(inv.getId(), "Inventario compra", costoInventario, BigDecimal.ZERO));
+            if (compra.getCuentaContableId() != null) {
+                detalles.add(linea(compra.getCuentaContableId(), "Compra — destino contable",
+                        costoInventario, BigDecimal.ZERO));
+            } else {
+                java.util.Map<Long, BigDecimal> porCuenta = new java.util.LinkedHashMap<>();
+                for (var det : compraDetalleRepo.findByCompraId(compraId)) {
+                    Long productoId = det.getProducto() != null ? det.getProducto().getId() : null;
+                    Long cuentaId = resolucionCuentaProducto.resolver(productoId, empresaId)
+                            .inventarioId();
+                    BigDecimal base = nz(det.getSubtotalLinea()).subtract(nz(det.getDescuentoValor()));
+                    porCuenta.merge(cuentaId, base, BigDecimal::add);
+                }
+                if (porCuenta.isEmpty()) {
+                    porCuenta.put(config.resolverCuenta(empresaId, ConceptoContable.INVENTARIO).getId(),
+                            costoInventario);
+                } else {
+                    BigDecimal suma = porCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal delta = costoInventario.subtract(suma);
+                    if (delta.signum() != 0) {
+                        Long mayor = porCuenta.entrySet().stream()
+                                .max(java.util.Map.Entry.comparingByValue())
+                                .map(java.util.Map.Entry::getKey).orElseThrow();
+                        porCuenta.merge(mayor, delta, BigDecimal::add);
+                    }
+                }
+                porCuenta.forEach((cuentaId, monto) ->
+                        detalles.add(linea(cuentaId, "Inventario compra", monto, BigDecimal.ZERO)));
+            }
         }
 
-        // ── DÉBITO · IVA descontable ──────────────────────────────────────────
+        // ── DÉBITO · IVA descontable agrupado por cuenta del impuesto (E5) ────
         if (impuestos.signum() > 0) {
-            PlanCuentaEntity iva = config.resolverCuenta(empresaId, ConceptoContable.IVA_DESCONTABLE);
-            detalles.add(linea(iva.getId(), "IVA descontable", impuestos, BigDecimal.ZERO));
+            java.util.Map<Long, BigDecimal> ivaPorCuenta = new java.util.LinkedHashMap<>();
+            for (var det : compraDetalleRepo.findByCompraId(compraId)) {
+                BigDecimal ivaLinea = nz(det.getImpuestoValor());
+                if (ivaLinea.signum() <= 0) {
+                    continue;
+                }
+                Long productoId = det.getProducto() != null ? det.getProducto().getId() : null;
+                ivaPorCuenta.merge(resolucionImpuesto.resolverDescontable(productoId, empresaId),
+                        ivaLinea, BigDecimal::add);
+            }
+            if (ivaPorCuenta.isEmpty()) {
+                ivaPorCuenta.put(config.resolverCuenta(empresaId, ConceptoContable.IVA_DESCONTABLE).getId(),
+                        impuestos);
+            } else {
+                BigDecimal suma = ivaPorCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal delta = impuestos.subtract(suma);
+                if (delta.signum() != 0) {
+                    Long mayor = ivaPorCuenta.entrySet().stream()
+                            .max(java.util.Map.Entry.comparingByValue())
+                            .map(java.util.Map.Entry::getKey).orElseThrow();
+                    ivaPorCuenta.merge(mayor, delta, BigDecimal::add);
+                }
+            }
+            ivaPorCuenta.forEach((cuentaId, monto) ->
+                    detalles.add(linea(cuentaId, "IVA descontable", monto, BigDecimal.ZERO)));
         }
 
         // ── CRÉDITO · retenciones practicadas al proveedor ────────────────────
@@ -284,6 +343,18 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         if (detalles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "La compra #" + compraId + " no produjo movimientos contables.");
+        }
+
+        // El centro de costo (E2) y el proyecto/frente (E7) de la compra se
+        // propagan a TODAS las líneas.
+        if (compra.getCentroCostoId() != null) {
+            detalles.forEach(d -> d.setCentroCostoId(compra.getCentroCostoId()));
+        }
+        if (compra.getProyectoId() != null) {
+            detalles.forEach(d -> {
+                d.setProyectoId(compra.getProyectoId());
+                d.setFrenteId(compra.getFrenteId());
+            });
         }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_COMPRA);
@@ -413,10 +484,31 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
-        // ── DÉBITO · reversa del ingreso e IVA ────────────────────────────────
+        // ── DÉBITO · reversa del ingreso (cuenta de devolución por categoría,
+        //    E4: proporcional por línea; delta de redondeo al grupo mayor) ────
         if (base.signum() != 0) {
-            PlanCuentaEntity ingresos = config.resolverCuenta(empresaId, ConceptoContable.INGRESOS_VENTAS);
-            detalles.add(linea(ingresos.getId(), "Devolución en ventas", base, BigDecimal.ZERO));
+            java.util.Map<Long, BigDecimal> porCuenta = new java.util.LinkedHashMap<>();
+            for (DevolucionDetalleEntity d : dets) {
+                Long productoId = d.getProducto() != null ? d.getProducto().getId() : null;
+                Long cuentaId = resolucionCuentaProducto.resolver(productoId, empresaId)
+                        .devolucionId();
+                BigDecimal baseLinea = nz(d.getSubtotalLinea()).subtract(nz(d.getImpuestoValor()));
+                porCuenta.merge(cuentaId, baseLinea, BigDecimal::add);
+            }
+            if (porCuenta.isEmpty()) {
+                porCuenta.put(config.resolverCuenta(empresaId, ConceptoContable.INGRESOS_VENTAS).getId(), base);
+            } else {
+                BigDecimal suma = porCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal delta = base.subtract(suma);
+                if (delta.signum() != 0) {
+                    Long mayor = porCuenta.entrySet().stream()
+                            .max(java.util.Map.Entry.comparingByValue())
+                            .map(java.util.Map.Entry::getKey).orElseThrow();
+                    porCuenta.merge(mayor, delta, BigDecimal::add);
+                }
+            }
+            porCuenta.forEach((cuentaId, monto) ->
+                    detalles.add(linea(cuentaId, "Devolución en ventas", monto, BigDecimal.ZERO)));
         }
         if (iva.signum() > 0) {
             PlanCuentaEntity ivaCta = config.resolverCuenta(empresaId, ConceptoContable.IVA_GENERADO);
@@ -564,10 +656,14 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
-        // DB · cuenta de gasto (la que eligió el usuario; fallback a gasto general)
-        Long cuentaGastoId = gasto.getCuentaContableId() != null
-                ? gasto.getCuentaContableId()
-                : config.resolverCuenta(empresaId, ConceptoContable.GASTO_GENERAL).getId();
+        // DB · cuenta de gasto (la que eligió el usuario; fallback a gasto
+        // general). E6: si es DIFERIDO, el pago va al activo 1705 y el gasto
+        // real lo reconoce mes a mes el job de amortización.
+        Long cuentaGastoId = Boolean.TRUE.equals(gasto.getEsDiferido())
+                ? config.resolverCuenta(empresaId, ConceptoContable.GASTOS_PAGADOS_ANTICIPADO).getId()
+                : (gasto.getCuentaContableId() != null
+                        ? gasto.getCuentaContableId()
+                        : config.resolverCuenta(empresaId, ConceptoContable.GASTO_GENERAL).getId());
         AsientoDetalleEntity lineaGasto = linea(cuentaGastoId, "Gasto: "
                 + (gasto.getDescripcion() != null ? gasto.getDescripcion() : gasto.getCategoria()),
                 monto, BigDecimal.ZERO, terceroId);
@@ -592,6 +688,14 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         if (neto.signum() > 0) {
             PlanCuentaEntity caja = config.resolverCuenta(empresaId, ConceptoContable.CAJA);
             detalles.add(linea(caja.getId(), "Pago gasto", BigDecimal.ZERO, neto));
+        }
+
+        // Dimensiones del gasto propagadas a TODAS las líneas (E7).
+        if (gasto.getProyectoId() != null) {
+            detalles.forEach(d -> {
+                d.setProyectoId(gasto.getProyectoId());
+                d.setFrenteId(gasto.getFrenteId());
+            });
         }
 
         java.time.LocalDate fecha = gasto.getFecha() != null ? gasto.getFecha() : java.time.LocalDate.now();
@@ -647,26 +751,28 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         // ── DÉBITOS · gasto de personal desglosado por auxiliar (5105xx) ──────
         // El sueldo absorbe todo el devengado (salario proporcional + auxilio + novedades).
+        // E7: cada débito se reparte por proyecto/frente según horas de asistencia.
+        List<RepartoFrente> reparto = calcularRepartoNomina(n, empresaId);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_SUELDOS,
-                "Sueldos y devengados", nz(n.getTotalDevengado()));
+                "Sueldos y devengados", nz(n.getTotalDevengado()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_APORTE_SALUD,
-                "Aporte patronal salud", nz(n.getAporteSalud()));
+                "Aporte patronal salud", nz(n.getAporteSalud()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_APORTE_PENSION,
-                "Aporte patronal pensión", nz(n.getAportePension()));
+                "Aporte patronal pensión", nz(n.getAportePension()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_ARL,
-                "ARL", nz(n.getAporteArl()));
+                "ARL", nz(n.getAporteArl()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_CAJA,
-                "Caja de compensación", nz(n.getAporteCaja()));
+                "Caja de compensación", nz(n.getAporteCaja()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_SENA_ICBF,
-                "SENA e ICBF", nz(n.getAporteSena()).add(nz(n.getAporteIcbf())));
+                "SENA e ICBF", nz(n.getAporteSena()).add(nz(n.getAporteIcbf())), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_PRIMA,
-                "Provisión prima de servicios", nz(n.getProvisionPrima()));
+                "Provisión prima de servicios", nz(n.getProvisionPrima()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_CESANTIAS,
-                "Provisión cesantías", nz(n.getProvisionCesantias()));
+                "Provisión cesantías", nz(n.getProvisionCesantias()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_INT_CESANTIAS,
-                "Provisión intereses de cesantías", nz(n.getProvisionIntCesantias()));
+                "Provisión intereses de cesantías", nz(n.getProvisionIntCesantias()), reparto);
         addDebitoNomina(detalles, empresaId, ConceptoContable.NOMINA_VACACIONES,
-                "Provisión vacaciones", nz(n.getProvisionVacaciones()));
+                "Provisión vacaciones", nz(n.getProvisionVacaciones()), reparto);
 
         // ── CRÉDITOS · pasivos por pagar ──────────────────────────────────────
         // Salarios netos al empleado.
@@ -884,6 +990,54 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
                 java.time.LocalDate.now(), comprobante,
                 "Cierre del período #" + periodoId, "CIERRE", periodoId, periodoId, detalles);
+        asiento.setEstado("CONTABILIZADO"); // el cierre es acto deliberado, nunca borrador
+        detalles.forEach(x -> x.setAsiento(asiento));
+
+        AsientoContableEntity saved = asientoRepo.save(asiento);
+        AsientoContableTableDto result = toDto(saved);
+        result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
+        return result;
+    }
+
+    /**
+     * Corre DENTRO de la transacción del cierre (REQUIRED): si la
+     * reclasificación falla, el período no se cierra. Usa el saldo del mayor
+     * de la cuenta contable de cada banco con sobregiro; para que no haya
+     * dobles conteos cada banco debe tener su propia auxiliar 1110xx.
+     */
+    @Override
+    @Transactional
+    public AsientoContableTableDto generarReclasificacionSobregiro(Long periodoId, Integer empresaId,
+            Integer usuarioId) {
+        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("SOBREGIRO", periodoId, empresaId)) {
+            return null;
+        }
+
+        PlanCuentaEntity sobregiros = config.resolverCuenta(empresaId, ConceptoContable.SOBREGIROS_BANCARIOS);
+        List<AsientoDetalleEntity> detalles = new ArrayList<>();
+        for (CuentaBancariaEntity cb : cuentaBancariaRepo.findByEmpresaIdOrderByNombreAsc(empresaId)) {
+            if (!Boolean.TRUE.equals(cb.getPermiteSobregiro()) || cb.getCuentaContableId() == null) {
+                continue;
+            }
+            BigDecimal saldo = nz(queryRepo.saldoCuenta(empresaId, cb.getCuentaContableId()));
+            if (saldo.signum() < 0) { // saldo crédito en cuenta de activo = sobregiro
+                BigDecimal monto = saldo.negate();
+                detalles.add(linea(cb.getCuentaContableId(),
+                        "Reclasificación sobregiro — " + cb.getNombre(), monto, BigDecimal.ZERO));
+                detalles.add(linea(sobregiros.getId(),
+                        "Sobregiro bancario — " + cb.getNombre(), BigDecimal.ZERO, monto, cb.getTerceroId()));
+            }
+        }
+        if (detalles.isEmpty()) {
+            return null;
+        }
+
+        String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_SOBREGIRO);
+        AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
+                java.time.LocalDate.now(), comprobante,
+                "Reclasificación de sobregiros — cierre período #" + periodoId,
+                "SOBREGIRO", periodoId, periodoId, detalles);
+        asiento.setEstado("CONTABILIZADO"); // parte del cierre, nunca borrador
         detalles.forEach(x -> x.setAsiento(asiento));
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
@@ -1098,34 +1252,17 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         return result;
     }
 
-    /** Resuelve Caja vs Bancos según el método de pago (efectivo → Caja). */
-    private ConceptoContable conceptoPago(String metodoPago) {
-        if (metodoPago != null && metodoPago.toUpperCase().contains("EFECTIVO")) {
-            return ConceptoContable.CAJA;
-        }
-        return ConceptoContable.BANCOS;
-    }
-
     /**
-     * Resuelve la cuenta contable de un movimiento de dinero, en este orden:
-     * (1) la cuenta contable de la cuenta bancaria del pago, si la tiene;
-     * (2) fallback por método de pago (efectivo→Caja, resto→Bancos genérico).
-     * Aquí se insertará luego la parametrización de formas de pago (Pieza 2).
+     * Resuelve la cuenta contable de un movimiento de dinero delegando en el
+     * puerto del módulo contable (E2): cuenta bancaria → forma de pago
+     * parametrizada → fallback CAJA/BANCOS. Una sola fuente de verdad para
+     * los flujos legacy y los migrados al registry.
      */
     private PlanCuentaEntity resolverCuentaPago(Integer empresaId, String metodoPago, Long cuentaBancariaId) {
-        if (cuentaBancariaId != null) {
-            CuentaBancariaEntity cb = cuentaBancariaRepo.findByIdAndEmpresaId(cuentaBancariaId, empresaId)
-                    .orElse(null);
-            if (cb != null && cb.getCuentaContableId() != null) {
-                PlanCuentaEntity cuenta = planRepo.findByIdAndEmpresaId(cb.getCuentaContableId(), empresaId)
-                        .filter(c -> Boolean.TRUE.equals(c.getActiva()))
-                        .orElse(null);
-                if (cuenta != null) {
-                    return cuenta;
-                }
-            }
-        }
-        return config.resolverCuenta(empresaId, conceptoPago(metodoPago));
+        Long cuentaId = resolucionCuentaPago.resolver(empresaId, metodoPago, cuentaBancariaId);
+        return planRepo.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "La cuenta contable resuelta para el pago no existe."));
     }
 
     private PeriodoContableEntity periodoAbierto(Integer empresaId) {
@@ -1153,12 +1290,75 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         return linea(cuentaId, desc, debito, credito, null);
     }
 
-    /** Agrega una línea débito de nómina resolviendo la cuenta del concepto (solo si monto {@code > 0}). */
+    /**
+     * Agrega una línea débito de nómina resolviendo la cuenta del concepto
+     * (solo si monto {@code > 0}). Con reparto (E7), el gasto se divide por
+     * (proyecto, frente) proporcional a las horas; la última porción absorbe
+     * el residuo de redondeo para que el asiento cuadre exacto.
+     */
     private void addDebitoNomina(List<AsientoDetalleEntity> detalles, Integer empresaId,
-            ConceptoContable concepto, String desc, BigDecimal monto) {
+            ConceptoContable concepto, String desc, BigDecimal monto,
+            List<RepartoFrente> reparto) {
         if (monto == null || monto.signum() <= 0) return;
         PlanCuentaEntity cuenta = config.resolverCuenta(empresaId, concepto);
-        detalles.add(linea(cuenta.getId(), desc, monto, BigDecimal.ZERO));
+        if (reparto == null || reparto.isEmpty()) {
+            detalles.add(linea(cuenta.getId(), desc, monto, BigDecimal.ZERO));
+            return;
+        }
+        BigDecimal asignado = BigDecimal.ZERO;
+        for (int i = 0; i < reparto.size(); i++) {
+            RepartoFrente parte = reparto.get(i);
+            BigDecimal porcion = i == reparto.size() - 1
+                    ? monto.subtract(asignado)
+                    : monto.multiply(parte.proporcion())
+                            .setScale(2, java.math.RoundingMode.HALF_UP);
+            asignado = asignado.add(porcion);
+            if (porcion.signum() <= 0) continue;
+            AsientoDetalleEntity lineaGasto = linea(cuenta.getId(), desc, porcion, BigDecimal.ZERO);
+            lineaGasto.setProyectoId(parte.proyectoId());
+            lineaGasto.setFrenteId(parte.frenteId());
+            detalles.add(lineaGasto);
+        }
+    }
+
+    /** Participación de un proyecto/frente en las horas del período (E7). */
+    private record RepartoFrente(Long proyectoId, Long frenteId, BigDecimal proporcion) {
+    }
+
+    /**
+     * Reparto del gasto de nómina por proyecto/frente según las horas de las
+     * novedades de asistencia del empleado en el período. DIAS se convierte a
+     * horas (×8) para no sesgar la mezcla. Sin datos → lista vacía (una sola
+     * línea, comportamiento previo).
+     */
+    private List<RepartoFrente> calcularRepartoNomina(NominaEntity n, Integer empresaId) {
+        if (n.getPeriodo() == null || n.getEmpleado() == null) {
+            return List.of();
+        }
+        var horasPorFrente = new java.util.LinkedHashMap<List<Long>, BigDecimal>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (var nov : novedadNominaRepo.findByEmpresaIdAndPeriodoNominaIdAndEmpleadoId(
+                empresaId, n.getPeriodo().getId(), n.getEmpleado().getId())) {
+            if (nov.getProyectoId() == null) continue;
+            BigDecimal cantidad = nz(nov.getCantidad());
+            if (cantidad.signum() <= 0) continue;
+            if ("DIAS".equals(nov.getUnidad())) {
+                cantidad = cantidad.multiply(BigDecimal.valueOf(8));
+            } else if (!"HORAS".equals(nov.getUnidad())) {
+                continue;
+            }
+            horasPorFrente.merge(java.util.Arrays.asList(nov.getProyectoId(), nov.getFrenteId()),
+                    cantidad, BigDecimal::add);
+            total = total.add(cantidad);
+        }
+        if (horasPorFrente.isEmpty() || total.signum() <= 0) {
+            return List.of();
+        }
+        BigDecimal totalHoras = total;
+        return horasPorFrente.entrySet().stream()
+                .map(e -> new RepartoFrente(e.getKey().get(0), e.getKey().get(1),
+                        e.getValue().divide(totalHoras, 6, java.math.RoundingMode.HALF_UP)))
+                .toList();
     }
 
     /** Agrega una línea crédito de nómina resolviendo la cuenta del concepto (solo si monto {@code > 0}). */
@@ -1199,7 +1399,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 .numeroComprobante(comprobante)
                 .totalDebito(totalDb)
                 .totalCredito(totalCr)
-                .estado("CONTABILIZADO")
+                // E3: en modo REVISION los asientos automáticos nacen BORRADOR.
+                // CIERRE y SOBREGIRO fuerzan CONTABILIZADO tras el build.
+                .estado(configContabilizacion.estadoInicial(empresaId).name())
                 .usuarioId(usuarioId)
                 .detalles(detalles)
                 .build();

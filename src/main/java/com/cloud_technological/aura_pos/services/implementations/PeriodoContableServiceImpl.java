@@ -24,6 +24,10 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
     @Autowired private PeriodoContableJPARepository jpaRepo;
     @Autowired private PeriodoContableQueryRepository queryRepo;
     @Autowired private com.cloud_technological.aura_pos.services.ContabilidadAutoService autoService;
+    @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository asientoRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.ExtractoBancarioJPARepository extractoRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepo;
 
     @Override
     public List<PeriodoContableTableDto> listar(Integer empresaId) {
@@ -41,6 +45,15 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
             throw new GlobalException(HttpStatus.CONFLICT,
                 "Ya existe un período contable ABIERTO. Ciérrelo antes de abrir uno nuevo.");
         }
+
+        // Sobregiro (E2): la reclasificación del período anterior se reversa en el
+        // nuevo período. AFTER_COMMIT (el listener necesita ver este período ABIERTO
+        // ya persistido); idempotente — no-op si no hubo reclasificación.
+        jpaRepo.findFirstByEmpresaIdAndEstadoOrderByAnioDescMesDesc(empresaId, "CERRADO")
+                .ifPresent(anterior -> eventPublisher.publishEvent(
+                        new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                                "SOBREGIRO", anterior.getId(), empresaId,
+                                usuarioId != null ? usuarioId.intValue() : null)));
 
         // No duplicar el mismo mes/año
         if (jpaRepo.existsByEmpresaIdAndAnioAndMes(empresaId, anio, mes)) {
@@ -75,6 +88,34 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
             throw new GlobalException(HttpStatus.CONFLICT, "El período ya está cerrado");
         }
 
+        // E3: no se cierra con comprobantes en borrador — quedarían huérfanos
+        // (el período cerrado bloquea contabilizarlos después).
+        if (asientoRepo.existsByEmpresaIdAndPeriodoContableIdAndEstado(empresaId, id, "BORRADOR")) {
+            throw new GlobalException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "No se puede cerrar el período: hay comprobantes en BORRADOR pendientes de "
+                + "aprobación. Contabilícelos o anúlelos desde la bandeja de pendientes.");
+        }
+
+        // E9: si el mes tiene extractos bancarios importados, deben quedar
+        // conciliados antes de cerrar — un extracto ABIERTO significa que el
+        // saldo del banco en libros aún no está certificado y podrían faltar
+        // ajustes (comisiones, GMF, intereses) que pertenecen a este período.
+        String periodoExtracto = String.format("%04d-%02d", periodo.getAnio(), periodo.getMes());
+        List<com.cloud_technological.aura_pos.entity.ExtractoBancarioEntity> extractosAbiertos =
+                extractoRepo.findByEmpresaIdAndPeriodoAndEstado(empresaId, periodoExtracto,
+                        com.cloud_technological.aura_pos.entity.ExtractoBancarioEntity.ESTADO_ABIERTO);
+        if (!extractosAbiertos.isEmpty()) {
+            List<String> cuentas = extractosAbiertos.stream()
+                    .map(e -> cuentaBancariaRepo.findById(e.getCuentaBancariaId())
+                            .map(c -> c.getNombre())
+                            .orElse("cuenta #" + e.getCuentaBancariaId()))
+                    .toList();
+            throw new GlobalException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "No se puede cerrar el período: hay extractos bancarios de " + periodoExtracto
+                + " sin conciliar (" + String.join(", ", cuentas)
+                + "). Concilie y cierre los extractos, o elimínelos si se crearon por error.");
+        }
+
         // Validar que todos los asientos cuadren antes de cerrar
         List<String> sinCuadre = queryRepo.comprobantesSinCuadre(id);
         if (!sinCuadre.isEmpty()) {
@@ -86,6 +127,10 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         // Asiento de cierre: cancela ingresos/costos/gastos contra la utilidad del
         // ejercicio. Dentro de la misma transacción: si falla, no se cierra el período.
         autoService.generarCierre(id, empresaId, usuarioId != null ? usuarioId.intValue() : null);
+
+        // Sobregiro (E2): bancos con saldo crédito quedan presentados en 21xx.
+        autoService.generarReclasificacionSobregiro(id, empresaId,
+                usuarioId != null ? usuarioId.intValue() : null);
 
         periodo.setEstado("CERRADO");
         periodo.setFechaCierre(LocalDate.now());

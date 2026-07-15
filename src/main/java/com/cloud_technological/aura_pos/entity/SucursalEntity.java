@@ -45,5 +45,9 @@ public class SucursalEntity {
     @Column(name = "consecutivo_actual")
     private Long consecutivoActual;
 
+    /** Centro de costo que heredan las ventas de esta sucursal (E7). */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
     private Boolean activa = true;
 }

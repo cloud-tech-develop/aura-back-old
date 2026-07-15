@@ -1,0 +1,7 @@
+{
+  "descripcion": "Provisión impuesto de renta 2025",
+  "partidas": [
+    { "cuenta": 5405, "debito": 12500000, "credito": 0, "tercero": null },
+    { "cuenta": 2404, "debito": 0, "credito": 12500000, "tercero": null }
+  ]
+}
