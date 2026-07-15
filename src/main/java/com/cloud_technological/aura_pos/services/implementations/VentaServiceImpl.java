@@ -601,10 +601,10 @@ public class VentaServiceImpl implements VentaService {
         }
 
         // 11. Disparar la generación del asiento contable tras el commit de la venta.
-        //     Si la contabilización falla, la venta NO se revierte (se registra en ErrorLog).
+        //     Si la contabilización falla, la venta NO se revierte (queda en PostingLog/ErrorLog).
         eventPublisher.publishEvent(
-                new com.cloud_technological.aura_pos.event.VentaContabilizableEvent(
-                        venta.getId(), empresaId, usuarioId.intValue()));
+                new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                        "VENTA", venta.getId(), empresaId, usuarioId.intValue()));
 
         return ventaDto;
     }

@@ -16,4 +16,7 @@ public interface CuentaCobrarJPARepository extends JpaRepository<CuentaCobrarEnt
             Long terceroId, Integer empresaId);
 
     Optional<CuentaCobrarEntity> findByVentaIdAndEmpresaId(Long ventaId, Integer empresaId);
+
+    /** Cartera activa de la empresa (deterioro por edades, E6). */
+    List<CuentaCobrarEntity> findByEmpresaIdAndEstado(Integer empresaId, String estado);
 }

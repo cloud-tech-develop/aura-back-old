@@ -88,6 +88,36 @@ public class GlobalExceptionHandler {
 		return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
 	}
 
+	// ── Excepciones tipadas del módulo contable ───────────────────────────
+	// Más específicas que RuntimeException: Spring las enruta aquí primero.
+
+	@ExceptionHandler(com.cloud_technological.aura_pos.contabilidad.application.exception.PeriodoCerradoException.class)
+	public ResponseEntity<?> handlePeriodoCerrado(
+			com.cloud_technological.aura_pos.contabilidad.application.exception.PeriodoCerradoException ex,
+			HttpServletRequest request) {
+		registrarError(HttpStatus.CONFLICT.value(), ex.getMessage(), null, request);
+		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.CONFLICT.value(), ex.getMessage(), true, null);
+		return new ResponseEntity<>(response, HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(com.cloud_technological.aura_pos.contabilidad.application.exception.CuentaNoParametrizadaException.class)
+	public ResponseEntity<?> handleCuentaNoParametrizada(
+			com.cloud_technological.aura_pos.contabilidad.application.exception.CuentaNoParametrizadaException ex,
+			HttpServletRequest request) {
+		registrarError(HttpStatus.UNPROCESSABLE_ENTITY.value(), ex.getMessage(), null, request);
+		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.UNPROCESSABLE_ENTITY.value(), ex.getMessage(), true, null);
+		return new ResponseEntity<>(response, HttpStatus.UNPROCESSABLE_ENTITY);
+	}
+
+	@ExceptionHandler(com.cloud_technological.aura_pos.contabilidad.domain.AsientoDescuadradoException.class)
+	public ResponseEntity<?> handleAsientoDescuadrado(
+			com.cloud_technological.aura_pos.contabilidad.domain.AsientoDescuadradoException ex,
+			HttpServletRequest request) {
+		registrarError(HttpStatus.UNPROCESSABLE_ENTITY.value(), ex.getMessage(), stackTrace(ex), request);
+		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.UNPROCESSABLE_ENTITY.value(), ex.getMessage(), true, null);
+		return new ResponseEntity<>(response, HttpStatus.UNPROCESSABLE_ENTITY);
+	}
+
 	@ExceptionHandler(BusinessException.class)
 	public ResponseEntity<?> handleBusinessException(BusinessException ex, HttpServletRequest request) {
 		registrarError(ex.getStatus().value(), ex.getMessage(), null, request);

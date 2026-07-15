@@ -1,0 +1,1122 @@
+# ══════════════════════════════════════════════════════════════════════
+#  VALIDACIÓN E0 — Ciclo contable completo por API
+#  Guía: docs/VALIDACION_CONTABLE_FASE_A.md (19 pasos + matriz)
+#
+#  Cómo usar (VS Code REST Client / IntelliJ HTTP Client):
+#  1. Levanta el backend (puerto 9001).
+#  2. Ejecuta el LOGIN (0.1) — el token se captura solo — o pega el tuyo
+#     en @token.
+#  3. Ve corriendo cada paso en orden. Después de cada operación, corre
+#     su "Verificar asiento" y confirma:
+#        · total_debito = total_credito (cuadra)
+#        · las cuentas esperadas (comentadas en cada paso)
+#        · GET 99.3 (error_log de auto-posting) sigue vacío
+#  4. Anota el resultado en la matriz del doc de validación.
+#
+#  ⚠ Ajusta los IDs (producto, cliente, proveedor, sucursal, turno…) a
+#    los datos reales de tu empresa. Los montos de ejemplo usan IVA 19%.
+# ══════════════════════════════════════════════════════════════════════
+
+@host = http://localhost:9001
+# Pega tu token aquí si no usas el login de abajo:
+@token = {{login.response.body.$.data.token}}
+
+### ─── 0.1 LOGIN (captura el token automáticamente) ────────────────────
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+    "username": "ferretotal@gmail.com",
+    "password": "123456"
+}
+
+### ══════════════════════════════════════════════════════════════════
+###  0. PRERREQUISITOS
+### ══════════════════════════════════════════════════════════════════
+
+### 0.2 Sembrar PUC básico (idempotente — solo si la empresa es nueva)
+POST {{host}}/api/contabilidad/plan-cuentas/seed
+Authorization: Bearer {{token}}
+
+### 0.3 Abrir período contable del mes actual
+POST {{host}}/api/periodos-contables/abrir
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "anio": 2026,
+  "mes": 7,
+  "observaciones": "Validación E0"
+}
+
+### 0.4 Ver período activo
+GET {{host}}/api/periodos-contables/activo
+Authorization: Bearer {{token}}
+
+### 0.5 Configuración concepto→cuenta (todos deben resolver a una cuenta)
+GET {{host}}/api/contabilidad/configuracion-cuentas
+Authorization: Bearer {{token}}
+
+### 0.6 GUARDARRAÍL (E1): mapear INGRESOS_VENTAS a una cuenta clase 1
+###     DEBE responder 400 con mensaje "solo admite cuentas 4xx"
+###     (usa el id de una cuenta 11xx de tu plan, p.ej. la de Caja)
+PUT {{host}}/api/contabilidad/configuracion-cuentas/INGRESOS_VENTAS
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cuentaId": 1
+}
+
+### 0.7 Log de auditoría de cambios de configuración (E1, V85)
+GET {{host}}/api/contabilidad/configuracion-cuentas/log
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  1. VENTA DE CONTADO (VT / VENTA) — motor nuevo VentaGenerador
+###  Esperado: DB Caja 1105 · CR Ingresos 4135 · CR IVA 2408
+###            + DB Costo 6135 / CR Inventario 1435
+### ══════════════════════════════════════════════════════════════════
+
+### 1.1 Crear venta de contado en efectivo
+POST {{host}}/api/ventas/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "clienteId": null,
+  "turnoCajaId": 51,
+  "sucursalId": 1,
+  "tipoDocumento": "POS",
+  "observaciones": "E0 paso 1 — venta contado",
+  "detalles": [
+    {
+      "productoId": 1472,
+      "cantidad": 2,
+      "precioUnitario": 50000,
+      "impuestoValor": 15966.39
+    }
+  ],
+  "pagos": [
+    { "metodoPago": "EFECTIVO", "monto": 120000 }
+  ]
+}
+
+### 1.2 Verificar asiento de la venta (el más reciente tipo VENTA)
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=VENTA&rows=5
+Authorization: Bearer {{token}}
+
+### 1.3 Detalle del asiento (usa el id del paso anterior)
+GET {{host}}/api/contabilidad/asientos/61
+Authorization: Bearer {{token}}
+# ↑ Reemplaza {{$guid}} por el id real del asiento
+
+### ══════════════════════════════════════════════════════════════════
+###  2. VENTA MIXTA (efectivo + crédito) — deja saldo en cartera
+###  Esperado: DB Caja + DB Clientes 1305 (con tercero) · CR 4135 · CR 2408 + COGS
+### ══════════════════════════════════════════════════════════════════
+
+### 2.1 Venta con cliente, mitad efectivo mitad crédito
+POST {{host}}/api/ventas/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "clienteId": 25,
+  "turnoCajaId": 51,
+  "sucursalId": 1,
+  "tipoDocumento": "POS",
+  "observaciones": "E0 paso 2 — venta mixta",
+  "fechaVencimiento": "2026-08-09T00:00:00",
+  "detalles": [
+    {
+      "productoId": 1472,
+      "cantidad": 2,
+      "precioUnitario": 50000,
+      "impuestoValor": 15966.39
+    }
+  ],
+  "pagos": [
+    { "metodoPago": "EFECTIVO", "monto": 70000 },
+    { "metodoPago": "CREDITO", "monto": 50000 }
+  ]
+}
+
+### 2.2 Verificar asiento
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=VENTA&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  3. COMPRA A CRÉDITO con retención (CO / COMPRA)
+###  Esperado: DB Inventario 1435 + DB IVA descontable 2408
+###            · CR Retefuente 2365 · CR Proveedores 2205 (con tercero)
+### ══════════════════════════════════════════════════════════════════
+
+### 3.1 Crear compra a crédito
+POST {{host}}/api/compras/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "proveedorId": 1,
+  "sucursalId": 1,
+  "numeroCompra": "FC-E0-001",
+  "fecha": "2026-07-09T10:00:00",
+  "formaPago": "CREDITO",
+  "tipoDocumento": "FACTURA_COMPRA",
+  "observaciones": "E0 paso 3 — compra crédito con retefuente",
+  "retefuentePct": 2.5,
+  "detalles": [
+    {
+      "productoId": 1,
+      "cantidad": 10,
+      "costoUnitario": 30000,
+      "impuestoValor": 57000
+    }
+  ],
+  "pagos": []
+}
+
+### 3.2 Verificar asiento de la compra
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=COMPRA&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  4. GASTO con IVA y retención (GT / GASTO)
+###  Esperado: DB gasto (cuenta elegida o 5195) + DB IVA 2408
+###            · CR Retefuente 2365 · CR Caja 1105 (neto)
+### ══════════════════════════════════════════════════════════════════
+
+### 4.1 Crear gasto
+POST {{host}}/api/gastos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "sucursalId": 1,
+  "categoria": "SERVICIOS",
+  "descripcion": "E0 paso 4 — arriendo bodega",
+  "monto": 200000,
+  "fecha": "2026-07-09",
+  "terceroId": 1,
+  "baseIva": 200000,
+  "tarifaIva": 19,
+  "valorIva": 38000,
+  "baseRetefuente": 200000,
+  "tarifaRetefuente": 3.5,
+  "valorRetefuente": 7000
+}
+
+### 4.2 Verificar asiento del gasto
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=GASTO&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  5. MERMA (MM / MERMA)
+###  Esperado: DB Pérdida 5195 · CR Inventario 1435 (por el costo)
+### ══════════════════════════════════════════════════════════════════
+
+### 5.1 Registrar merma
+POST {{host}}/api/mermas/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "sucursalId": 1,
+  "motivoId": 1,
+  "observacion": "E0 paso 5 — merma por vencimiento",
+  "detalles": [
+    { "productoId": 1, "cantidad": 1, "costoUnitario": 30000 }
+  ]
+}
+
+### 5.2 Verificar asiento de la merma
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=MERMA&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  6. ABONO A CARTERA (RC / ABONO_COBRAR) — usa la venta del paso 2
+###  Esperado: DB Caja/Bancos · CR Clientes 1305 (con tercero)
+### ══════════════════════════════════════════════════════════════════
+
+### 6.1 Buscar la cuenta por cobrar de la venta mixta E2 — TESORERÍA COMPLETA (formas de pago, compra contable, sobregiro)
+POST {{host}}/api/cuentas-cobrar/page
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "page": 0, "rows": 10 }
+
+### 6.2 Registrar abono (usa el id de la CxC del paso anterior)
+POST {{host}}/api/cuentas-cobrar/1/abonos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "monto": 20000,
+  "metodoPago": "EFECTIVO",
+  "referencia": "E0 paso 6"
+}
+
+### 6.3 Verificar asiento del recaudo
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=ABONO_COBRAR&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  7. PAGO A PROVEEDOR (EG / ABONO_PAGAR) — usa la compra del paso 3
+###  Esperado: DB Proveedores 2205 (con tercero) · CR Caja/Bancos
+### ══════════════════════════════════════════════════════════════════
+
+### 7.1 Buscar la cuenta por pagar de la compra
+POST {{host}}/api/cuentas-pagar/page
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "page": 0, "rows": 10 }
+
+### 7.2 Registrar abono al proveedor (usa el id real de la CxP)
+POST {{host}}/api/cuentas-pagar/1/abonos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "monto": 100000,
+  "metodoPago": "TRANSFERENCIA",
+  "cuentaBancariaId": 1,
+  "referencia": "E0 paso 7"
+}
+
+### 7.3 Verificar asiento del egreso
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=ABONO_PAGAR&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  8. DEVOLUCIÓN parcial de la venta 1 (DV / DEVOLUCION)
+###  Esperado: DB Ingresos + DB IVA (reversa) · CR Caja
+###            + DB Inventario / CR Costo si reintegra
+### ══════════════════════════════════════════════════════════════════
+
+### 8.1 Crear devolución (ajusta ventaId y detalleId reales)
+POST {{host}}/api/devoluciones/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "ventaId": 1,
+  "tipo": "PARCIAL",
+  "motivo": "E0 paso 8 — producto defectuoso",
+  "reintegraInventario": true,
+  "metodoDevolucion": "EFECTIVO",
+  "fechaDevolucion": "2026-07-09",
+  "detalles": [
+    { "productoId": 1, "cantidad": 1 }
+  ]
+}
+
+### 8.2 Verificar asiento de la devolución
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=DEVOLUCION&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  9. ANULACIONES (RV / ANULACION_*)
+###  Esperado: contraasiento con débito↔crédito intercambiados;
+###  anular dos veces NO duplica.
+### ══════════════════════════════════════════════════════════════════
+
+### 9.1 Anular una venta que tenga asiento (crea una de prueba antes)
+PATCH {{host}}/api/ventas/1/anular
+Authorization: Bearer {{token}}
+
+### 9.2 Anular una compra
+PATCH {{host}}/api/compras/1/anular
+Authorization: Bearer {{token}}
+
+### 9.3 Anular una merma
+PATCH {{host}}/api/mermas/1/anular
+Authorization: Bearer {{token}}
+
+### 9.4 Verificar contraasientos
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=ANULACION_VENTA&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  10–11. NÓMINA (NO / NOMINA) y su PAGO (PN / NOMINA_PAGO)
+###  Aprobar → DB 5105xx (sueldos+aportes+provisiones) · CR 2370/2380/25xx
+###  Pagar   → DB Salarios por pagar 2505 · CR Caja/Banco
+### ══════════════════════════════════════════════════════════════════
+
+### 10.1 Liquidar nómina de un empleado (ajusta periodoId/empleadoId)
+POST {{host}}/api/nomina/liquidar/1/empleado/1
+Authorization: Bearer {{token}}
+
+### 10.2 Aprobar la nómina (genera el asiento NO)
+PUT {{host}}/api/nomina/1/aprobar
+Authorization: Bearer {{token}}
+
+### 10.3 Verificar asiento de nómina
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=NOMINA&rows=5
+Authorization: Bearer {{token}}
+
+### 11.1 Pagar la nómina (genera el asiento PN)
+PUT {{host}}/api/nomina/1/pagar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "medioPago": "EFECTIVO"
+}
+
+### 11.2 Verificar asiento del pago
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=NOMINA_PAGO&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  12. OBLIGACIÓN FINANCIERA (OB) + CUOTA (CU)
+###  Desembolso: DB Banco · CR Obligaciones 2105
+###  Cuota: DB 2105 (capital) + DB Gastos financieros 5305 (interés) · CR Banco
+### ══════════════════════════════════════════════════════════════════
+
+### 12.1 Crear préstamo
+POST {{host}}/api/obligaciones-financieras
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "entidad": "Bancolombia",
+  "numero": "CR-E0-001",
+  "montoPrincipal": 5000000,
+  "tasaMensual": 1.5,
+  "plazoMeses": 12,
+  "fechaDesembolso": "2026-07-09",
+  "cuentaBancariaId": 1
+}
+
+### 12.2 Ver la obligación y su tabla de amortización
+GET {{host}}/api/obligaciones-financieras/1
+Authorization: Bearer {{token}}
+
+### 12.3 Pagar la primera cuota (ajusta ids)
+POST {{host}}/api/obligaciones-financieras/1/cuotas/1/pagar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "metodoPago": "TRANSFERENCIA",
+  "cuentaBancariaId": 1
+}
+
+### 12.4 Verificar asientos OB y CU
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=OBLIGACION&rows=5
+Authorization: Bearer {{token}}
+
+###
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=CUOTA_OBLIGACION&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  13. MOVIMIENTO DE CAJA y TESORERÍA
+###  Caja: DB Caja / CR cuenta del concepto (ingreso) — o al revés
+###  Tesorería: DB Banco / CR contrapartida (recaudo) — o al revés
+### ══════════════════════════════════════════════════════════════════
+
+### 13.1 Movimiento manual de caja (requiere turno abierto y concepto)
+POST {{host}}/api/turnos/1/movimientos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tipo": "EGRESO",
+  "concepto": "E0 paso 13 — papelería",
+  "monto": 15000,
+  "conceptoCajaId": 1,
+  "metodoPago": "EFECTIVO"
+}
+
+### 13.2 Verificar asiento del movimiento de caja
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=MOVIMIENTO_CAJA&rows=5
+Authorization: Bearer {{token}}
+
+### 13.3 Egreso de tesorería (banco → contrapartida)
+POST {{host}}/api/tesoreria/egresos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cuentaBancariaId": 1,
+  "monto": 50000,
+  "concepto": "E0 paso 13 — comisión bancaria",
+  "fecha": "2026-07-09",
+  "contrapartidaCuentaId": 1
+}
+
+### 13.4 Verificar asiento de tesorería
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=TESORERIA&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  14. SALDOS INICIALES / APERTURA
+###  Esperado: asiento de apertura cuadrado; reejecutar NO duplica
+### ══════════════════════════════════════════════════════════════════
+
+### 14.1 Ver saldos iniciales actuales
+GET {{host}}/api/contabilidad/saldos-iniciales
+Authorization: Bearer {{token}}
+
+### 14.2 Cargar saldos iniciales (ajusta ids de cuenta reales del PUC)
+POST {{host}}/api/contabilidad/saldos-iniciales
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "fechaApertura": "2026-01-01",
+  "lineas": [
+    { "cuentaId": 1, "debito": 1000000, "credito": 0 },
+    { "cuentaId": 2, "debito": 0, "credito": 1000000 }
+  ]
+}
+
+### ══════════════════════════════════════════════════════════════════
+###  15. CIERRE DEL PERÍODO (CE / CIERRE)
+###  Esperado: cancela cuentas de resultado → Utilidad 3605.
+###  ⚠ Correr 99.1–99.4 ANTES de cerrar.
+### ══════════════════════════════════════════════════════════════════
+
+### 15.1 Cerrar el período (usa el id del período activo, ver 0.4)
+PUT {{host}}/api/periodos-contables/1/cerrar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### 15.2 Verificar asiento de cierre
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=CIERRE&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  99. VERIFICACIONES GLOBALES (correr después de cada bloque)
+### ══════════════════════════════════════════════════════════════════
+
+### 99.1 Todos los asientos del día (revisar que TODOS cuadren)
+GET {{host}}/api/contabilidad/asientos?rows=50
+Authorization: Bearer {{token}}
+
+### 99.2 Balance general — ecuacionContable debe ser ≈ 0
+GET {{host}}/api/contabilidad/balance
+Authorization: Bearer {{token}}
+
+### 99.3 Estado de resultados del mes
+GET {{host}}/api/contabilidad/estado-resultados
+Authorization: Bearer {{token}}
+
+### 99.4 Libro mayor de una cuenta (ej. Caja — ajusta cuentaId)
+GET {{host}}/api/contabilidad/libro-mayor?cuentaId=1
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  E2 — TESORERÍA COMPLETA (formas de pago, compra contable, sobregiro)
+###  ⚠ Al arrancar este build, Flyway aplica V86 (forma_pago_contable) y
+###    V87 (compra destino contable + sobregiro).
+### ══════════════════════════════════════════════════════════════════
+
+### E2.1 Sembrar formas de pago estándar (idempotente)
+###      EFECTIVO→1105 · TRANSFERENCIA/TARJETA/NEQUI/DAVIPLATA→1110
+POST {{host}}/api/contabilidad/formas-pago/seed
+Authorization: Bearer {{token}}
+
+### E2.2 Listar formas de pago
+GET {{host}}/api/contabilidad/formas-pago
+Authorization: Bearer {{token}}
+
+### E2.3 GUARDARRAÍL: mapear una forma de pago a una cuenta NO 11xx
+###      DEBE responder 400 "debe ser del disponible (11xx)"
+###      (usa el id de la forma NEQUI del listado y una cuenta 4135)
+PUT {{host}}/api/contabilidad/formas-pago/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo": "NEQUI",
+  "nombre": "Nequi",
+  "cuentaContableId": 999
+}
+
+### E2.4 Mapear NEQUI a su cuenta 11xx real (crea antes la auxiliar 111005
+###      en el plan de cuentas si no existe) — ajusta ids
+PUT {{host}}/api/contabilidad/formas-pago/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo": "NEQUI",
+  "nombre": "Nequi",
+  "cuentaContableId": 1,
+  "requiereCuentaBancaria": false,
+  "activo": true
+}
+
+### E2.5 ACEPTACIÓN: venta pagada con NEQUI → el débito va a la cuenta
+###      mapeada en E2.4 (no a 1110 genérica). Verificar con E2.6.
+POST {{host}}/api/ventas/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "clienteId": null,
+  "turnoCajaId": 51,
+  "sucursalId": 1,
+  "tipoDocumento": "POS",
+  "observaciones": "E2 — venta pagada con Nequi",
+  "detalles": [
+    { "productoId": 1472, "cantidad": 1, "precioUnitario": 50000, "impuestoValor": 7983.19 }
+  ],
+  "pagos": [
+    { "metodoPago": "NEQUI", "monto": 60000 }
+  ]
+}
+
+### E2.6 Verificar asiento de la venta Nequi
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=VENTA&rows=3
+Authorization: Bearer {{token}}
+
+### E2.7 ACEPTACIÓN: compra de papelería debita el GASTO elegido (no
+###      inventario) con centro de costo en todas las líneas.
+###      cuentaContableId = id de una auxiliar 5195; centroCostoId real.
+POST {{host}}/api/compras/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "proveedorId": 1,
+  "sucursalId": 1,
+  "numeroCompra": "FC-E2-001",
+  "fecha": "2026-07-09T10:00:00",
+  "formaPago": "CONTADO",
+  "tipoDocumento": "FACTURA_COMPRA",
+  "observaciones": "E2 — compra papelería a gasto con centro de costo",
+  "cuentaContableId": 1,
+  "centroCostoId": 1,
+  "detalles": [
+    { "productoId": 1472, "cantidad": 5, "costoUnitario": 10000, "impuestoValor": 9500 }
+  ],
+  "pagos": [
+    { "metodoPago": "EFECTIVO", "monto": 59500 }
+  ]
+}
+
+### E2.8 Verificar asiento de la compra (débito a 5195 + centro de costo)
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=COMPRA&rows=3
+Authorization: Bearer {{token}}
+
+### E2.9 Habilitar sobregiro en una cuenta bancaria (ajusta id y datos)
+PUT {{host}}/api/tesoreria/cuentas/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Bancolombia Cta Corriente",
+  "tipo": "BANCO",
+  "banco": "Bancolombia",
+  "cuentaContableId": 1,
+  "saldoInicial": 0,
+  "permiteSobregiro": true,
+  "cupoSobregiro": 2000000
+}
+
+### E2.10 Egreso que deja el banco en negativo (dentro del cupo → pasa;
+###       sin permiteSobregiro o sobre el cupo → 422)
+POST {{host}}/api/tesoreria/egresos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cuentaBancariaId": 1,
+  "monto": 500000,
+  "concepto": "E2 — egreso en sobregiro",
+  "fecha": "2026-07-09",
+  "contrapartidaCuentaId": 1
+}
+
+### E2.11 ACEPTACIÓN sobregiro: cerrar el período → asiento SB reclasifica
+###       el saldo crédito del banco a 21xx; al abrir el siguiente período
+###       se genera la reversa (RV) automáticamente.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=SOBREGIRO&rows=5
+Authorization: Bearer {{token}}
+
+### E2.12 Abono a cartera (ahora por el motor nuevo — generador RC)
+###       y pago a proveedor (EG): mismos requests de los pasos 6 y 7;
+###       verificar que el asiento respeta la forma de pago mapeada.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=ABONO_COBRAR&rows=3
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  E3 — MODO REVISIÓN + POSTING LOG + DIFERENCIAS DE CAJA
+###  ⚠ Al arrancar este build, Flyway aplica V88 (modo + posting log).
+### ══════════════════════════════════════════════════════════════════
+
+### E3.1 Ver el modo de contabilización (default AUTOMATICO)
+GET {{host}}/api/contabilidad/configuracion-cuentas/modo
+Authorization: Bearer {{token}}
+
+### E3.2 Activar el modo REVISIÓN (los asientos automáticos nacen BORRADOR)
+PUT {{host}}/api/contabilidad/configuracion-cuentas/modo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "modo": "REVISION" }
+
+### E3.3 ACEPTACIÓN: crear una venta (request del paso 1.1) → el asiento
+###      nace BORRADOR y NO suma al balance. Verificar:
+GET {{host}}/api/contabilidad/asientos/pendientes
+Authorization: Bearer {{token}}
+
+### E3.4 Aprobar un borrador individual (usa el id de E3.3)
+POST {{host}}/api/contabilidad/asientos/1/contabilizar
+Authorization: Bearer {{token}}
+
+### E3.5 Aprobación masiva por rango (y tipoOrigen opcional)
+POST {{host}}/api/contabilidad/asientos/contabilizar-masivo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "desde": "2026-07-01",
+  "hasta": "2026-07-31",
+  "tipoOrigen": "VENTA"
+}
+
+### E3.6 Comprobantes descuadrados (red de seguridad — debe estar vacío)
+GET {{host}}/api/contabilidad/asientos/descuadrados
+Authorization: Bearer {{token}}
+
+### E3.7 Posting log: qué se contabilizó y qué falló (?estado=ERROR filtra)
+GET {{host}}/api/contabilidad/asientos/posting-log
+Authorization: Bearer {{token}}
+
+### E3.8 DIFERENCIA DE CAJA: cerrar un turno declarando efectivo real ≠
+###      esperado → asiento DC automático (faltante → DB 5195 · CR Caja;
+###      sobrante → DB Caja · CR 4295). Ajusta el id del turno y el monto.
+PATCH {{host}}/api/turnos/51/cerrar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "totalEfectivoReal": 100000 }
+
+### E3.9 Verificar asiento de la diferencia
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=DIFERENCIA_CAJA&rows=3
+Authorization: Bearer {{token}}
+
+### E3.10 Volver a modo AUTOMATICO (si no quieres seguir aprobando a mano)
+PUT {{host}}/api/contabilidad/configuracion-cuentas/modo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "modo": "AUTOMATICO" }
+
+### E3.11 ACEPTACIÓN: intentar cerrar el período con borradores pendientes
+###       → 422 "hay comprobantes en BORRADOR pendientes"
+
+### ══════════════════════════════════════════════════════════════════
+###  E4 — CATEGORÍAS CONTABLES DE PRODUCTO
+###  ⚠ Al arrancar este build, Flyway aplica V89.
+### ══════════════════════════════════════════════════════════════════
+
+### E4.1 Sembrar la categoría "General" (4135/1435/6135, idempotente)
+POST {{host}}/api/contabilidad/categorias-producto/seed
+Authorization: Bearer {{token}}
+
+### E4.2 Listar categorías
+GET {{host}}/api/contabilidad/categorias-producto
+Authorization: Bearer {{token}}
+
+### E4.3 Crear categoría "Servicios" (sin COGS; crea antes la auxiliar 4145)
+POST {{host}}/api/contabilidad/categorias-producto
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Servicios",
+  "tipo": "SERVICIO",
+  "cuentaIngresoId": 1
+}
+
+### E4.4 Crear categoría de bienes con cuentas propias (ajusta ids de
+###      auxiliares 4135xx/1435xx/6135xx creadas en el plan)
+POST {{host}}/api/contabilidad/categorias-producto
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Bebidas gravadas",
+  "tipo": "BIEN",
+  "cuentaIngresoId": 1,
+  "cuentaInventarioId": 2,
+  "cuentaCostoId": 3
+}
+
+### E4.5 Asignar la categoría a un producto: se hace por el update normal
+###      del producto (campo categoriaContableId) o directo en BD mientras
+###      llega la pantalla del front:
+###      UPDATE producto SET categoria_contable_id = X WHERE id = 1472;
+
+### E4.6 ACEPTACIÓN: venta con 2 productos de categorías distintas + 1
+###      servicio → 3 créditos de ingreso a cuentas distintas, par COGS
+###      solo de los bienes, asiento cuadrado. (Request del paso 1.1 con
+###      3 detalles.) Un producto SIN categoría contabiliza idéntico a hoy.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=VENTA&rows=3
+Authorization: Bearer {{token}}
+
+### E4.7 Compra: el débito se agrupa por la categoría de cada producto
+###      (inventario/insumo/activo); con cuentaContableId explícita (E2)
+###      esa cuenta manda. Verificar:
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=COMPRA&rows=3
+Authorization: Bearer {{token}}
+
+### E4.8 Devolución: el débito usa la cuenta de devolución de la categoría
+###      (si no tiene, la de ingreso), proporcional por línea.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=DEVOLUCION&rows=3
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  E5 — IMPUESTOS PARAMETRIZABLES (240801 generado / 240802 descontable)
+###  ⚠ Al arrancar este build, Flyway aplica V90: crea las subcuentas
+###    240801/240802 en tu PUC, remapea los conceptos IVA, siembra los
+###    impuestos estándar y asigna impuesto a cada producto según su % IVA.
+### ══════════════════════════════════════════════════════════════════
+
+### E5.1 Listar impuestos (deben aparecer IVA 19/5, INC 8, Excluido, Exento
+###      con cuentas 240801/240802 ya asignadas por la migración)
+GET {{host}}/api/contabilidad/impuestos
+Authorization: Bearer {{token}}
+
+### E5.2 Verificar que los conceptos IVA apuntan a las subcuentas nuevas
+GET {{host}}/api/contabilidad/configuracion-cuentas
+Authorization: Bearer {{token}}
+
+### E5.3 GUARDARRAÍL: cuenta de impuesto fuera de 24xx → 400
+POST {{host}}/api/contabilidad/impuestos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Prueba guardarraíl",
+  "tipo": "IVA",
+  "porcentaje": 19,
+  "cuentaGeneradoId": 1
+}
+
+### E5.4 ACEPTACIÓN: venta con producto IVA 19% + producto INC 8% (asigna
+###      antes impuesto_id INC al segundo producto) → DOS líneas de impuesto
+###      a cuentas distintas; el IVA de ventas ya no se mezcla con compras.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=VENTA&rows=3
+Authorization: Bearer {{token}}
+
+### E5.5 Compra: el IVA descontable va a 240802 (o a la cuenta descontable
+###      del impuesto del producto). Verificar libro mayor de 240801 vs
+###      240802: generado y descontable separados.
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=COMPRA&rows=3
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════
+###  E6 — DEVENGO: anticipos, diferidos, causaciones, deterioro
+###  ⚠ Al arrancar este build, Flyway aplica V91 (crea las cuentas
+###    1330/1399/1499/1705/2805/5199 en tu PUC si no existen).
+### ══════════════════════════════════════════════════════════════════
+
+### E6.1 ACEPTACIÓN: anticipo de cliente NO infla ingresos
+###      → asiento AN: DB Caja/Banco · CR 2805 (con tercero)
+POST {{host}}/api/contabilidad/anticipos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tipo": "CLIENTE",
+  "terceroId": 25,
+  "monto": 500000,
+  "metodoPago": "TRANSFERENCIA",
+  "cuentaBancariaId": 1,
+  "observaciones": "E6 — anticipo obra"
+}
+
+### E6.2 Saldos de anticipos del tercero
+GET {{host}}/api/contabilidad/anticipos?terceroId=25
+Authorization: Bearer {{token}}
+
+### E6.3 Cruzar el anticipo contra una factura del mismo tercero
+###      → asiento AC: DB 2805 · CR 1305, sin mover caja; la CxC queda abonada
+POST {{host}}/api/contabilidad/anticipos/1/cruzar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cuentaCobrarId": 1,
+  "monto": 200000
+}
+
+### E6.4 Anticipo a PROVEEDOR (espejo: DB 1330 · CR banco) y cruce con
+###      cuentaPagarId — mismos requests con "tipo": "PROVEEDOR".
+
+### E6.5 ACEPTACIÓN: gasto diferido — arriendo anual pagado hoy
+###      → asiento GT debita 1705 (no gasto); request del paso 4.1 con:
+###      "esDiferido": true, "mesesDiferido": 12
+
+### E6.6 Amortizar el mes actual (además del job del día 1 a las 3am)
+###      → asiento DF: DB gasto · CR 1705 por monto/meses
+POST {{host}}/api/contabilidad/devengo/diferidos/amortizar
+Authorization: Bearer {{token}}
+
+### E6.7 Crear causación programada (plantilla que DEBE cuadrar)
+POST {{host}}/api/contabilidad/devengo/causaciones
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Arriendo oficina",
+  "dia": 1,
+  "lineas": [
+    { "cuentaId": 1, "descripcion": "Arriendo del mes", "debito": 1500000, "credito": 0 },
+    { "cuentaId": 2, "descripcion": "Cuenta por pagar arriendo", "debito": 0, "credito": 1500000, "terceroId": 1 }
+  ]
+}
+
+### E6.8 Generar las causaciones del mes → asiento CS SIEMPRE en BORRADOR
+###      (aparece en /asientos/pendientes aunque el modo sea AUTOMATICO)
+POST {{host}}/api/contabilidad/devengo/causaciones/generar
+Authorization: Bearer {{token}}
+
+### E6.9 Deterioro de cartera: vista previa por tramos de mora
+###      { díasDeMora: %deterioro } — aplica el tramo mayor alcanzado
+POST {{host}}/api/contabilidad/devengo/deterioro/calcular
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "31": 5, "91": 20, "181": 50 }
+
+### E6.10 ACEPTACIÓN: proponer el deterioro → asiento DT (DB 5199 · CR 1399)
+###       SIEMPRE en borrador; el contador lo aprueba desde pendientes
+POST {{host}}/api/contabilidad/devengo/deterioro/proponer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "31": 5, "91": 20, "181": 50 }
+
+### E6.11 Verificar los asientos de devengo
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=ANTICIPO&rows=5
+Authorization: Bearer {{token}}
+
+###
+GET {{host}}/api/contabilidad/asientos/pendientes
+Authorization: Bearer {{token}}
+
+### ═══════════════════════════════════════════════════════════════════
+### E7 · Filtros de dimensión en reportes (rentabilidad por obra)
+### ═══════════════════════════════════════════════════════════════════
+
+### E7.1 Estado de resultados filtrado por proyecto (y opcionalmente frente)
+GET {{host}}/api/contabilidad/estado-resultados?desde=2026-01-01&hasta=2026-12-31&proyectoId=1
+Authorization: Bearer {{token}}
+
+### E7.2 Libro mayor de una cuenta filtrado por centro de costo/proyecto/frente
+GET {{host}}/api/contabilidad/libro-mayor?cuentaId=1&desde=2026-01-01&hasta=2026-12-31&proyectoId=1&frenteId=2
+Authorization: Bearer {{token}}
+
+### ═══════════════════════════════════════════════════════════════════
+### E8 · Cierre anual fiscal
+### ═══════════════════════════════════════════════════════════════════
+
+### E8.1 Sugerencia de provisión de renta (utilidad del año × tarifa; default 35%)
+GET {{host}}/api/contabilidad/cierre-anual/provision-renta/sugerencia?anio=2026&tarifa=35
+Authorization: Bearer {{token}}
+
+### E8.2 ACEPTACIÓN: registrar la provisión con el valor DIGITADO
+###      → asiento CA: DB 5405 · CR 2404, fecha 31/12 del año (diciembre debe estar abierto)
+POST {{host}}/api/contabilidad/cierre-anual/provision-renta
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "anio": 2026, "monto": 12500000, "detalle": "Provisión renta 2026 (tarifa 35%)" }
+
+### E8.3 Cerrar diciembre como siempre (cierre a 3605 ya existente) y abrir enero
+
+### E8.4 Traslado de utilidad 3605 → 3705 al abrir el año nuevo
+###      → asiento CA: utilidad DB 3605 · CR 3705 (pérdida al revés)
+POST {{host}}/api/contabilidad/cierre-anual/traslado
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "anio": 2026 }
+
+### E8.5 Historial de operaciones del cierre anual
+GET {{host}}/api/contabilidad/cierre-anual/operaciones
+Authorization: Bearer {{token}}
+
+### E8.6 Sugerencia de distribución (saldos 3705/330505/3105 + reserva 10% tope 50% capital)
+GET {{host}}/api/contabilidad/cierre-anual/distribucion/sugerencia
+Authorization: Bearer {{token}}
+
+### E8.7 ACEPTACIÓN: distribuir utilidades post-asamblea
+###      → asiento DU: DB 3705 · CR 330505 (reserva) · CR 2360 (dividendos)
+POST {{host}}/api/contabilidad/cierre-anual/distribucion
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "anio": 2026, "reservaLegal": 5000000, "dividendos": 10000000, "observaciones": "Acta asamblea #12" }
+
+### E8.8 Pago de dividendos decretados
+###      → asiento PD: DB 2360 (tercero socio) · CR caja/banco según medio de pago
+POST {{host}}/api/contabilidad/cierre-anual/dividendos/pagos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "distribucionId": 1, "monto": 4000000, "metodoPago": "TRANSFERENCIA", "cuentaBancariaId": 1, "terceroId": 55 }
+
+### E8.9 Pagos de una distribución
+GET {{host}}/api/contabilidad/cierre-anual/distribuciones/1/pagos
+Authorization: Bearer {{token}}
+
+### E8.10 Verificar los asientos del cierre anual
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=CIERRE_ANUAL&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════════
+### E9 · CONCILIACIÓN BANCARIA
+### Prerrequisito: la cuenta bancaria debe tener cuenta contable asociada
+### ══════════════════════════════════════════════════════════════════════
+
+### E9.1 Crear extracto del período (saldos del PDF/CSV del banco)
+POST {{host}}/api/contabilidad/conciliacion/extractos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "cuentaBancariaId": 1, "periodo": "2026-07", "saldoInicial": 5000000, "saldoFinal": 6471000 }
+
+### E9.2 Importar líneas — CSV crudo (fecha;descripción;valor con signo del banco)
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/lineas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "csv": "Fecha;Descripcion;Valor\n2026-07-01;CONSIGNACION EFECTIVO;1500000\n2026-07-03;COMISION MANEJO;-25000\n2026-07-05;GMF 4X1000;-4000" }
+
+### E9.2b Importar líneas ya estructuradas (alternativa JSON)
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/lineas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "lineas": [ { "fecha": "2026-07-10", "descripcion": "ABONO INTERESES", "valor": 12345.67 } ] }
+
+### E9.3 Matching sugerido (valor exacto, fecha ±3 días contra el libro del banco)
+GET {{host}}/api/contabilidad/conciliacion/extractos/1/sugerencias
+Authorization: Bearer {{token}}
+
+### E9.4 Columna "libro": movimientos del período de la cuenta contable del banco
+GET {{host}}/api/contabilidad/conciliacion/extractos/1/movimientos-libro
+Authorization: Bearer {{token}}
+
+### E9.5 Confirmar match línea ↔ movimiento del libro
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/lineas/1/conciliar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "asientoDetalleId": 123 }
+
+### E9.6 Devolver una línea a pendiente
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/lineas/1/desconciliar
+Authorization: Bearer {{token}}
+
+### E9.7 ACEPTACIÓN: ajuste desde la pantalla (línea del banco sin registro)
+###      tipo: GASTO_BANCARIO → DB 530515 · CR banco | GMF → DB 530595 · CR banco
+###            INTERES abono → DB banco · CR 421005 (cargo → DB 5305 · CR banco)
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/lineas/2/ajuste
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "tipo": "GASTO_BANCARIO" }
+
+### E9.8 Resumen: saldo conciliado, diferencia, partidas en tránsito, puedeCerrar
+GET {{host}}/api/contabilidad/conciliacion/extractos/1/resumen
+Authorization: Bearer {{token}}
+
+### E9.9 Cerrar el extracto (exige cero pendientes y diferencia = 0)
+POST {{host}}/api/contabilidad/conciliacion/extractos/1/cerrar
+Authorization: Bearer {{token}}
+
+### E9.10 Verificar los asientos de ajuste bancario
+GET {{host}}/api/contabilidad/asientos?tipoOrigen=AJUSTE_BANCARIO&rows=5
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════════
+### E10 · ESTADOS FINANCIEROS NIIF (cambios en patrimonio + EFE indirecto)
+### ══════════════════════════════════════════════════════════════════════
+
+### E10.1 Estado de cambios en el patrimonio (clase 3: inicial/aumentos/disminuciones/final)
+GET {{host}}/api/contabilidad/eeff/cambios-patrimonio?desde=2026-01-01&hasta=2026-12-31
+Authorization: Bearer {{token}}
+
+### E10.2 ACEPTACIÓN: estado de flujos de efectivo método indirecto
+###      → "cuadra": true (flujoNeto = Δ saldo clase 11 entre los dos cortes)
+GET {{host}}/api/contabilidad/eeff/flujo-efectivo?desde=2026-01-01&hasta=2026-12-31
+Authorization: Bearer {{token}}
+
+### ══════════════════════════════════════════════════════════════════════
+### E11 · INFORMACIÓN EXÓGENA DIAN
+### ══════════════════════════════════════════════════════════════════════
+
+### E11.1 Catálogo de formatos (1001, 1005, 1006, 1007, 1008, 1009, 2276)
+GET {{host}}/api/contabilidad/exogena/formatos
+Authorization: Bearer {{token}}
+
+### E11.2 Conceptos de un formato
+GET {{host}}/api/contabilidad/exogena/formatos/1/conceptos
+Authorization: Bearer {{token}}
+
+### E11.3 Mapeos cuenta→concepto de la empresa (opcional ?formatoId=)
+GET {{host}}/api/contabilidad/exogena/mapeos?formatoId=1
+Authorization: Bearer {{token}}
+
+### E11.4 Crear mapeo (cuentaHasta null = prefijo; el más específico gana)
+POST {{host}}/api/contabilidad/exogena/mapeos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "conceptoId": 2, "cuentaDesde": "511005", "tipoValor": "MOVIMIENTO_DB" }
+
+### E11.5 Validador previo (terceros incompletos, sin mapeo, borradores, períodos abiertos)
+GET {{host}}/api/contabilidad/exogena/validar?anio=2026&formatoId=1
+Authorization: Bearer {{token}}
+
+### E11.6 ACEPTACIÓN: generar lote (BORRADOR se regenera; APROBADO crea versión nueva)
+POST {{host}}/api/contabilidad/exogena/lotes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "formatoId": 1, "anio": 2026, "cuantiaMenorUmbral": 100000 }
+
+### E11.7 Lotes del año
+GET {{host}}/api/contabilidad/exogena/lotes?anio=2026
+Authorization: Bearer {{token}}
+
+### E11.8 Líneas del lote (tercero×concepto; cuantías menores = NIT 222222222)
+GET {{host}}/api/contabilidad/exogena/lotes/1/lineas
+Authorization: Bearer {{token}}
+
+### E11.9 Hallazgos del validador persistidos con el lote
+GET {{host}}/api/contabilidad/exogena/lotes/1/errores
+Authorization: Bearer {{token}}
+
+### E11.10 Aprobar (bloquea el lote; exige cero hallazgos)
+POST {{host}}/api/contabilidad/exogena/lotes/1/aprobar
+Authorization: Bearer {{token}}
+
+### E11.11 Export Excel columnas prevalidador DIAN
+GET {{host}}/api/contabilidad/exogena/lotes/1/export
+Authorization: Bearer {{token}}
+
+### E9.11 Eliminar un extracto creado por error (solo ABIERTO, sin líneas de ajuste)
+DELETE {{host}}/api/contabilidad/conciliacion/extractos/1
+Authorization: Bearer {{token}}
+
+### E9.12 Guardarraíl del cierre: cerrar el período con un extracto ABIERTO del mes → 422
+PUT {{host}}/api/periodos-contables/1/cerrar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "observaciones": "debe fallar si hay extractos sin conciliar" }

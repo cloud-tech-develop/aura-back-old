@@ -1,0 +1,7 @@
+{
+  "descripcion": "Traslado utilidad del ejercicio 2025 a resultados acumulados",
+  "partidas": [
+    { "cuenta": 3605, "debito": 24300000, "credito": 0, "tercero": null },
+    { "cuenta": 3705, "debito": 0, "credito": 24300000, "tercero": null }
+  ]
+}

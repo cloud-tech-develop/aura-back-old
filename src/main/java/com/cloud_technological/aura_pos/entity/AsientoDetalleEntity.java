@@ -40,4 +40,11 @@ public class AsientoDetalleEntity {
     /** Centro de costo al que se imputa esta línea contable */
     @Column(name = "centro_costo_id")
     private Long centroCostoId;
+
+    // ── Dimensiones proyecto/frente (E7): rentabilidad por obra ──────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
 }

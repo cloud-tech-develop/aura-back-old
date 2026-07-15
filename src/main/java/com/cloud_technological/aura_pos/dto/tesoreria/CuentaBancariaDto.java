@@ -25,4 +25,6 @@ public class CuentaBancariaDto {
     private BigDecimal saldoInicial;
     private BigDecimal saldoActual;
     private Boolean activa;
+    private Boolean permiteSobregiro;
+    private BigDecimal cupoSobregiro;
 }

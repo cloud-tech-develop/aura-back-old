@@ -39,4 +39,13 @@ public class CreateCompraDto {
 
     // Fletes / transporte
     private java.math.BigDecimal fletes;
+
+    // Destino contable (E2): centro de costo propagado a las líneas del
+    // asiento y cuenta débito alternativa (gasto/activo); null → inventario.
+    private Long centroCostoId;
+    private Long cuentaContableId;
+
+    // Dimensiones proyecto/frente (E7), propagadas a las líneas del asiento.
+    private Long proyectoId;
+    private Long frenteId;
 }

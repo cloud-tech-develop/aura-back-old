@@ -169,6 +169,14 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         turno.setEstado("CERRADA");
         turnoJPARepository.save(turno);
 
+        // E3: la diferencia del cierre se contabiliza tras el commit
+        // (faltante → gasto · CR Caja; sobrante → DB Caja · ingreso).
+        if (turno.getDiferencia() != null && turno.getDiferencia().signum() != 0) {
+            eventPublisher.publishEvent(
+                    new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                            "DIFERENCIA_CAJA", turno.getId(), empresaId, null));
+        }
+
         return construirResumen(id);
     }
 
@@ -226,9 +234,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 "ABONO_CXC", saved.getId(), turnoId
             );
 
-            // Asiento del recaudo (DB Caja · CR Clientes) tras el commit.
-            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
-                    "COBRO", saved.getId(), empId, usuarioId.intValue()));
+            // Asiento del recaudo (DB Caja · CR Clientes) tras el commit (evento único).
+            eventPublisher.publishEvent(
+                    new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                            "ABONO_COBRAR", saved.getId(), empId, usuarioId.intValue()));
 
             return abonoCobrarToDto(saved);
         }
@@ -268,9 +277,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 "ABONO_CXP", saved.getId(), turnoId
             );
 
-            // Asiento del pago a proveedor (DB Proveedores · CR Caja) tras el commit.
-            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.AbonoContabilizableEvent(
-                    "PAGO", saved.getId(), empId, usuarioId.intValue()));
+            // Asiento del pago a proveedor (DB Proveedores · CR Caja) tras el commit (evento único).
+            eventPublisher.publishEvent(
+                    new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                            "ABONO_PAGAR", saved.getId(), empId, usuarioId.intValue()));
 
             return abonoPagarToDto(saved);
         }

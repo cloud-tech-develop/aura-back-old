@@ -125,6 +125,10 @@ public class GastoServiceImpl implements GastoService {
         gasto.setTerceroId(dto.getTerceroId());
         gasto.setCuentaContableId(dto.getCuentaContableId());
         gasto.setCentroCostoId(dto.getCentroCostoId());
+        gasto.setEsDiferido(Boolean.TRUE.equals(dto.getEsDiferido()));
+        gasto.setMesesDiferido(dto.getMesesDiferido());
+        gasto.setProyectoId(dto.getProyectoId());
+        gasto.setFrenteId(dto.getFrenteId());
         gasto.setPeriodoContableId(dto.getPeriodoContableId());
         gasto.setBaseIva(nvl(dto.getBaseIva()));
         gasto.setTarifaIva(nvl(dto.getTarifaIva()));

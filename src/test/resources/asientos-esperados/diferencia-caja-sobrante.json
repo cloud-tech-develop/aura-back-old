@@ -1,0 +1,7 @@
+{
+  "descripcion": "Sobrante de caja — cierre turno #41",
+  "partidas": [
+    { "cuenta": 1105, "debito": 8000.00, "credito": 0, "tercero": null },
+    { "cuenta": 4295, "debito": 0, "credito": 8000.00, "tercero": null }
+  ]
+}

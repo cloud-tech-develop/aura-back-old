@@ -48,7 +48,24 @@
       "Read(//c/Program Files/PostgreSQL/**)",
       "Read(//c/Program Files/**)",
       "Bash(\"/c/Program Files/php-8.5.3/php\" -l 2026_07_03_000084_create_empresa_suscripcion.php)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(ls mvnw.cmd mvnw)",
+      "Bash(which mvn *)",
+      "Bash(./mvnw -q compile -DskipTests)",
+      "Bash(./mvnw -q test -Dtest='AsientoBuilderTest,VentaGeneradorTest' -DfailIfNoTests=false)",
+      "Bash(sort -t V -k2 -n)",
+      "Bash(sleep 2)",
+      "Bash(echo \"=== resultado ===\")",
+      "PowerShell(Stop-Process *)",
+      "Bash(xargs -r grep \"private\")",
+      "Bash(xargs -r grep -l private)",
+      "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests 2>&1 | Select-Object -Last 20)",
+      "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests 2>&1 | Select-Object -Last 30)",
+      "PowerShell(.\\\\mvnw.cmd -q test \"-Dtest=CierreAnualGeneradoresTest,DevengoGeneradoresTest,VentaGeneradorTest,AbonoGeneradoresTest,DiferenciaCajaGeneradorTest,AsientoBuilderTest,ConfiguracionContableGuardarrailesTest\" -DfailIfNoTests=false 2>&1 | Select-Object -Last 40)",
+      "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests)",
+      "Bash(python -c ' *)",
+      "Bash(python -)",
+      "Bash(python *)"
     ]
   }
 }

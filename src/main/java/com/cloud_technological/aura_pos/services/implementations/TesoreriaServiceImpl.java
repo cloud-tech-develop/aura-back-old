@@ -52,6 +52,7 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     @Transactional
     public TesoreriaMovimientoDto crearEgreso(Integer empresaId, Integer usuarioId, CreateMovimientoDto dto) {
         CuentaBancariaEntity cuenta = getCuenta(dto.getCuentaBancariaId(), empresaId);
+        validarSaldoConSobregiro(cuenta, dto.getMonto());
         cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(dto.getMonto()));
         cuentaRepo.save(cuenta);
 
@@ -216,6 +217,29 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     private CuentaBancariaEntity getCuenta(Long cuentaId, Integer empresaId) {
         return cuentaRepo.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cuenta bancaria no encontrada"));
+    }
+
+    /**
+     * Sobregiro (E2): un egreso puede dejar la cuenta en negativo SOLO si
+     * la cuenta permite sobregiro y el nuevo saldo no excede el cupo.
+     */
+    private void validarSaldoConSobregiro(CuentaBancariaEntity cuenta, java.math.BigDecimal monto) {
+        java.math.BigDecimal nuevoSaldo = cuenta.getSaldoActual().subtract(monto);
+        if (nuevoSaldo.signum() >= 0) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(cuenta.getPermiteSobregiro())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Saldo insuficiente en " + cuenta.getNombre() + " (saldo "
+                            + cuenta.getSaldoActual() + "). La cuenta no permite sobregiro.");
+        }
+        if (cuenta.getCupoSobregiro() != null
+                && nuevoSaldo.negate().compareTo(cuenta.getCupoSobregiro()) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El egreso excede el cupo de sobregiro de " + cuenta.getNombre()
+                            + " (cupo " + cuenta.getCupoSobregiro() + ", saldo resultante "
+                            + nuevoSaldo + ").");
+        }
     }
 
     private TesoreriaMovimientoDto toDto(TesoreriaMovimientoEntity e) {

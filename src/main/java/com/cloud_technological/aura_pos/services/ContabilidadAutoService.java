@@ -52,6 +52,15 @@ public interface ContabilidadAutoService {
      */
     AsientoContableTableDto generarCierre(Long periodoId, Integer empresaId, Integer usuarioId);
 
+    /**
+     * Reclasificación de sobregiros al cerrar el período (E2): por cada cuenta
+     * bancaria con sobregiro cuyo saldo contable quedó crédito, DB cuenta del
+     * banco · CR Sobregiros bancarios (21xx). Se reversa al abrir el período
+     * siguiente. Idempotente por período; no-op sin bancos sobregirados.
+     */
+    AsientoContableTableDto generarReclasificacionSobregiro(Long periodoId, Integer empresaId,
+            Integer usuarioId);
+
     /** Desembolso de préstamo: DB Bancos · CR Obligaciones financieras. Idempotente. */
     AsientoContableTableDto generarDesdeObligacion(Long obligacionId, Integer empresaId, Integer usuarioId);
 
