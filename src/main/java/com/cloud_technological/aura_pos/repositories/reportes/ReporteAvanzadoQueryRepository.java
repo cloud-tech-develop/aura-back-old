@@ -280,13 +280,14 @@ public class ReporteAvanzadoQueryRepository {
         BigDecimal totalCompras = jdbc.queryForObject(sqlCompras, p, BigDecimal.class);
         dto.setTotalComprasPeriodo(totalCompras != null ? totalCompras : BigDecimal.ZERO);
 
-        // Margen bruto = ingreso BRUTO (con IVA) − costo. subtotal_linea ya incluye
-        // el IVA de la línea; se deja tal cual para que el usuario trabaje el IVA
-        // como gasto (no se descuenta impuesto_valor).
+        // Margen bruto = ingreso sin IVA − costo sin IVA. subtotal_linea incluye el
+        // IVA de la línea, pero producto.costo se guarda como base sin IVA (viene de
+        // compra.costo_unitario), así que hay que restar impuesto_valor para no
+        // contar como utilidad el IVA que se le debe a la DIAN.
         String sqlMargen = """
                 SELECT COALESCE(SUM(
-                        vd.subtotal_linea
-                        - (vd.cantidad * COALESCE(pr.costo, 0))
+                        (vd.subtotal_linea - COALESCE(vd.impuesto_valor, 0))
+                        - COALESCE(vd.costo_linea, vd.cantidad * COALESCE(pr.costo, 0))
                     ), 0)
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
