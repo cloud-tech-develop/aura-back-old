@@ -23,6 +23,7 @@ import com.cloud_technological.aura_pos.dto.reportes.ReporteTopProductoDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteVentasCategoriaDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteVentasVendedorDto;
 import com.cloud_technological.aura_pos.services.ReporteAvanzadoService;
+import com.cloud_technological.aura_pos.services.ReporteFacturacionElectronicaService;
 import com.cloud_technological.aura_pos.services.ReporteInventarioService;
 import com.cloud_technological.aura_pos.services.ReporteVentasService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
@@ -36,6 +37,9 @@ public class ReporteController {
 
     @Autowired
     private ReporteAvanzadoService reporteAvanzadoService;
+
+    @Autowired
+    private ReporteFacturacionElectronicaService reporteFacturacionElectronicaService;
 
     @Autowired
     private SecurityUtils securityUtils;
@@ -70,6 +74,39 @@ public class ReporteController {
         byte[] bytes = reporteVentasService.generarPdf(desde, hasta, detallado);
         return respuesta(bytes, "reporte_ventas_" + (detallado ? "detallado" : "simple") + ".pdf",
                 MediaType.APPLICATION_PDF_VALUE);
+    }
+
+    // ── FACTURACIÓN ELECTRÓNICA ─────────────────────────────
+
+    /**
+     * Facturas electrónicas del rango, en Excel. Equivale al export de Factus
+     * ({@code /reports/bills/export-to-excel}) pero armado con nuestros datos.
+     */
+    @GetMapping("/facturas-electronicas/excel")
+    public ResponseEntity<byte[]> facturasElectronicasExcel(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+
+        byte[] bytes = reporteFacturacionElectronicaService.excelFacturas(desde, hasta);
+        return respuesta(bytes, "facturas_" + desde + "_" + hasta + ".xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    /**
+     * Notas crédito y/o débito del rango, en Excel.
+     *
+     * @param tipo {@code CREDITO}, {@code DEBITO} o vacío para traer ambas.
+     */
+    @GetMapping("/notas-electronicas/excel")
+    public ResponseEntity<byte[]> notasElectronicasExcel(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(required = false) String tipo) {
+
+        byte[] bytes = reporteFacturacionElectronicaService.excelNotas(desde, hasta, tipo);
+        String sufijo = tipo != null && !tipo.isBlank() ? tipo.toLowerCase() : "credito_debito";
+        return respuesta(bytes, "notas_" + sufijo + "_" + desde + "_" + hasta + ".xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     // ── INVENTARIO ──────────────────────────────────────────

@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.cloud_technological.aura_pos.dto.nomina.nomina.HistorialPagoDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.NominaTableDto;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -69,5 +70,36 @@ public class NominaQueryRepository {
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
         return new PageImpl<>(list, PageRequest.of(page, size), total);
+    }
+
+    /**
+     * Trazabilidad de pagos de un empleado: todas sus nóminas (excepto
+     * anuladas) de la más reciente a la más antigua.
+     */
+    public List<HistorialPagoDto> historialPagos(Long empleadoId, Integer empresaId) {
+        String sql = """
+            SELECT
+                n.id,
+                n.periodo_id,
+                p.fecha_inicio AS periodo_fecha_inicio,
+                p.fecha_fin    AS periodo_fecha_fin,
+                n.dias_trabajados,
+                n.total_devengado,
+                n.total_deducciones,
+                n.neto_pagar,
+                n.estado,
+                n.medio_pago,
+                n.fecha_pago
+            FROM nomina n
+            INNER JOIN periodo_nomina p ON n.periodo_id = p.id
+            WHERE n.empresa_id = :empresaId
+              AND n.empleado_id = :empleadoId
+              AND n.estado <> 'ANULADO'
+            ORDER BY p.fecha_fin DESC, n.id DESC
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId)
+                .addValue("empleadoId", empleadoId);
+        return jdbcTemplate.query(sql, params,
+                new BeanPropertyRowMapper<>(HistorialPagoDto.class));
     }
 }

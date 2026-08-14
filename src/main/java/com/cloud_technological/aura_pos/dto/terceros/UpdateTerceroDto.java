@@ -11,8 +11,20 @@ public class UpdateTerceroDto {
     private String numeroDocumento;
     private String dv;
     private String razonSocial;
+
+    /** @deprecated Usar nombre1/nombre2. DIAN y UGPP exigen desagregado. */
+    @Deprecated
     private String nombres;
+    /** @deprecated Usar apellido1/apellido2. */
+    @Deprecated
     private String apellidos;
+
+    // ── Identificación desagregada (V97) ────────────────────────────
+    private String nombre1;
+    private String nombre2;
+    private String apellido1;
+    private String apellido2;
+
     private String direccion;
     private String telefono;
     private String email;
@@ -34,4 +46,33 @@ public class UpdateTerceroDto {
     private String actividadEconomica;
     private String pais;
     private String codigoPais;
+
+    // ── Persona natural (V97) — requeridos por PILA ─────────────────
+    private java.time.LocalDate fechaNacimiento;
+    private String sexo;                 // M | F | OTRO
+    private java.time.LocalDate fechaExpedicionDocumento;
+    private Long municipioExpedicionId;
+
+    // ── Persona jurídica (V97) ──────────────────────────────────────
+    private String nombreComercial;
+    private String representanteLegalNombre;
+    private String representanteLegalDocumento;
+
+    // ── Fiscal (V97) ────────────────────────────────────────────────
+    private Boolean esAutoretenedorIca;
+    private Boolean esAutoretenedorFuente;
+    private Boolean declarante;
+
+    // ── Seguridad social (V120) — EPS/AFP/CCF/ARL ──────────────────
+    private java.util.List<String> roles;
+    private String codigoSeguridadSocial;
+
+    // ── Bancario (V97) ──────────────────────────────────────────────
+    private Long bancoTerceroId;         // FK a un tercero con rol BANCO
+    private String tipoCuenta;
+    private String numeroCuenta;
+
+    // NOTA: `entidadSeguridadSocialId` (enlace al catálogo nacional de
+    // EPS/AFP/CCF/ARL) se agrega en la FASE 5.5, cuando corra V110. Ponerlo
+    // antes rompe ddl-auto=validate: la columna no existe todavía.
 }

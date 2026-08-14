@@ -209,6 +209,48 @@ public class AsientoContableQueryRepository {
         return result;
     }
 
+    /**
+     * Balance General a nivel de cuenta: saldo de cada cuenta de ACTIVO,
+     * PASIVO y PATRIMONIO a la fecha de corte (solo cuentas con saldo ≠ 0).
+     * Cada fila trae codigo, nombre, tipo y saldo (mismo signo natural que el
+     * balance por clase). Ordenado por código para armar la jerarquía PUC.
+     */
+    public List<Map<String, Object>> balanceGeneralDetalle(Integer empresaId, String hasta) {
+        String sql = """
+            SELECT
+                pc.codigo,
+                pc.nombre,
+                pc.tipo,
+                SUM(CASE WHEN pc.naturaleza = 'DEBITO'  THEN ad.debito  - ad.credito
+                         ELSE                                ad.credito - ad.debito END) AS saldo
+            FROM asiento_detalle ad
+            JOIN asiento_contable a  ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc      ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.fecha <= CAST(:hasta AS DATE)
+              AND a.estado = 'CONTABILIZADO'
+              AND pc.tipo IN ('ACTIVO', 'PASIVO', 'PATRIMONIO')
+            GROUP BY pc.codigo, pc.nombre, pc.tipo
+            HAVING SUM(CASE WHEN pc.naturaleza = 'DEBITO' THEN ad.debito  - ad.credito
+                            ELSE                              ad.credito - ad.debito END) <> 0
+            ORDER BY pc.codigo
+            """;
+        return jdbc.queryForList(sql, Map.of("empresaId", empresaId, "hasta", hasta));
+    }
+
+    /** Nombre de cada grupo PUC (código de 2 dígitos) de la empresa. */
+    public Map<String, String> nombresGrupos(Integer empresaId) {
+        String sql = """
+            SELECT codigo, nombre
+            FROM plan_cuenta
+            WHERE empresa_id = :empresaId AND LENGTH(codigo) = 2
+            """;
+        Map<String, String> result = new java.util.HashMap<>();
+        jdbc.queryForList(sql, Map.of("empresaId", empresaId))
+                .forEach(r -> result.put((String) r.get("codigo"), (String) r.get("nombre")));
+        return result;
+    }
+
     /** Estado de Resultados: saldos agrupados por cuenta (INGRESO, COSTO, GASTO) */
     public List<EstadoResultadosLineaDto> estadoResultados(Integer empresaId,
             String desde, String hasta) {

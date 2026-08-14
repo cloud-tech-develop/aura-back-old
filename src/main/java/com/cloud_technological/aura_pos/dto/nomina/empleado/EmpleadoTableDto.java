@@ -20,6 +20,8 @@ public class EmpleadoTableDto {
     private BigDecimal salarioBase;
     private String tipoContrato;
     private Boolean activo;
+    /** Si requiere control de asistencia (para filtrar el marcaje). */
+    private Boolean requiereControlAsistencia;
     private long totalRows;
     
     // ID del usuario vinculado (nullable)

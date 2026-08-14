@@ -25,6 +25,7 @@ import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
 import com.cloud_technological.aura_pos.entity.CuentaCobrarEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
+import com.cloud_technological.aura_pos.entity.TerceroRolEntity.Rol;
 import com.cloud_technological.aura_pos.entity.VentaEntity;
 import com.cloud_technological.aura_pos.mappers.TerceroMapper;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
@@ -48,6 +49,7 @@ public class TerceroServiceImpl implements ITerceroService {
     private final VentaJPARepository ventaRepository;
     private final CuentaCobrarJPARepository cuentaCobrarRepository;
     private final AbonoCobrarJPARepository abonoCobrarRepository;
+    private final TerceroRolService terceroRolService;
 
     @Autowired
     public TerceroServiceImpl(TerceroQueryRepository terceroRepository,
@@ -56,7 +58,8 @@ public class TerceroServiceImpl implements ITerceroService {
             TerceroMapper terceroMapper,
             VentaJPARepository ventaRepository,
             CuentaCobrarJPARepository cuentaCobrarRepository,
-            AbonoCobrarJPARepository abonoCobrarRepository) {
+            AbonoCobrarJPARepository abonoCobrarRepository,
+            TerceroRolService terceroRolService) {
         this.terceroRepository = terceroRepository;
         this.terceroJPARepository = terceroJPARepository;
         this.empresaRepository = empresaRepository;
@@ -64,6 +67,7 @@ public class TerceroServiceImpl implements ITerceroService {
         this.ventaRepository = ventaRepository;
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.abonoCobrarRepository = abonoCobrarRepository;
+        this.terceroRolService = terceroRolService;
     }
 
     @Override
@@ -75,22 +79,43 @@ public class TerceroServiceImpl implements ITerceroService {
     public TerceroDto obtenerPorId(Long id, Integer empresaId) {
         TerceroEntity entity = terceroJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Tercero no encontrado"));
-        return terceroMapper.toDto(entity);
+        TerceroDto dto = terceroMapper.toDto(entity);
+        // `roles` no vive en la entidad: sale de tercero_rol (V98).
+        dto.setRoles(terceroRolService.rolesDe(entity.getId()));
+        // Nombre del banco: el selector necesita el texto para mostrarlo al
+        // cargar; el DTO solo trae el id.
+        if (entity.getBancoTerceroId() != null) {
+            terceroJPARepository.findByIdAndEmpresaId(entity.getBancoTerceroId(), empresaId)
+                    .ifPresent(b -> dto.setBancoTerceroNombre(
+                            b.getRazonSocial() != null && !b.getRazonSocial().isBlank()
+                                    ? b.getRazonSocial()
+                                    : (b.getNombres() != null ? b.getNombres() : "")));
+        }
+        return dto;
     }
+
+    // Los tres selectores delegan en listarPorRol (V98). Se conservan las
+    // firmas para no romper los controllers; el día que el front migre a un
+    // endpoint genérico, se borran.
 
     @Override
     public List<TerceroTableDto> listarClientes(String search, Integer empresaId) {
-        return terceroRepository.listarClientes(search, empresaId);
+        return terceroRepository.listarPorRol(Rol.CLIENTE, search, empresaId);
     }
 
     @Override
     public List<TerceroTableDto> listarProveedores(String search, Integer empresaId) {
-        return terceroRepository.listarProveedores(search, empresaId);
+        return terceroRepository.listarPorRol(Rol.PROVEEDOR, search, empresaId);
     }
 
     @Override
     public List<TerceroTableDto> listarBancos(String search, Integer empresaId) {
-        return terceroRepository.listarBancos(search, empresaId);
+        return terceroRepository.listarPorRol(Rol.BANCO, search, empresaId);
+    }
+
+    /** Selector genérico. Único camino para los roles nuevos (EPS, AFP, CCF, ARL). */
+    public List<TerceroTableDto> listarPorRol(String rol, String search, Integer empresaId) {
+        return terceroRepository.listarPorRol(rol, search, empresaId);
     }
 
     @Override
@@ -103,14 +128,19 @@ public class TerceroServiceImpl implements ITerceroService {
         return terceroRepository.listarParaSelector(empresaId);
     }
 
+    private static boolean esVacio(String s) {
+        return s == null || s.isBlank();
+    }
+
     @Override
     @Transactional
     public TerceroDto crear(CreateTerceroDto dto, Integer empresaId) {
         if (terceroRepository.existeDocumento(dto.getNumeroDocumento(), empresaId))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe un tercero con este número de documento");
 
-        // Validar que persona natural tenga nombres o jurídica tenga razón social
-        if (dto.getRazonSocial() == null && dto.getNombres() == null)
+        // Validar identidad: jurídica → razón social; natural → nombre (legacy
+        // `nombres` o desagregado `nombre1`, que es el que exigen DIAN/UGPP).
+        if (esVacio(dto.getRazonSocial()) && esVacio(dto.getNombres()) && esVacio(dto.getNombre1()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe ingresar razón social o nombres");
 
         TerceroEntity entity = terceroMapper.toEntity(dto);
@@ -121,7 +151,29 @@ public class TerceroServiceImpl implements ITerceroService {
         entity.setCreated_at(LocalDateTime.now());
         entity.setUpdated_at(LocalDateTime.now());
 
-        return terceroMapper.toDto(terceroJPARepository.save(entity));
+        TerceroEntity guardado = terceroJPARepository.save(entity);
+        // Doble escritura (V98): los booleanos siguen siendo la fuente de verdad
+        // hasta que las lecturas migren a tercero_rol. Ver TerceroRolService.
+        terceroRolService.sincronizarDesdeBooleanos(guardado);
+        // Roles de seguridad social (V120): no tienen booleano, van por lista.
+        sincronizarRolesSeguridadSocial(guardado.getId(), dto.getRoles());
+        return terceroMapper.toDto(guardado);
+    }
+
+    /**
+     * Aplica los roles EPS/AFP/CCF/ARL desde la lista del DTO.
+     *
+     * <p>Sincroniza los cuatro: agrega los presentes, quita los ausentes. Así
+     * desmarcar "es EPS" en la edición quita el rol, no lo deja pegado.
+     */
+    private void sincronizarRolesSeguridadSocial(Long terceroId, List<String> roles) {
+        java.util.Set<String> deseados = roles == null
+                ? java.util.Set.of()
+                : roles.stream().map(String::toUpperCase).collect(java.util.stream.Collectors.toSet());
+        for (String rol : TerceroRolService.rolesSeguridadSocial()) {
+            if (deseados.contains(rol)) terceroRolService.agregarRol(terceroId, rol);
+            else terceroRolService.quitarRol(terceroId, rol);
+        }
     }
 
     @Override
@@ -136,7 +188,13 @@ public class TerceroServiceImpl implements ITerceroService {
 
         terceroMapper.updateEntityFromDto(dto, entity);
         entity.setUpdated_at(LocalDateTime.now());
-        return terceroMapper.toDto(terceroJPARepository.save(entity));
+
+        TerceroEntity guardado = terceroJPARepository.save(entity);
+        // Doble escritura (V98): un cambio de rol en los booleanos debe
+        // reflejarse en tercero_rol o la tabla se desincroniza en silencio.
+        terceroRolService.sincronizarDesdeBooleanos(guardado);
+        sincronizarRolesSeguridadSocial(guardado.getId(), dto.getRoles());
+        return terceroMapper.toDto(guardado);
     }
 
     @Override

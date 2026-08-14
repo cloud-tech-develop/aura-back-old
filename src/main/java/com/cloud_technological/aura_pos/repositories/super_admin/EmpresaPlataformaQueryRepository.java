@@ -78,6 +78,7 @@ public class EmpresaPlataformaQueryRepository {
                 e.municipio,
                 e.municipio_id,
                 e.activa,
+                e.modo_contabilizacion,
                 e.created_at,
                 COUNT(DISTINCT s.id)::INT      AS total_sucursales,
                 COUNT(DISTINCT u.id)::INT      AS total_usuarios,

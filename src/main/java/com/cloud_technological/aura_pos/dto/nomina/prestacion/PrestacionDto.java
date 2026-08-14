@@ -11,6 +11,7 @@ import lombok.Setter;
 @Setter
 public class PrestacionDto {
     private Long id;
+    private String lote;
     private Long empleadoId;
     private String empleadoNombre;
     private String empleadoDocumento;

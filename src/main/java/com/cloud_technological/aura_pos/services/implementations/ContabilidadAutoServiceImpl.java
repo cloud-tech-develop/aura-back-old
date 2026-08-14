@@ -75,6 +75,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private GastoJPARepository gastoRepo;
     @Autowired private MermaJPARepository mermaRepo;
     @Autowired private NominaJPARepository nominaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository nominaDetalleRepo;
     @Autowired private ObligacionFinancieraJPARepository obligacionRepo;
     @Autowired private CuotaAmortizacionJPARepository cuotaRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
@@ -1331,33 +1334,43 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
      * horas (×8) para no sesgar la mezcla. Sin datos → lista vacía (una sola
      * línea, comportamiento previo).
      */
+    /**
+     * Reparto del costo por proyecto/frente.
+     *
+     * <p><b>Deriva de {@code nomina_detalle} (Fase 4), no de un cálculo propio.</b>
+     *
+     * <p>Antes leía {@code asistencia_novedad_nomina} y calculaba su propia
+     * proporción. Eso funcionaba, pero convivía con el reparto que el motor de
+     * liquidación hace sobre {@code nomina_detalle} — dos mecanismos con
+     * fuentes distintas ({@code asistencia_novedad_nomina} vs
+     * {@code asistencia_frente_detalle}) para el mismo propósito. Podían
+     * divergir: el detalle de nómina diría una cosa y el asiento otra para la
+     * misma obra.
+     *
+     * <p>Ahora {@code nomina_detalle} es la fuente única y el asiento deriva de
+     * ella. Por construcción, coinciden.
+     *
+     * <p>Fallback: si la nómina no tiene detalle dimensionado (empresa sin
+     * proyectos, o liquidada antes de la Fase 4), devuelve lista vacía y
+     * {@code addDebitoNomina} arma la línea sin dimensión — el comportamiento
+     * de siempre.
+     */
     private List<RepartoFrente> calcularRepartoNomina(NominaEntity n, Integer empresaId) {
-        if (n.getPeriodo() == null || n.getEmpleado() == null) {
-            return List.of();
-        }
-        var horasPorFrente = new java.util.LinkedHashMap<List<Long>, BigDecimal>();
-        BigDecimal total = BigDecimal.ZERO;
-        for (var nov : novedadNominaRepo.findByEmpresaIdAndPeriodoNominaIdAndEmpleadoId(
-                empresaId, n.getPeriodo().getId(), n.getEmpleado().getId())) {
-            if (nov.getProyectoId() == null) continue;
-            BigDecimal cantidad = nz(nov.getCantidad());
-            if (cantidad.signum() <= 0) continue;
-            if ("DIAS".equals(nov.getUnidad())) {
-                cantidad = cantidad.multiply(BigDecimal.valueOf(8));
-            } else if (!"HORAS".equals(nov.getUnidad())) {
-                continue;
-            }
-            horasPorFrente.merge(java.util.Arrays.asList(nov.getProyectoId(), nov.getFrenteId()),
-                    cantidad, BigDecimal::add);
-            total = total.add(cantidad);
-        }
-        if (horasPorFrente.isEmpty() || total.signum() <= 0) {
-            return List.of();
-        }
-        BigDecimal totalHoras = total;
-        return horasPorFrente.entrySet().stream()
-                .map(e -> new RepartoFrente(e.getKey().get(0), e.getKey().get(1),
-                        e.getValue().divide(totalHoras, 6, java.math.RoundingMode.HALF_UP)))
+        if (n.getId() == null) return List.of();
+
+        List<Object[]> filas = nominaDetalleRepo.distribucionPorProyecto(n.getId());
+        if (filas.isEmpty()) return List.of();
+
+        BigDecimal total = filas.stream()
+                .map(f -> nz((BigDecimal) f[2]))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.signum() <= 0) return List.of();
+
+        return filas.stream()
+                .map(f -> new RepartoFrente(
+                        (Long) f[0],
+                        (Long) f[1],
+                        nz((BigDecimal) f[2]).divide(total, 6, java.math.RoundingMode.HALF_UP)))
                 .toList();
     }
 

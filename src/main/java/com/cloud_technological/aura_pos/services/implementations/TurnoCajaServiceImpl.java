@@ -212,7 +212,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                     .turnoCaja(turno)
                     .monto(dto.getMonto())
                     .metodoPago("efectivo")
-                    .referencia(dto.getConcepto())
+                    .referencia(recortar(dto.getConcepto(), 255))
                     .fechaPago(LocalDateTime.now())
                     .build();
             AbonoCobrarEntity saved = abonoCobrarRepository.save(abono);
@@ -255,7 +255,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                     .turnoCaja(turno)
                     .monto(dto.getMonto())
                     .metodoPago("efectivo")
-                    .referencia(dto.getConcepto())
+                    .referencia(recortar(dto.getConcepto(), 255))
                     .fechaPago(LocalDateTime.now())
                     .build();
             AbonoPagarEntity saved = abonoPagarRepository.save(abono);
@@ -357,6 +357,16 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     }
 
     /** Devuelve razonSocial cuando está disponible; si no, nombres + apellidos. */
+    /**
+     * El concepto del movimiento es texto libre del cajero y se guarda como
+     * `referencia` del abono, que es más corta. Se recorta en vez de dejar que
+     * Postgres tumbe el INSERT ("value too long for type character varying").
+     */
+    private static String recortar(String valor, int max) {
+        if (valor == null || valor.length() <= max) return valor;
+        return valor.substring(0, max);
+    }
+
     private String resolverNombreTercero(com.cloud_technological.aura_pos.entity.TerceroEntity t) {
         if (t == null) return null;
         if (t.getRazonSocial() != null && !t.getRazonSocial().isBlank()) return t.getRazonSocial();

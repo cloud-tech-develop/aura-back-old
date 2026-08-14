@@ -41,6 +41,21 @@ public class NominaEntity {
     @JoinColumn(name = "empleado_id")
     private EmpleadoEntity empleado;
 
+    /**
+     * Contrato liquidado (V103).
+     *
+     * <p>Reemplaza a {@code empleado} como eje de la liquidación: una persona
+     * con dos contratos activos genera dos nóminas por período.
+     *
+     * <p><b>Nullable por ahora.</b> El cierre de V103 lo pone NOT NULL y cambia
+     * {@code uq_nomina_empleado_periodo} por {@code uq_nomina_contrato_periodo}.
+     * Mientras esa restricción vieja siga viva, el multi-vínculo NO funciona
+     * aunque esta columna exista.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contrato_id")
+    private ContratoLaboralEntity contrato;
+
     @Column(name = "salario_base", nullable = false, precision = 15, scale = 2)
     private BigDecimal salarioBase;
 
@@ -59,6 +74,10 @@ public class NominaEntity {
 
     @Column(name = "total_devengado", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalDevengado = BigDecimal.ZERO;
+
+    /** Base de cotización (IBC) sin auxilio de transporte ni pagos no salariales. La usa PILA. */
+    @Column(name = "ibc", precision = 15, scale = 2)
+    private BigDecimal ibc;
 
     // Deducciones empleado
     @Column(name = "deduccion_salud", nullable = false, precision = 15, scale = 2)

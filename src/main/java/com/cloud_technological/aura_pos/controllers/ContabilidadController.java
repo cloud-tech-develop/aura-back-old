@@ -218,6 +218,16 @@ public class ContabilidadController {
                 asientoService.balanceGeneral(empresaId, h)));
     }
 
+    @GetMapping("/balance-detallado")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDetalladoDto>> balanceGeneralDetallado(
+            @RequestParam(required = false) String hasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        String h = (hasta != null && !hasta.isBlank()) ? hasta
+                : LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                asientoService.balanceGeneralDetallado(empresaId, h)));
+    }
+
     // ── Estado de Resultados (P&G) ────────────────────────────────────
 
     @GetMapping("/estado-resultados")

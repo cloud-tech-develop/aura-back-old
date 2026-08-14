@@ -11,6 +11,8 @@ import lombok.Setter;
 @Setter
 public class EmpleadoDto {
     private Long id;
+    /** Identidad del empleado (V99). Para editar sus datos vía el form de tercero. */
+    private Long terceroId;
     private String nombres;
     private String apellidos;
     private String tipoDocumento;

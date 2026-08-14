@@ -14,4 +14,6 @@ public class FrenteTrabajadorDto {
     private LocalDate fechaInicio;
     private LocalDate fechaFin;
     private String estado;
+    /** Si el empleado está activo (no retirado). La digitación excluye a los retirados. */
+    private Boolean empleadoActivo;
 }

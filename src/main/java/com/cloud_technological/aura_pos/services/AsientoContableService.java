@@ -21,6 +21,9 @@ public interface AsientoContableService {
     String siguienteConsecutivo(Integer empresaId, String tipoComprobante);
     void anular(Long id, Integer empresaId);
     BalanceGeneralDto balanceGeneral(Integer empresaId, String hasta);
+    /** Balance General profesional: detalle por cuenta, estructura corriente/no corriente. */
+    com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDetalladoDto
+            balanceGeneralDetallado(Integer empresaId, String hasta);
     /** Estado de resultados con filtros de dimensión opcionales (E7): centro de costo, proyecto, frente. */
     EstadoResultadosDto estadoResultados(Integer empresaId, String desde, String hasta,
             Long centroCostoId, Long proyectoId, Long frenteId);

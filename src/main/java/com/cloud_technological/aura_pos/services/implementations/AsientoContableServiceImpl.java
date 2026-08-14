@@ -54,6 +54,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     @Autowired
     private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository empresaRepo;
+
     @Override
     public List<AsientoContableTableDto> listar(Integer empresaId, String desde, String hasta,
             String tipoOrigen, int page, int rows) {
@@ -267,6 +270,138 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         dto.setUtilidadNeta(utilidad);
         dto.setEcuacionContable(ecuacion);
         return dto;
+    }
+
+    @Override
+    public com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDetalladoDto
+            balanceGeneralDetallado(Integer empresaId, String hasta) {
+
+        List<Map<String, Object>> filas = queryRepo.balanceGeneralDetalle(empresaId, hasta);
+        Map<String, String> nombresGrupos = queryRepo.nombresGrupos(empresaId);
+        Map<String, Object> saldosClase = queryRepo.balanceGeneral(empresaId, hasta);
+
+        BigDecimal resultado = getOrZero(saldosClase, "INGRESO")
+                .subtract(getOrZero(saldosClase, "GASTO"))
+                .subtract(getOrZero(saldosClase, "COSTO"));
+
+        var activoCorriente   = agruparBalance(filas, "ACTIVO",  g -> g >= 11 && g <= 14, nombresGrupos);
+        var activoNoCorriente = agruparBalance(filas, "ACTIVO",  g -> g >= 15 && g <= 19, nombresGrupos);
+        var pasivoCorriente   = agruparBalance(filas, "PASIVO",  g -> g >= 21 && g <= 26, nombresGrupos);
+        var pasivoNoCorriente = agruparBalance(filas, "PASIVO",  g -> g >= 27 && g <= 29, nombresGrupos);
+        var patrimonio        = agruparBalance(filas, "PATRIMONIO", g -> true, nombresGrupos);
+
+        // El resultado del ejercicio (P&G aún no cerrado) se presenta en patrimonio
+        // para que la ecuación contable cuadre.
+        if (resultado.signum() != 0) {
+            patrimonio = new java.util.ArrayList<>(patrimonio);
+            patrimonio.add(com.cloud_technological.aura_pos.dto.contabilidad
+                    .BalanceGeneralDetalladoDto.GrupoBalanceDto.builder()
+                    .codigo("36")
+                    .nombre("Resultado del Ejercicio")
+                    .saldo(resultado)
+                    .cuentas(List.of(com.cloud_technological.aura_pos.dto.contabilidad
+                            .BalanceGeneralDetalladoDto.LineaBalanceDto.builder()
+                            .codigo("3605").nombre("Utilidad (Pérdida) del Ejercicio").saldo(resultado)
+                            .build()))
+                    .build());
+        }
+
+        BigDecimal totActCte   = sumarGrupos(activoCorriente);
+        BigDecimal totActNoCte = sumarGrupos(activoNoCorriente);
+        BigDecimal totActivo   = totActCte.add(totActNoCte);
+        BigDecimal totPasCte   = sumarGrupos(pasivoCorriente);
+        BigDecimal totPasNoCte = sumarGrupos(pasivoNoCorriente);
+        BigDecimal totPasivo   = totPasCte.add(totPasNoCte);
+        BigDecimal totPatrim   = sumarGrupos(patrimonio);
+        BigDecimal totPasPat   = totPasivo.add(totPatrim);
+        BigDecimal diferencia  = totActivo.subtract(totPasPat);
+
+        var empresa = empresaRepo.findById(empresaId).orElse(null);
+
+        return com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDetalladoDto.builder()
+                .empresaNombre(empresa != null ? empresa.getRazonSocial() : "")
+                .nit(empresa != null ? empresa.getNit() : "")
+                .fechaCorte(hasta)
+                .activoCorriente(activoCorriente)
+                .activoNoCorriente(activoNoCorriente)
+                .pasivoCorriente(pasivoCorriente)
+                .pasivoNoCorriente(pasivoNoCorriente)
+                .patrimonio(patrimonio)
+                .totalActivoCorriente(totActCte)
+                .totalActivoNoCorriente(totActNoCte)
+                .totalActivo(totActivo)
+                .totalPasivoCorriente(totPasCte)
+                .totalPasivoNoCorriente(totPasNoCte)
+                .totalPasivo(totPasivo)
+                .totalPatrimonio(totPatrim)
+                .totalPasivoPatrimonio(totPasPat)
+                .resultadoEjercicio(resultado)
+                .diferencia(diferencia)
+                .cuadra(diferencia.abs().compareTo(BigDecimal.ONE) < 0)
+                .build();
+    }
+
+    /** Agrupa las cuentas de un tipo por grupo PUC (2 dígitos) que pasa el filtro. */
+    private List<com.cloud_technological.aura_pos.dto.contabilidad
+            .BalanceGeneralDetalladoDto.GrupoBalanceDto> agruparBalance(
+            List<Map<String, Object>> filas, String tipo,
+            java.util.function.IntPredicate filtroGrupo, Map<String, String> nombresGrupos) {
+
+        Map<String, List<com.cloud_technological.aura_pos.dto.contabilidad
+                .BalanceGeneralDetalladoDto.LineaBalanceDto>> porGrupo = new java.util.LinkedHashMap<>();
+
+        for (Map<String, Object> f : filas) {
+            if (!tipo.equals(f.get("tipo"))) continue;
+            String codigo = (String) f.get("codigo");
+            if (codigo == null || codigo.length() < 2) continue;
+            String grupo = codigo.substring(0, 2);
+            int grupoNum;
+            try {
+                grupoNum = Integer.parseInt(grupo);
+            } catch (NumberFormatException ex) {
+                continue;
+            }
+            if (!filtroGrupo.test(grupoNum)) continue;
+
+            porGrupo.computeIfAbsent(grupo, k -> new java.util.ArrayList<>())
+                    .add(com.cloud_technological.aura_pos.dto.contabilidad
+                            .BalanceGeneralDetalladoDto.LineaBalanceDto.builder()
+                            .codigo(codigo)
+                            .nombre((String) f.get("nombre"))
+                            .saldo(toBigDecimal(f.get("saldo")))
+                            .build());
+        }
+
+        List<com.cloud_technological.aura_pos.dto.contabilidad
+                .BalanceGeneralDetalladoDto.GrupoBalanceDto> grupos = new java.util.ArrayList<>();
+        porGrupo.forEach((grupo, cuentas) -> {
+            BigDecimal saldo = cuentas.stream()
+                    .map(com.cloud_technological.aura_pos.dto.contabilidad
+                            .BalanceGeneralDetalladoDto.LineaBalanceDto::getSaldo)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            grupos.add(com.cloud_technological.aura_pos.dto.contabilidad
+                    .BalanceGeneralDetalladoDto.GrupoBalanceDto.builder()
+                    .codigo(grupo)
+                    .nombre(nombresGrupos.getOrDefault(grupo, "Grupo " + grupo))
+                    .saldo(saldo)
+                    .cuentas(cuentas)
+                    .build());
+        });
+        return grupos;
+    }
+
+    private BigDecimal sumarGrupos(List<com.cloud_technological.aura_pos.dto.contabilidad
+            .BalanceGeneralDetalladoDto.GrupoBalanceDto> grupos) {
+        return grupos.stream()
+                .map(com.cloud_technological.aura_pos.dto.contabilidad
+                        .BalanceGeneralDetalladoDto.GrupoBalanceDto::getSaldo)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal toBigDecimal(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal b) return b;
+        return new BigDecimal(o.toString());
     }
 
     @Override

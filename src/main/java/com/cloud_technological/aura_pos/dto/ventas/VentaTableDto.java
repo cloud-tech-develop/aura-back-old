@@ -12,6 +12,7 @@ public class VentaTableDto {
     private Long id;
     private String prefijo;
     private Long consecutivo;
+    private String numeroVenta;   // prefijo-consecutivo, para mostrar y buscar
     private String clienteNombre;
     private String sucursalNombre;
     private LocalDateTime fechaEmision;

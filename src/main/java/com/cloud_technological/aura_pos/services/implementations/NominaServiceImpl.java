@@ -17,6 +17,7 @@ import com.cloud_technological.aura_pos.dto.nomina.nomina.AddNovedadDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.NominaDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.NominaNovedadDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.NominaTableDto;
+import com.cloud_technological.aura_pos.entity.ContratoLaboralEntity;
 import com.cloud_technological.aura_pos.entity.EmpleadoArlEntity;
 import com.cloud_technological.aura_pos.entity.EmpleadoEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
@@ -29,10 +30,14 @@ import com.cloud_technological.aura_pos.repositories.nomina.NominaConfigJPARepos
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.nomina.PeriodoNominaJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
 import com.cloud_technological.aura_pos.services.NominaService;
+import com.cloud_technological.aura_pos.services.nomina.BasesLiquidacion;
+import com.cloud_technological.aura_pos.services.nomina.MotorLiquidacion;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class NominaServiceImpl implements NominaService {
 
@@ -53,6 +58,12 @@ public class NominaServiceImpl implements NominaService {
 
     @Autowired
     private NominaConfigJPARepository configRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.nomina.VacacionesService vacacionesService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.nomina.CalculadoraIncapacidad calculadoraIncapacidad;
 
     @Autowired
     private com.cloud_technological.aura_pos.repositories.asistencia.PeriodoAsistenciaJPARepository periodoAsistenciaRepo;
@@ -81,19 +92,36 @@ public class NominaServiceImpl implements NominaService {
     @Autowired
     private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
+    @Autowired
+    private ContratoLaboralService contratoLaboralService;
+
+    @Autowired
+    private MotorLiquidacion motorLiquidacion;
+
+    @Autowired
+    private NominaElectronicaService nominaElectronicaService;
+
+    @Autowired
+    private NominaDetalleJPARepository nominaDetalleRepo;
+
     private static final BigDecimal CIEN = new BigDecimal("100");
     private static final BigDecimal TREINTA = new BigDecimal("30");
-    // Porcentajes de provisiones (fijos por ley colombiana)
-    private static final BigDecimal PCT_PRIMA = new BigDecimal("8.33");
-    private static final BigDecimal PCT_CESANTIAS = new BigDecimal("8.33");
-    private static final BigDecimal PCT_INT_CESANTIAS = new BigDecimal("12.00");
-    private static final BigDecimal PCT_VACACIONES = new BigDecimal("4.17");
+
+    // Las tarifas ya NO viven aquí: están en concepto_nomina (V104), con
+    // vigencia por fechas. Un cambio de ley es una fila, no un despliegue.
+    // Se eliminaron: PCT_PRIMA, PCT_CESANTIAS, PCT_INT_CESANTIAS, PCT_VACACIONES.
 
     // ─── Consultas ────────────────────────────────────────────────────────────
 
     @Override
     public PageImpl<NominaTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         return nominaQueryRepo.listar(pageable, empresaId);
+    }
+
+    @Override
+    public java.util.List<com.cloud_technological.aura_pos.dto.nomina.nomina.HistorialPagoDto> historialPagos(
+            Long empleadoId, Integer empresaId) {
+        return nominaQueryRepo.historialPagos(empleadoId, empresaId);
     }
 
     @Override
@@ -127,11 +155,13 @@ public class NominaServiceImpl implements NominaService {
             e.setPeriodoFechaInicio(periodo.getFechaInicio());
             e.setPeriodoFechaFin(periodo.getFechaFin());
             e.setEmpleadoId(n.getEmpleado().getId());
-            e.setEmpleadoNombre(n.getEmpleado().getNombres() + " " + n.getEmpleado().getApellidos());
-            e.setEmpleadoDocumento(n.getEmpleado().getNumeroDocumento());
+            // *Resuelto(): prefieren `tercero`, caen a las columnas legacy de
+            // `empleados` mientras la reconciliación de V99 no esté completa.
+            e.setEmpleadoNombre(n.getEmpleado().getNombreCompletoResuelto());
+            e.setEmpleadoDocumento(n.getEmpleado().getNumeroDocumentoResuelto());
             e.setCargo(n.getEmpleado().getCargo());
-            e.setBanco(n.getEmpleado().getBanco());
-            e.setNumeroCuenta(n.getEmpleado().getNumeroCuenta());
+            e.setBanco(n.getEmpleado().getBancoResuelto());
+            e.setNumeroCuenta(n.getEmpleado().getNumeroCuentaResuelto());
             e.setDiasTrabajados(n.getDiasTrabajados());
             e.setTotalDevengado(n.getTotalDevengado());
             e.setTotalDeducciones(n.getTotalDeducciones());
@@ -171,28 +201,61 @@ public class NominaServiceImpl implements NominaService {
 
     // ─── Liquidación ──────────────────────────────────────────────────────────
 
+    /**
+     * @deprecated Puente hacia {@link #liquidarContrato}. Resuelve el contrato
+     *             principal del empleado. Con multi-vínculo esto es ambiguo:
+     *             el llamador debería indicar QUÉ contrato liquida.
+     */
     @Override
+    @Deprecated
     @Transactional
     public NominaDto liquidar(Long periodoId, Long empleadoId, Integer empresaId) {
+        ContratoLaboralEntity contrato = contratoLaboralService.principalDe(empleadoId);
+        return liquidarContrato(periodoId, contrato.getId(), empresaId);
+    }
+
+    /**
+     * Liquida un contrato en un período (V103).
+     *
+     * <p>El contrato es el eje, no el empleado: una persona con dos contratos
+     * activos genera dos nóminas por período.
+     */
+    @Override
+    @Transactional
+    public NominaDto liquidarContrato(Long periodoId, Long contratoId, Integer empresaId) {
         PeriodoNominaEntity periodo = periodoRepo.findByIdAndEmpresaId(periodoId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Período no encontrado"));
 
         if ("ANULADO".equals(periodo.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El período está anulado");
 
-        EmpleadoEntity empleado = empleadoRepo.findByIdAndEmpresaId(empleadoId, empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empleado no encontrado"));
+        ContratoLaboralEntity contrato = contratoLaboralService.obtener(contratoId, empresaId);
+        EmpleadoEntity empleado = contrato.getEmpleado();
 
-        if (!Boolean.TRUE.equals(empleado.getActivo()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El empleado está retirado");
+        if (!"ACTIVO".equals(contrato.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El contrato está en estado " + contrato.getEstado());
 
-        NominaEntity nomina;
-        if (nominaRepo.existsByEmpleadoIdAndPeriodoId(empleadoId, periodoId)) {
-            nomina = nominaRepo.findByPeriodoIdAndEmpresaId(periodoId, empresaId)
-                    .stream()
-                    .filter(n -> n.getEmpleado().getId().equals(empleadoId))
-                    .findFirst()
-                    .orElseThrow();
+        // B-09 — la prestación de servicios NO se liquida como nómina laboral: sin
+        // relación laboral no hay deducciones de SS, aportes, prestaciones ni
+        // auxilio. Se paga por cuenta de cobro/compra con retefuente por servicios.
+        if ("PRESTACION_SERVICIOS".equals(contrato.getTipoContrato()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Un contrato de prestación de servicios no se liquida por nómina. "
+                    + "Regístralo como cuenta de cobro / compra (retención por servicios).");
+
+        // El contrato debe solaparse con el período. Un contrato que empieza
+        // después del corte, o que terminó antes, no se liquida aquí.
+        if (contrato.getFechaInicio().isAfter(periodo.getFechaFin())
+            || (contrato.getFechaFin() != null && contrato.getFechaFin().isBefore(periodo.getFechaInicio()))) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El contrato no está vigente en el período");
+        }
+
+        NominaEntity nomina = nominaRepo.findByContratoIdAndPeriodoId(contratoId, periodoId)
+                .orElse(null);
+
+        if (nomina != null) {
             if ("APROBADO".equals(nomina.getEstado()) || "PAGADO".equals(nomina.getEstado()))
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "La nómina ya está aprobada o pagada");
         } else {
@@ -202,6 +265,7 @@ public class NominaServiceImpl implements NominaService {
             nomina.setEmpresa(empresa);
             nomina.setPeriodo(periodo);
             nomina.setEmpleado(empleado);
+            nomina.setContrato(contrato);
             nomina.setCreatedAt(LocalDateTime.now());
         }
 
@@ -243,26 +307,35 @@ public class NominaServiceImpl implements NominaService {
         NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
                 .orElseGet(() -> configuracionPorDefecto(empresaId));
 
-        List<EmpleadoEntity> empleados = empleadoRepo.findByEmpresaIdAndActivoTrue(empresaId);
+        // V103: se iteran CONTRATOS vigentes en el período, no empleados activos.
+        //
+        // Dos diferencias con lo anterior:
+        //  · Un empleado con dos contratos genera dos nóminas.
+        //  · `findVigentesEnPeriodo` incluye a quien ingresó o se retiró a mitad
+        //    de mes (fechas que se solapan con el período). Antes se iteraban
+        //    empleados con activo=true, que dejaba fuera a los retirados a mitad
+        //    de mes — a los que sí hay que liquidarles sus días.
+        List<ContratoLaboralEntity> contratos = contratoLaboralService.vigentesEnPeriodo(
+                empresaId, periodo.getFechaInicio(), periodo.getFechaFin());
 
         EmpresaEntity empresa = new EmpresaEntity();
         empresa.setId(empresaId);
 
-        for (EmpleadoEntity empleado : empleados) {
-            NominaEntity nomina;
-            if (nominaRepo.existsByEmpleadoIdAndPeriodoId(empleado.getId(), periodoId)) {
-                nomina = nominaRepo.findByPeriodoIdAndEmpresaId(periodoId, empresaId)
-                        .stream()
-                        .filter(n -> n.getEmpleado().getId().equals(empleado.getId()))
-                        .filter(n -> !"APROBADO".equals(n.getEstado()) && !"PAGADO".equals(n.getEstado()))
-                        .findFirst()
-                        .orElse(null);
-                if (nomina == null) continue; // ya aprobada, se omite
+        for (ContratoLaboralEntity contrato : contratos) {
+            EmpleadoEntity empleado = contrato.getEmpleado();
+
+            NominaEntity nomina = nominaRepo.findByContratoIdAndPeriodoId(contrato.getId(), periodoId)
+                    .orElse(null);
+
+            if (nomina != null) {
+                // Ya aprobada o pagada: se omite del lote, no se recalcula.
+                if ("APROBADO".equals(nomina.getEstado()) || "PAGADO".equals(nomina.getEstado())) continue;
             } else {
                 nomina = new NominaEntity();
                 nomina.setEmpresa(empresa);
                 nomina.setPeriodo(periodo);
                 nomina.setEmpleado(empleado);
+                nomina.setContrato(contrato);
                 nomina.setCreatedAt(LocalDateTime.now());
             }
 
@@ -293,19 +366,42 @@ public class NominaServiceImpl implements NominaService {
         if ("APROBADO".equals(nomina.getEstado()) || "PAGADO".equals(nomina.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se pueden agregar novedades a una nómina aprobada o pagada");
 
+        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+                .orElseGet(() -> configuracionPorDefecto(empresaId));
+
         NominaNovedadEntity novedad = new NominaNovedadEntity();
         novedad.setNomina(nomina);
         novedad.setTipo(dto.getTipo());
         novedad.setDescripcion(dto.getDescripcion());
         novedad.setCantidad(dto.getCantidad() != null ? dto.getCantidad() : BigDecimal.ONE);
-        novedad.setValorUnitario(dto.getValorUnitario());
-        novedad.setValorTotal(novedad.getCantidad().multiply(dto.getValorUnitario()).setScale(2, RoundingMode.HALF_UP));
+        novedad.setValorUnitario(nz(dto.getValorUnitario()));
+        novedad.setValorTotal(novedad.getCantidad().multiply(nz(dto.getValorUnitario())).setScale(2, RoundingMode.HALF_UP));
         novedad.setEsDeduccion(esDeduccion(dto.getTipo()));
+
+        // F0 — conciliación de días. Fechas del hecho + cuántos días de salario
+        // descuenta (si es una ausencia).
+        novedad.setFechaInicio(dto.getFechaInicio());
+        novedad.setFechaFin(dto.getFechaFin());
+        novedad.setSubtipo(dto.getSubtipo());
+        novedad.setNumeroAutorizacion(dto.getNumeroAutorizacion());
+        boolean ausencia = afectaDiasSalario(dto.getTipo());
+        novedad.setAfectaDiasSalario(ausencia);
+        if (ausencia) {
+            Integer dias = diasNovedad(dto.getFechaInicio(), dto.getFechaFin(), dto.getCantidad());
+            novedad.setDias(dias);
+            validarDiasAusencia(nomina, dias);
+            if ("VACACIONES".equals(dto.getTipo()) && nomina.getEmpleado() != null) {
+                validarSaldoVacaciones(nomina.getEmpleado().getId(), empresaId, dias);
+            }
+            // F1 — incapacidades y maternidad: el valor se calcula solo si no vino manual.
+            if (esIncapacidadOMaternidad(dto.getTipo()) && nz(dto.getValorUnitario()).signum() == 0) {
+                autocalcularIncapacidad(novedad, nomina, config, dias);
+            }
+        }
+
         nomina.getNovedades().add(novedad);
 
         // Recalcular con la nueva novedad
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
         calcular(nomina, nomina.getEmpleado(), config);
         nomina.setUpdatedAt(LocalDateTime.now());
 
@@ -352,6 +448,22 @@ public class NominaServiceImpl implements NominaService {
         eventPublisher.publishEvent(
                 new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
                         "NOMINA", nomina.getId(), empresaId, null));
+
+        // Nómina electrónica (Fase 5): se PREPARA el documento (reserva el
+        // consecutivo, queda en PENDIENTE). El envío lo hace el job — nunca
+        // dentro de este request: si Factus está lento, la aprobación no puede
+        // quedarse esperando.
+        //
+        // prepararDocumento() es idempotente: si ya existe, lo devuelve.
+        try {
+            nominaElectronicaService.prepararDocumento(nomina.getId(), empresaId);
+        } catch (RuntimeException e) {
+            // No romper la aprobación por esto: el documento se puede preparar
+            // después. Pero dejar rastro — una nómina aprobada sin documento
+            // electrónico es un incumplimiento con la DIAN.
+            log.error("No se pudo preparar la nómina electrónica de la nómina {}: {}",
+                    nomina.getId(), e.getMessage());
+        }
 
         return dto;
     }
@@ -473,119 +585,97 @@ public class NominaServiceImpl implements NominaService {
 
     // ─── Motor de cálculo ─────────────────────────────────────────────────────
 
+    /**
+     * Calcula una nómina delegando en {@link MotorLiquidacion} (Fases 0 y 3).
+     *
+     * <p>Reemplaza al cálculo cableado que vivía aquí. Diferencias:
+     * <ul>
+     *   <li>Las tarifas salen de {@code concepto_nomina}, no de constantes.</li>
+     *   <li>El IBC ya NO incluye el auxilio de transporte (bug B1).</li>
+     *   <li>Se aplican tope de 25 SMMLV, fondo de solidaridad y exoneración 1607.</li>
+     *   <li>Se emite {@code nomina_detalle} con traza.</li>
+     * </ul>
+     *
+     * <p>Los campos agregados de {@code nomina} se mantienen como
+     * denormalización de lectura, calculados desde el detalle. Deben cuadrar
+     * exactamente — es el invariante que los tests tienen que verificar.
+     */
     private void calcular(NominaEntity nomina, EmpleadoEntity empleado, NominaConfigEntity config) {
+        ContratoLaboralEntity contrato = nomina.getContrato();
+        if (contrato == null) {
+            // Puente: nóminas creadas antes de V103. Tras el cierre (V118) esto
+            // no puede pasar — contrato_id es NOT NULL.
+            contrato = contratoLaboralService.principalDe(empleado.getId());
+            nomina.setContrato(contrato);
+        }
+
         int dias = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
         nomina.setDiasTrabajados(dias);
-        nomina.setSalarioBase(empleado.getSalarioBase());
+        nomina.setSalarioBase(contrato.getSalarioBase());
 
-        BigDecimal salario = empleado.getSalarioBase();
+        LocalDate fecha = nomina.getPeriodo() != null && nomina.getPeriodo().getFechaFin() != null
+                ? nomina.getPeriodo().getFechaFin()
+                : LocalDate.now();
 
-        // Salario proporcional por días trabajados
-        BigDecimal salarioProporcional = salario
-                .multiply(BigDecimal.valueOf(dias))
-                .divide(TREINTA, 2, RoundingMode.HALF_UP);
-        nomina.setSalarioProporcional(salarioProporcional);
+        MotorLiquidacion.ResultadoLiquidacion r =
+                motorLiquidacion.liquidar(nomina, contrato, config, fecha);
 
-        // Auxilio de transporte (si salario ≤ 2 SMMLV)
-        BigDecimal auxilio = BigDecimal.ZERO;
-        if ("COMPLETO".equals(config.getModoNomina())) {
-            BigDecimal dosSmmlv = config.getSmmlv().multiply(BigDecimal.valueOf(2));
-            if (salario.compareTo(dosSmmlv) <= 0) {
-                auxilio = config.getAuxilioTransporte()
-                        .multiply(BigDecimal.valueOf(dias))
-                        .divide(TREINTA, 2, RoundingMode.HALF_UP);
-            }
-        }
-        nomina.setAuxilioTransporte(auxilio);
-
-        // Novedades: separar devengos y deducciones
-        BigDecimal novedadesDevengadas = BigDecimal.ZERO;
-        BigDecimal novedadesDeducciones = BigDecimal.ZERO;
-
-        for (NominaNovedadEntity nov : nomina.getNovedades()) {
-            if (Boolean.TRUE.equals(nov.getEsDeduccion())) {
-                novedadesDeducciones = novedadesDeducciones.add(nov.getValorTotal());
-            } else {
-                novedadesDevengadas = novedadesDevengadas.add(nov.getValorTotal());
-            }
-        }
-        nomina.setTotalNovedadesDev(novedadesDevengadas);
-
-        // Total devengado
-        BigDecimal totalDevengado = salarioProporcional.add(auxilio).add(novedadesDevengadas);
-        nomina.setTotalDevengado(totalDevengado);
-
-        if ("COMPLETO".equals(config.getModoNomina())) {
-            calcularCompleto(nomina, salarioProporcional, totalDevengado, novedadesDeducciones, config, empleado);
-        } else {
-            calcularSimplificado(nomina, novedadesDeducciones);
-        }
+        aplicarResultado(nomina, r);
+        persistirDetalle(nomina, r);
     }
 
-    private void calcularCompleto(NominaEntity nomina, BigDecimal salarioProporcional,
-                                   BigDecimal totalDevengado, BigDecimal novedadesDeducciones,
-                                   NominaConfigEntity config, EmpleadoEntity empleado) {
-        // Deducciones empleado
-        BigDecimal deduccionSalud = porcentaje(totalDevengado, config.getPctSaludEmpleado());
-        BigDecimal deduccionPension = porcentaje(totalDevengado, config.getPctPensionEmpleado());
+    /** Vuelca los totales del motor en los campos agregados de la nómina. */
+    private void aplicarResultado(NominaEntity nomina, MotorLiquidacion.ResultadoLiquidacion r) {
+        BasesLiquidacion b = r.bases();
 
-        nomina.setDeduccionSalud(deduccionSalud);
-        nomina.setDeduccionPension(deduccionPension);
-        nomina.setDeduccionOtros(novedadesDeducciones);
+        nomina.setSalarioProporcional(b.getSalarioProporcional());
+        nomina.setAuxilioTransporte(b.getAuxilioTransporte());
+        nomina.setTotalNovedadesDev(b.getNovedadesIbc().add(b.getNovedadesNoIbc()));
+        nomina.setTotalDevengado(r.totalDevengado());
+        // IBC real (sin auxilio ni no salariales) para PILA — no es total_devengado.
+        nomina.setIbc(b.getBaseIbc());
 
-        BigDecimal totalDeducciones = deduccionSalud.add(deduccionPension).add(novedadesDeducciones);
-        nomina.setTotalDeducciones(totalDeducciones);
-        nomina.setNetoPagar(totalDevengado.subtract(totalDeducciones).max(BigDecimal.ZERO));
+        // Deducciones: por concepto, no por campo cableado.
+        nomina.setDeduccionSalud(r.valorDeConcepto("DED_SALUD"));
+        nomina.setDeduccionPension(r.valorDeConcepto("DED_PENSION"));
+        // `deduccionOtros` absorbe todo lo que no es salud ni pensión: fondo de
+        // solidaridad, retefuente, préstamos, embargos. El desglose real está
+        // en nomina_detalle; este campo es solo el agregado de lectura.
+        nomina.setDeduccionOtros(
+                r.totalDeducciones()
+                 .subtract(r.valorDeConcepto("DED_SALUD"))
+                 .subtract(r.valorDeConcepto("DED_PENSION")));
+        nomina.setTotalDeducciones(r.totalDeducciones());
+        nomina.setNetoPagar(r.netoPagar());
 
-        // Aportes empleador
-        nomina.setAporteSalud(porcentaje(totalDevengado, config.getPctSaludEmpleador()));
-        nomina.setAportePension(porcentaje(totalDevengado, config.getPctPensionEmpleador()));
-        nomina.setAporteCaja(porcentaje(totalDevengado, config.getPctCajaCompensacion()));
-        nomina.setAporteIcbf(porcentaje(totalDevengado, config.getPctIcbf()));
-        nomina.setAporteSena(porcentaje(totalDevengado, config.getPctSena()));
+        nomina.setAporteSalud(r.valorDeConcepto("APO_SALUD"));
+        nomina.setAportePension(r.valorDeConcepto("APO_PENSION"));
+        nomina.setAporteArl(r.valorDeConcepto("APO_ARL"));
+        nomina.setAporteCaja(r.valorDeConcepto("APO_CCF"));
+        nomina.setAporteIcbf(r.valorDeConcepto("APO_ICBF"));
+        nomina.setAporteSena(r.valorDeConcepto("APO_SENA"));
 
-        // ARL según nivel de riesgo del empleado
-        BigDecimal pctArl = BigDecimal.ZERO;
-        EmpleadoArlEntity arl = empleado.getArl();
-        if (arl != null) {
-            pctArl = arl.getPorcentaje();
+        nomina.setProvisionPrima(r.valorDeConcepto("PRO_PRIMA"));
+        nomina.setProvisionCesantias(r.valorDeConcepto("PRO_CESANTIAS"));
+        nomina.setProvisionIntCesantias(r.valorDeConcepto("PRO_INT_CES"));
+        nomina.setProvisionVacaciones(r.valorDeConcepto("PRO_VACAC"));
+    }
+
+    /**
+     * Reescribe el detalle de la nómina.
+     *
+     * <p>Borra y reinserta: una reliquidación debe producir el detalle desde
+     * cero, no acumularlo sobre el anterior.
+     */
+    private void persistirDetalle(NominaEntity nomina, MotorLiquidacion.ResultadoLiquidacion r) {
+        if (nomina.getId() != null) {
+            nominaDetalleRepo.deleteByNominaId(nomina.getId());
         }
-        nomina.setAporteArl(porcentaje(totalDevengado, pctArl));
-
-        // Prima y cesantías: base = salario proporcional + auxilio de transporte
-        BigDecimal baseConAuxilio = salarioProporcional.add(nz(nomina.getAuxilioTransporte()));
-        nomina.setProvisionPrima(porcentaje(baseConAuxilio, PCT_PRIMA));
-        nomina.setProvisionCesantias(porcentaje(baseConAuxilio, PCT_CESANTIAS));
-        // Intereses de cesantías: sobre las cesantías provisionadas
-        nomina.setProvisionIntCesantias(
-                nomina.getProvisionCesantias()
-                        .multiply(PCT_INT_CESANTIAS)
-                        .divide(CIEN, 2, RoundingMode.HALF_UP)
-                        .divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP)
-        );
-        // Vacaciones: solo salario (sin auxilio)
-        nomina.setProvisionVacaciones(porcentaje(salarioProporcional, PCT_VACACIONES));
+        // La nómina debe existir antes de colgarle detalle.
+        NominaEntity guardada = nomina.getId() != null ? nomina : nominaRepo.save(nomina);
+        r.lineas().forEach(l -> nominaDetalleRepo.save(l.aEntidad(guardada)));
     }
 
-    private void calcularSimplificado(NominaEntity nomina, BigDecimal novedadesDeducciones) {
-        // Sin EPS, pensión ni aportes. Solo deducciones manuales (préstamos, embargos)
-        nomina.setDeduccionSalud(BigDecimal.ZERO);
-        nomina.setDeduccionPension(BigDecimal.ZERO);
-        nomina.setDeduccionOtros(novedadesDeducciones);
-        nomina.setTotalDeducciones(novedadesDeducciones);
-        nomina.setNetoPagar(nomina.getTotalDevengado().subtract(novedadesDeducciones).max(BigDecimal.ZERO));
-
-        nomina.setAporteSalud(BigDecimal.ZERO);
-        nomina.setAportePension(BigDecimal.ZERO);
-        nomina.setAporteArl(BigDecimal.ZERO);
-        nomina.setAporteCaja(BigDecimal.ZERO);
-        nomina.setAporteIcbf(BigDecimal.ZERO);
-        nomina.setAporteSena(BigDecimal.ZERO);
-        nomina.setProvisionPrima(BigDecimal.ZERO);
-        nomina.setProvisionCesantias(BigDecimal.ZERO);
-        nomina.setProvisionIntCesantias(BigDecimal.ZERO);
-        nomina.setProvisionVacaciones(BigDecimal.ZERO);
-    }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -647,6 +737,23 @@ public class NominaServiceImpl implements NominaService {
      * Convierte las novedades de asistencia aprobadas (staging) en novedades de nómina
      * valorizadas y las adjunta a la nómina. Idempotente: reemplaza las de origen ASISTENCIA.
      */
+    /**
+     * B-06 — salario operativo de la nómina: SIEMPRE del contrato, nunca del campo
+     * caché {@code empleado.salarioBase}, que el alta nueva deja en 0 ("el real va
+     * en el contrato"). Leerlo del empleado hacía que incapacidades y novedades de
+     * asistencia se valorizaran sobre 0. Fallback: nomina → empleado, por si el
+     * contrato aún no trae el valor.
+     */
+    private BigDecimal salarioDelContrato(NominaEntity nomina, EmpleadoEntity empleado) {
+        ContratoLaboralEntity c = nomina.getContrato();
+        if (c != null && c.getSalarioBase() != null && c.getSalarioBase().signum() > 0)
+            return c.getSalarioBase();
+        if (nomina.getSalarioBase() != null && nomina.getSalarioBase().signum() > 0)
+            return nomina.getSalarioBase();
+        return empleado != null && empleado.getSalarioBase() != null
+                ? empleado.getSalarioBase() : BigDecimal.ZERO;
+    }
+
     private void consumirNovedadesAsistencia(NominaEntity nomina, PeriodoNominaEntity periodo,
                                              EmpleadoEntity empleado, Integer empresaId) {
         nomina.getNovedades().removeIf(n -> "ASISTENCIA".equals(n.getOrigen())
@@ -664,7 +771,7 @@ public class NominaServiceImpl implements NominaService {
                 empresaId, empleado.getId(), periodo.getId(),
                 periodo.getFechaInicio(), periodo.getFechaFin());
         for (var s : staged) {
-            NominaNovedadEntity nv = construirNovedadDesdeStaged(s, empleado.getSalarioBase(), cfg);
+            NominaNovedadEntity nv = construirNovedadDesdeStaged(s, salarioDelContrato(nomina, empleado), cfg);
             if (nv == null) continue;
             nv.setNomina(nomina);
             nomina.getNovedades().add(nv);
@@ -792,6 +899,108 @@ public class NominaServiceImpl implements NominaService {
         };
     }
 
+    /**
+     * F0 — ¿esta novedad es una ausencia que descuenta días de salario?
+     *
+     * <p>Incapacidad, licencia no remunerada, vacaciones y licencia de maternidad
+     * no se pagan como salario ordinario en esos días (tienen su pago aparte o
+     * ninguno). La licencia remunerada NO: se paga como salario.
+     */
+    private boolean afectaDiasSalario(String tipo) {
+        return switch (tipo) {
+            case "INCAPACIDAD", "LICENCIA_NO_REMUNERADA", "VACACIONES", "LICENCIA_MATERNIDAD" -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Días de una novedad de ausencia. Preferimos el rango de fechas (inclusive);
+     * si no vino, caemos a {@code cantidad} (a veces los días se digitan ahí).
+     */
+    private Integer diasNovedad(java.time.LocalDate inicio, java.time.LocalDate fin, BigDecimal cantidad) {
+        if (inicio != null && fin != null && !fin.isBefore(inicio)) {
+            return (int) (java.time.temporal.ChronoUnit.DAYS.between(inicio, fin) + 1);
+        }
+        if (cantidad != null && cantidad.signum() > 0) {
+            return cantidad.setScale(0, RoundingMode.HALF_UP).intValue();
+        }
+        return 0;
+    }
+
+    /**
+     * Los días de ausencia acumulados no pueden superar los del período. Un mes de
+     * 30 días no admite 25 de incapacidad + 10 de vacaciones.
+     */
+    private void validarDiasAusencia(NominaEntity nomina, Integer diasNuevos) {
+        int diasPeriodo = diasDelPeriodo(nomina);
+        int yaAusentes = nomina.getNovedades().stream()
+                .filter(n -> Boolean.TRUE.equals(n.getAfectaDiasSalario()))
+                .mapToInt(n -> n.getDias() != null ? n.getDias() : 0)
+                .sum();
+        int total = yaAusentes + (diasNuevos != null ? diasNuevos : 0);
+        if (total > diasPeriodo) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Los días de ausencia (" + total + ") superan los días del período ("
+                            + diasPeriodo + "). Revisa las fechas de la novedad.");
+        }
+    }
+
+    private boolean esIncapacidadOMaternidad(String tipo) {
+        return "INCAPACIDAD".equals(tipo) || "LICENCIA_MATERNIDAD".equals(tipo);
+    }
+
+    /**
+     * F1 — calcula el valor de una incapacidad/maternidad y lo vuelca en la
+     * novedad (cantidad = días, valor unitario = valor/día, total = lo que recibe
+     * el trabajador). La descripción deja la traza de quién paga.
+     */
+    private void autocalcularIncapacidad(NominaNovedadEntity novedad, NominaEntity nomina,
+                                         NominaConfigEntity config, Integer dias) {
+        if (nomina.getEmpleado() == null || dias == null || dias <= 0) return;
+        // B-06 — salario del contrato, no del campo caché del empleado (puede ser 0).
+        BigDecimal salario = salarioDelContrato(nomina, nomina.getEmpleado());
+        String subtipo = "LICENCIA_MATERNIDAD".equals(novedad.getTipo())
+                ? "MATERNIDAD"
+                : novedad.getSubtipo();
+
+        var r = calculadoraIncapacidad.calcular(subtipo, dias, salario, config.getSmmlv());
+        novedad.setCantidad(BigDecimal.valueOf(dias));
+        novedad.setValorUnitario(r.valorDia());
+        novedad.setValorTotal(r.total());
+        novedad.setConstituyeIbc(false); // reemplaza salario; no infla el IBC aquí
+        if (novedad.getDescripcion() == null || novedad.getDescripcion().isBlank()) {
+            novedad.setDescripcion(r.descripcion());
+        }
+    }
+
+    /**
+     * F3 — no se pueden tomar más vacaciones de las disponibles, salvo que la
+     * empresa permita anticipadas.
+     */
+    private void validarSaldoVacaciones(Long empleadoId, Integer empresaId, Integer diasSolicitados) {
+        var saldo = vacacionesService.saldo(empleadoId, empresaId);
+        if (Boolean.TRUE.equals(saldo.getPermiteAnticipadas())) return;
+        BigDecimal solicitados = BigDecimal.valueOf(diasSolicitados != null ? diasSolicitados : 0);
+        if (solicitados.compareTo(saldo.getDiasDisponibles()) > 0) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El empleado solo tiene " + saldo.getDiasDisponibles()
+                            + " días de vacaciones disponibles y se están tomando " + solicitados
+                            + ". Habilita vacaciones anticipadas en la configuración si lo permites.");
+        }
+    }
+
+    /** Días del período en convención comercial (tope 30 mensual, ~15 quincenal). */
+    private int diasDelPeriodo(NominaEntity nomina) {
+        if (nomina.getPeriodo() != null
+                && nomina.getPeriodo().getFechaInicio() != null
+                && nomina.getPeriodo().getFechaFin() != null) {
+            long cal = java.time.temporal.ChronoUnit.DAYS.between(
+                    nomina.getPeriodo().getFechaInicio(), nomina.getPeriodo().getFechaFin()) + 1;
+            return (int) Math.min(cal, 30);
+        }
+        return nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
+    }
+
     private NominaConfigEntity configuracionPorDefecto(Integer empresaId) {
         NominaConfigEntity config = new NominaConfigEntity();
         EmpresaEntity empresa = new EmpresaEntity();
@@ -807,13 +1016,15 @@ public class NominaServiceImpl implements NominaService {
         dto.setPeriodoFechaInicio(entity.getPeriodo().getFechaInicio());
         dto.setPeriodoFechaFin(entity.getPeriodo().getFechaFin());
         dto.setEmpleadoId(entity.getEmpleado().getId());
-        dto.setEmpleadoNombre(entity.getEmpleado().getNombres() + " " + entity.getEmpleado().getApellidos());
-        dto.setEmpleadoDocumento(entity.getEmpleado().getNumeroDocumento());
+        // *Resuelto(): prefieren `tercero`, caen a legacy mientras V99/V100
+        // no cierren. Ver EmpleadoEntity.
+        dto.setEmpleadoNombre(entity.getEmpleado().getNombreCompletoResuelto());
+        dto.setEmpleadoDocumento(entity.getEmpleado().getNumeroDocumentoResuelto());
         dto.setCargo(entity.getEmpleado().getCargo());
         dto.setTipoContrato(entity.getEmpleado().getTipoContrato());
-        dto.setBanco(entity.getEmpleado().getBanco());
-        dto.setNumeroCuenta(entity.getEmpleado().getNumeroCuenta());
-        dto.setTipoCuenta(entity.getEmpleado().getTipoCuenta());
+        dto.setBanco(entity.getEmpleado().getBancoResuelto());
+        dto.setNumeroCuenta(entity.getEmpleado().getNumeroCuentaResuelto());
+        dto.setTipoCuenta(entity.getEmpleado().getTipoCuentaResuelto());
         dto.setSalarioBase(entity.getSalarioBase());
         dto.setDiasTrabajados(entity.getDiasTrabajados());
         dto.setSalarioProporcional(entity.getSalarioProporcional());
@@ -847,6 +1058,11 @@ public class NominaServiceImpl implements NominaService {
             ndto.setValorUnitario(n.getValorUnitario());
             ndto.setValorTotal(n.getValorTotal());
             ndto.setEsDeduccion(n.getEsDeduccion());
+            ndto.setDias(n.getDias());
+            ndto.setAfectaDiasSalario(n.getAfectaDiasSalario());
+            ndto.setSubtipo(n.getSubtipo());
+            ndto.setFechaInicio(n.getFechaInicio());
+            ndto.setFechaFin(n.getFechaFin());
             return ndto;
         }).collect(Collectors.toList()));
         return dto;
