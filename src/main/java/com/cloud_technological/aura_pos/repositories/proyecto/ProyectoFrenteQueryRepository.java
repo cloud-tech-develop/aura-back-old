@@ -33,7 +33,10 @@ public class ProyectoFrenteQueryRepository {
                 f.estado,
                 f.observacion,
                 (SELECT COUNT(*) FROM proyecto_frente_trabajador t
-                    WHERE t.frente_id = f.id AND t.estado = 'ACTIVO' AND t.deleted_at IS NULL) AS trabajadores_count
+                    WHERE t.frente_id = f.id AND t.estado = 'ACTIVO' AND t.deleted_at IS NULL
+                      AND EXISTS (SELECT 1 FROM contrato_laboral c
+                                   WHERE c.empleado_id = t.empleado_id
+                                     AND c.estado = 'ACTIVO' AND c.deleted_at IS NULL)) AS trabajadores_count
             FROM proyecto_frente f
             LEFT JOIN empleados lid ON f.lider_id = lid.id
             WHERE f.proyecto_id = :proyectoId
@@ -56,12 +59,19 @@ public class ProyectoFrenteQueryRepository {
                 e.cargo,
                 t.fecha_inicio,
                 t.fecha_fin,
-                t.estado
+                t.estado,
+                e.activo AS empleado_activo
             FROM proyecto_frente_trabajador t
             INNER JOIN empleados e ON t.empleado_id = e.id
             WHERE t.frente_id = :frenteId
               AND t.empresa_id = :empresaId
               AND t.deleted_at IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM contrato_laboral c
+                   WHERE c.empleado_id = e.id
+                     AND c.estado = 'ACTIVO'
+                     AND c.deleted_at IS NULL
+              )
             ORDER BY e.nombres ASC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("frenteId", frenteId)

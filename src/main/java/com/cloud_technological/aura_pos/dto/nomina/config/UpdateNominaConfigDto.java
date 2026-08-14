@@ -20,4 +20,7 @@ public class UpdateNominaConfigDto {
     private BigDecimal pctCajaCompensacion;
     private BigDecimal pctIcbf;
     private BigDecimal pctSena;
+    private BigDecimal aprendizPctLectiva;
+    private BigDecimal aprendizPctPractica;
+    private Boolean permiteVacacionesAnticipadas;
 }

@@ -44,6 +44,10 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         if (dto.getPctCajaCompensacion() != null) entity.setPctCajaCompensacion(dto.getPctCajaCompensacion());
         if (dto.getPctIcbf() != null) entity.setPctIcbf(dto.getPctIcbf());
         if (dto.getPctSena() != null) entity.setPctSena(dto.getPctSena());
+        if (dto.getAprendizPctLectiva() != null) entity.setAprendizPctLectiva(dto.getAprendizPctLectiva());
+        if (dto.getAprendizPctPractica() != null) entity.setAprendizPctPractica(dto.getAprendizPctPractica());
+        if (dto.getPermiteVacacionesAnticipadas() != null)
+            entity.setPermiteVacacionesAnticipadas(dto.getPermiteVacacionesAnticipadas());
         entity.setUpdatedAt(LocalDateTime.now());
 
         return toDto(configRepo.save(entity));
@@ -76,6 +80,9 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         dto.setPctCajaCompensacion(entity.getPctCajaCompensacion());
         dto.setPctIcbf(entity.getPctIcbf());
         dto.setPctSena(entity.getPctSena());
+        dto.setAprendizPctLectiva(entity.getAprendizPctLectiva());
+        dto.setAprendizPctPractica(entity.getAprendizPctPractica());
+        dto.setPermiteVacacionesAnticipadas(entity.getPermiteVacacionesAnticipadas());
         return dto;
     }
 }

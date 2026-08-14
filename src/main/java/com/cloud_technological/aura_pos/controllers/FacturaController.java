@@ -26,14 +26,32 @@ public class FacturaController {
     private final FacturaService facturaService;
     private final FacturaLogService facturaLogService;
     private final FacturaRetryService facturaRetryService;
+    private final com.cloud_technological.aura_pos.services.implementations.FactusTokenService factusTokenService;
+    private final com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
     @Autowired
     public FacturaController(FacturaService facturaService,
                              FacturaLogService facturaLogService,
-                             FacturaRetryService facturaRetryService) {
+                             FacturaRetryService facturaRetryService,
+                             com.cloud_technological.aura_pos.services.implementations.FactusTokenService factusTokenService,
+                             com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils) {
         this.facturaService = facturaService;
         this.facturaLogService = facturaLogService;
         this.facturaRetryService = facturaRetryService;
+        this.factusTokenService = factusTokenService;
+        this.securityUtils = securityUtils;
+    }
+
+    /**
+     * Fuerza la regeneración del token de Factus con las credenciales actuales de
+     * la empresa (descarta el token cacheado). Úsalo tras cambiar de cuenta Factus.
+     */
+    @PostMapping("/token/refrescar")
+    public ResponseEntity<java.util.Map<String, Object>> refrescarToken() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        factusTokenService.forzarRefresco(empresaId);
+        return ResponseEntity.ok(java.util.Map.of(
+                "ok", true, "message", "Token de Factus regenerado con las credenciales actuales"));
     }
 
     /**

@@ -48,4 +48,19 @@ public class MunicipioQueryRepository {
         return jdbc.query(sql, params, BeanPropertyRowMapper.newInstance(MunicipioDto.class))
                 .stream().findFirst().orElse(null);
     }
+
+    /** Busca por código DANE (el que se manda a Factus/DIAN). */
+    public MunicipioDto findByCodigo(String codigo) {
+        String sql = """
+            SELECT id, codigo, nombre, departamento,
+                   nombre || ' - ' || departamento as label
+            FROM municipios
+            WHERE codigo = :codigo
+            LIMIT 1
+            """;
+        Map<String, Object> params = new HashMap<>();
+        params.put("codigo", codigo);
+        return jdbc.query(sql, params, BeanPropertyRowMapper.newInstance(MunicipioDto.class))
+                .stream().findFirst().orElse(null);
+    }
 }

@@ -37,8 +37,20 @@ public class LiquidacionPrestacionEntity {
     @JoinColumn(name = "empleado_id", nullable = false)
     private EmpleadoEntity empleado;
 
+    /**
+     * La prestación se liquida contra un CONTRATO (V112), no contra el empleado:
+     * si hay dos vínculos, cada uno tiene su liquidación y su pasivo.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contrato_id")
+    private ContratoLaboralEntity contrato;
+
     @Column(name = "tipo", length = 30, nullable = false)
-    private String tipo; // PRIMA | VACACIONES
+    private String tipo; // PRIMA | VACACIONES | CESANTIAS | INTERESES_CESANTIAS | LIQUIDACION_DEFINITIVA | INDEMNIZACION
+
+    /** Agrupa las filas de una misma liquidación (V122). "DEF-…" = definitiva. */
+    @Column(name = "lote", length = 48)
+    private String lote;
 
     @Column(name = "fecha_desde", nullable = false)
     private LocalDate fechaDesde;
@@ -52,11 +64,44 @@ public class LiquidacionPrestacionEntity {
     @Column(name = "base_salarial", precision = 15, scale = 2, nullable = false)
     private BigDecimal baseSalarial = BigDecimal.ZERO;
 
+    // ── V112 ────────────────────────────────────────────────────────────────
+
+    /**
+     * Base prestacional: <b>NO es el salario básico</b>.
+     *
+     * <p>Incluye auxilio de transporte + promedio de lo salarial variable del
+     * período de referencia (horas extra, comisiones).
+     *
+     * <p><b>Es distinta del IBC (Fase 0) y de la base de retefuente (Fase 4.5).
+     * Son TRES bases distintas.</b> Confundirlas es el error clásico.
+     */
+    @Column(name = "base_prestacional", precision = 15, scale = 2, nullable = false)
+    private BigDecimal basePrestacional = BigDecimal.ZERO;
+
+    @Column(name = "dias_liquidados", nullable = false)
+    private Integer diasLiquidados = 0;
+
+    /** Determina si hay indemnización y cómo se calcula. */
+    @Column(name = "causa_retiro", length = 40)
+    private String causaRetiro;
+
+    /** Fondo al que se consignan las cesantías. Tercero con rol AFP. */
+    @Column(name = "fondo_cesantias_id")
+    private Long fondoCesantiasId;
+
+    /** Si se liquidó dentro de una nómina, cuál. */
+    @Column(name = "nomina_id")
+    private Long nominaId;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "traza", columnDefinition = "jsonb")
+    private String traza;
+
     @Column(name = "valor", precision = 15, scale = 2, nullable = false)
     private BigDecimal valor = BigDecimal.ZERO;
 
     @Column(name = "estado", length = 20, nullable = false)
-    private String estado = "BORRADOR"; // BORRADOR | APROBADA | PAGADA | ANULADA
+    private String estado = "BORRADOR"; // BORRADOR | APROBADA | PROGRAMADA | PAGADA | ANULADA
 
     @Column(name = "medio_pago", length = 20)
     private String medioPago; // EFECTIVO | TRANSFERENCIA
