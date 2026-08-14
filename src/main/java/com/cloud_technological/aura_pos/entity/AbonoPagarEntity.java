@@ -51,7 +51,7 @@ public class AbonoPagarEntity {
     @Column(name = "metodo_pago", length = 30)
     private String metodoPago;
 
-    @Column(length = 100)
+    @Column(length = 255)
     private String referencia;
 
     @Column(length = 100)

@@ -30,7 +30,16 @@ public class VentaQueryRepository {
                 v.id,
                 v.prefijo,
                 v.consecutivo,
-                COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS cliente_nombre,
+                CASE
+                    WHEN NULLIF(TRIM(v.prefijo), '') IS NOT NULL
+                        THEN CONCAT(v.prefijo, '-', v.consecutivo)
+                    ELSE CAST(v.consecutivo AS TEXT)
+                END AS numero_venta,
+                COALESCE(
+                    NULLIF(TRIM(t.razon_social), ''),
+                    NULLIF(TRIM(CONCAT(COALESCE(t.nombres, ''), ' ', COALESCE(t.apellidos, ''))), ''),
+                    'Consumidor Final'
+                ) AS cliente_nombre,
                 s.nombre AS sucursal_nombre,
                 v.fecha_emision,
                 v.total_pagar,
@@ -53,6 +62,7 @@ public class VentaQueryRepository {
             sql.append("""
                 AND (LOWER(v.prefijo) LIKE :search
                 OR CAST(v.consecutivo AS TEXT) LIKE :search
+                OR LOWER(v.factus_numero) LIKE :search
                 OR LOWER(t.razon_social) LIKE :search
                 OR LOWER(t.nombres) LIKE :search
                 OR LOWER(v.estado_venta) LIKE :search)

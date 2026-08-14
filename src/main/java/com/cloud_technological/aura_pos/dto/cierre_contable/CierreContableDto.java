@@ -16,11 +16,11 @@ public class CierreContableDto {
 
     // ── Ventas del período ─────────────────────────────────
     private Integer    cantidadVentas;
-    private BigDecimal totalVentasBruto;       // subtotal con IVA (legacy: total_pagar)
-    private BigDecimal totalDescuentos;
+    private BigDecimal totalVentasBruto;       // Σ venta.subtotal — sin IVA, ya neto de descuentos de línea
+    private BigDecimal totalDescuentos;        // descuentos de línea + descuento general
     private BigDecimal totalImpuestos;         // IVA cobrado
-    private BigDecimal totalVentasNeto;        // total_pagar (legacy, con IVA)
-    private BigDecimal totalVentasSinIva;      // subtotal − descuentos (base real)
+    private BigDecimal totalVentasNeto;        // total_pagar (lo cobrado al cliente, con IVA)
+    private BigDecimal totalVentasSinIva;      // base gravable = total_pagar − IVA
     private BigDecimal ventasBrutasConDisponible; // totalVentasBruto + totalDisponible (caja/bancos)
 
     // ── Compras del período ────────────────────────────────

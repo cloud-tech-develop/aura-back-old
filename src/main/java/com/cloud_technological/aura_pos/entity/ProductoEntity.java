@@ -101,6 +101,14 @@ public class ProductoEntity {
     private Long cuentaInventarioId;
 
     private BigDecimal impoconsumo;
+
+    /**
+     * Unidades que salen de un lote de la receta de este producto (ej: 40 panes).
+     * 1 = la receta se escribe por unidad. Ver V138.
+     */
+    @Column(name = "rendimiento_receta")
+    private BigDecimal rendimientoReceta = BigDecimal.ONE;
+
     private Boolean activo;
     @Column(name = "visible_en_pos")
     private Boolean visibleEnPos = true;

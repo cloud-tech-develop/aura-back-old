@@ -6,6 +6,7 @@ import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -19,6 +20,7 @@ public class CreateMovimientoCajaDto {
     private String tipo;
 
     @NotBlank(message = "El concepto es obligatorio")
+    @Size(max = 255, message = "El concepto no puede superar 255 caracteres")
     private String concepto;
 
     @NotNull(message = "El monto es obligatorio")

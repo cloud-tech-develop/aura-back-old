@@ -10,6 +10,9 @@ import com.cloud_technological.aura_pos.entity.VentaEntity;
 
 public interface VentaJPARepository extends JpaRepository<VentaEntity, Long> {
     Optional<VentaEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
+
+    /** Venta local por el número de factura de Factus (para prefill de notas). */
+    Optional<VentaEntity> findByEmpresaIdAndFactusNumero(Integer empresaId, String factusNumero);
     
     List<VentaEntity> findByEmpresaId(Integer empresaId);
     

@@ -38,6 +38,7 @@ public class PreliquidacionServiceImpl implements PreliquidacionService {
     @Autowired private AutorizacionLiquidacionJPARepository autorizacionRepo;
     @Autowired private PeriodoAsistenciaJPARepository periodoAsistenciaRepo;
     @Autowired private EmpleadoTurnoJPARepository empleadoTurnoRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.nomina.ContratoLaboralJPARepository contratoRepo;
 
     @Override
     public List<PreliquidacionItemDto> previsualizar(Long periodoId, Integer empresaId) {
@@ -64,13 +65,31 @@ public class PreliquidacionServiceImpl implements PreliquidacionService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * B-06 — salario a mostrar: de la nómina si existe (ya viene del contrato), si
+     * no, del contrato activo del empleado; nunca del campo caché del empleado,
+     * que el alta nueva deja en 0.
+     */
+    private java.math.BigDecimal salarioBasePreliquidacion(EmpleadoEntity emp, NominaEntity nomina) {
+        if (nomina != null && nomina.getSalarioBase() != null && nomina.getSalarioBase().signum() > 0)
+            return nomina.getSalarioBase();
+        return contratoRepo.findActivosByEmpleado(emp.getId()).stream()
+                .findFirst()
+                .map(c -> c.getSalarioBase())
+                .filter(s -> s != null)
+                .orElse(emp.getSalarioBase() != null ? emp.getSalarioBase() : java.math.BigDecimal.ZERO);
+    }
+
     private PreliquidacionItemDto construir(EmpleadoEntity emp, PeriodoNominaEntity periodo, String modo,
             NominaEntity nomina, boolean asistenciaPeriodoAprobada, Integer empresaId) {
 
         PreliquidacionItemDto item = new PreliquidacionItemDto();
         item.setEmpleadoId(emp.getId());
         item.setEmpleadoNombre(emp.getNombres() + " " + emp.getApellidos());
-        item.setSalarioBase(emp.getSalarioBase());
+        // B-06 — el salario sale del contrato (la nómina ya lo trae del contrato;
+        // si aún no hay nómina, del contrato activo). El campo del empleado queda
+        // en 0 con el alta nueva, así que no sirve como fuente.
+        item.setSalarioBase(salarioBasePreliquidacion(emp, nomina));
 
         if (nomina != null) {
             item.setDiasTrabajados(nomina.getDiasTrabajados());

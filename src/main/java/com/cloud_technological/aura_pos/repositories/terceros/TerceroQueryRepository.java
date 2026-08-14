@@ -18,6 +18,52 @@ public class TerceroQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /**
+     * Selector genérico por rol (V98). Reemplaza a {@code listarClientes},
+     * {@code listarProveedores} y {@code listarBancos}, que eran la misma
+     * consulta con distinto booleano en el WHERE.
+     *
+     * <p>Lee de {@code tercero_rol}, no de los booleanos: es la lectura que
+     * cierra la migración. Un rol nuevo (EPS, AFP, CCF, ARL) no necesita
+     * método nuevo — solo pasar el string.
+     *
+     * @param rol uno de {@link com.cloud_technological.aura_pos.entity.TerceroRolEntity.Rol}
+     */
+    public List<TerceroTableDto> listarPorRol(String rol, String search, Integer empresaId) {
+        String sql = """
+            SELECT
+                t.id,
+                t.tipo_documento,
+                t.numero_documento,
+                COALESCE(NULLIF(t.razon_social, ''),
+                         TRIM(CONCAT_WS(' ', t.nombre1, t.nombre2, t.apellido1, t.apellido2)),
+                         CONCAT(t.nombres, ' ', t.apellidos)) AS nombre_completo,
+                t.telefono,
+                t.email,
+                t.es_cliente,
+                t.es_proveedor,
+                t.es_empleado,
+                t.es_banco,
+                t.activo
+            FROM tercero t
+            JOIN tercero_rol tr ON tr.tercero_id = t.id AND tr.rol = :rol
+            WHERE t.empresa_id = :empresaId
+            AND t.activo = true
+            AND t.deleted_at IS NULL
+            AND (LOWER(t.numero_documento) LIKE :search
+                OR LOWER(t.razon_social) LIKE :search
+                OR LOWER(t.nombres) LIKE :search
+                OR LOWER(t.apellido1) LIKE :search)
+            ORDER BY nombre_completo ASC
+            LIMIT 50
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("rol", rol);
+        params.addValue("empresaId", empresaId);
+        params.addValue("search", "%" + (search == null ? "" : search.toLowerCase()) + "%");
+        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(TerceroTableDto.class));
+    }
+
     public PageImpl<TerceroTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
@@ -34,7 +80,11 @@ public class TerceroQueryRepository {
                 t.es_cliente,
                 t.es_proveedor,
                 t.es_empleado,
+                t.es_banco,
                 t.activo,
+                -- Todos los roles reales (incluye EPS/AFP/CCF/ARL/CESANTIAS),
+                -- que viven en tercero_rol, no en booleanos.
+                (SELECT string_agg(tr.rol, ',') FROM tercero_rol tr WHERE tr.tercero_id = t.id) AS roles,
                 COUNT(*) OVER() AS total_rows
             FROM tercero t
             WHERE t.empresa_id = :empresaId

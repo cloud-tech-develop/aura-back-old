@@ -30,6 +30,16 @@ public class CierreContableQueryRepository {
                 .addValue("fechaHasta", fechaHasta);
 
         // ── Ventas ────────────────────────────────────────────
+        // OJO con la base gravable: `venta.subtotal` se guarda como
+        // Σ(precio × cantidad − descuento de línea), o sea SIN IVA y con el
+        // descuento de línea YA restado (VentaServiceImpl), mientras que
+        // `venta.descuento_total` acumula descuentos de línea + descuento
+        // general. Restar `subtotal − descuento_total` descontaba dos veces el
+        // descuento de línea y subestimaba la base — y con ella las tres
+        // utilidades y los tres márgenes.
+        //
+        // `total_pagar − impuestos_total` da exactamente `subtotal − descuento
+        // general`, que es la base gravable real.
         Map<String, Object> ventas = jdbc.queryForMap("""
             SELECT
                 COUNT(v.id)                                                AS cantidad_ventas,
@@ -37,7 +47,7 @@ public class CierreContableQueryRepository {
                 COALESCE(SUM(v.descuento_total), 0)                        AS total_descuentos,
                 COALESCE(SUM(v.impuestos_total), 0)                        AS total_impuestos,
                 COALESCE(SUM(v.total_pagar),     0)                        AS total_ventas_neto,
-                COALESCE(SUM(v.subtotal - COALESCE(v.descuento_total,0)),0) AS total_ventas_sin_iva
+                COALESCE(SUM(v.total_pagar - COALESCE(v.impuestos_total,0)),0) AS total_ventas_sin_iva
             FROM venta v
             WHERE v.empresa_id   = :empresaId
               AND v.estado_venta = 'COMPLETADA'

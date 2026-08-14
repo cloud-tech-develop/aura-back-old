@@ -100,6 +100,10 @@ public class EmpresaEntity {
     @Column(name = "factus_numbering_range_id")
     private Integer factusNumberingRangeId;
 
+    /** Rango de numeración de nómina electrónica (ULID, documento tipo 26). */
+    @Column(name = "factus_nomina_numbering_range_id", length = 40)
+    private String factusNominaNumberingRangeId;
+
     @Column(name = "factus_prefijo", length = 20)
     private String factusPrefijo;
 

@@ -44,6 +44,17 @@ public class MunicipioController {
                 status);
     }
 
+    /** Resuelve un municipio por su código DANE (para mostrar el nombre). */
+    @GetMapping("/codigo/{codigo}")
+    public ResponseEntity<ApiResponse<MunicipioDto>> obtenerPorCodigo(@PathVariable String codigo) {
+        MunicipioDto result = municipioQueryRepository.findByCodigo(codigo);
+        HttpStatus status = result != null ? HttpStatus.OK : HttpStatus.NOT_FOUND;
+        return new ResponseEntity<>(
+                new ApiResponse<>(status.value(), result != null ? "" : "Municipio no encontrado",
+                        result == null, result),
+                status);
+    }
+
     @Getter
     @Setter
     public static class BuscarMunicipioRequest {

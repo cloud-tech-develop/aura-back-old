@@ -332,6 +332,9 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
         List<AsistenciaDetalleDto> res = new ArrayList<>();
         for (FrenteTrabajadorDto t : frenteQueryRepo.listarTrabajadores(frenteId, empresaId)) {
             if (!"ACTIVO".equals(t.getEstado())) continue;
+            // Un empleado retirado no debe aparecer para digitar asistencia nueva.
+            // Su asistencia ya digitada se conserva vía fusionar().
+            if (Boolean.FALSE.equals(t.getEmpleadoActivo())) continue;
             AsistenciaDetalleDto d = new AsistenciaDetalleDto();
             d.setEmpleadoId(t.getEmpleadoId());
             d.setEmpleadoNombre(t.getEmpleadoNombre());

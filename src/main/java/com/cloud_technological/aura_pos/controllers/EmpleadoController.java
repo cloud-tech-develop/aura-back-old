@@ -63,6 +63,31 @@ public class EmpleadoController {
                 HttpStatus.CREATED);
     }
 
+    /**
+     * Alta desde un tercero ya creado (flujo nuevo): la identidad y el banco
+     * viven en el tercero; el contrato se crea aparte, en la ficha.
+     */
+    @PostMapping("/desde-tercero")
+    public ResponseEntity<ApiResponse<EmpleadoDto>> crearDesdeTercero(@RequestBody CreateEmpleadoDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        EmpleadoDto result = empleadoService.crearDesdeTercero(dto.getTerceroId(), dto.getCargo(), empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.CREATED.value(), "Empleado creado", false, result),
+                HttpStatus.CREATED);
+    }
+
+    /** Marca si el empleado requiere control de asistencia (config MIXTA). */
+    @PutMapping("/{id}/control-asistencia")
+    public ResponseEntity<ApiResponse<EmpleadoDto>> controlAsistencia(
+            @PathVariable Long id,
+            @org.springframework.web.bind.annotation.RequestParam boolean requiere) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        EmpleadoDto result = empleadoService.cambiarControlAsistencia(id, requiere, empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Control de asistencia actualizado", false, result),
+                HttpStatus.OK);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<EmpleadoDto>> actualizar(
             @PathVariable Long id,
@@ -89,6 +114,38 @@ public class EmpleadoController {
         List<EmpleadoDto> result = empleadoService.listarVendedores(empresaId);
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Vendedores obtenidos", false, result),
+                HttpStatus.OK);
+    }
+
+    /** Empleados con contrato activo (para prestaciones/nómina). */
+    @GetMapping("/con-contrato-activo")
+    public ResponseEntity<ApiResponse<List<EmpleadoDto>>> listarConContratoActivo() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<EmpleadoDto> result = empleadoService.listarConContratoActivo(empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Empleados con contrato activo", false, result),
+                HttpStatus.OK);
+    }
+
+    // ─── F7: saldos iniciales (migración desde otro sistema) ───────────────────
+
+    @GetMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.nomina.empleado.SaldosInicialesDto>>> listarSaldosIniciales() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        var result = empleadoService.listarSaldosIniciales(empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Saldos iniciales", false, result),
+                HttpStatus.OK);
+    }
+
+    @PutMapping("/{id}/saldos-iniciales")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.nomina.empleado.SaldosInicialesDto>> actualizarSaldosIniciales(
+            @PathVariable Long id,
+            @RequestBody com.cloud_technological.aura_pos.dto.nomina.empleado.SaldosInicialesDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        var result = empleadoService.actualizarSaldosIniciales(id, dto, empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Saldos actualizados", false, result),
                 HttpStatus.OK);
     }
 }

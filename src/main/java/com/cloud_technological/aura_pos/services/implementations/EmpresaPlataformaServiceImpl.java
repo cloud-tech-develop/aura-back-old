@@ -103,6 +103,7 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 .telefono(dto.getTelefono())
                 .municipio(dto.getMunicipio())
                 .municipioId(dto.getMunicipioId())
+                .modoContabilizacion(normalizarModo(dto.getModoContabilizacion()))
                 .activa(true)
                 .build();
         empresa = empresaRepo.save(empresa);
@@ -192,9 +193,16 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
         if (dto.getMunicipio()       != null) empresa.setMunicipio(dto.getMunicipio());
         if (dto.getMunicipioId()     != null) empresa.setMunicipioId(dto.getMunicipioId());
         if (dto.getActiva()          != null) empresa.setActiva(dto.getActiva());
+        if (dto.getModoContabilizacion() != null)
+            empresa.setModoContabilizacion(normalizarModo(dto.getModoContabilizacion()));
         empresaRepo.save(empresa);
 
         return obtenerPorId(id);
+    }
+
+    /** Solo admite AUTOMATICO o REVISION; cualquier otro cae en AUTOMATICO. */
+    private String normalizarModo(String modo) {
+        return "REVISION".equalsIgnoreCase(modo) ? "REVISION" : "AUTOMATICO";
     }
 
     @Override @Transactional
