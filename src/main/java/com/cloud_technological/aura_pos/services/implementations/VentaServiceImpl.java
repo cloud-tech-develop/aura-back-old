@@ -64,6 +64,7 @@ import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
@@ -95,6 +96,9 @@ public class VentaServiceImpl implements VentaService {
     private final ComisionService comisionService;
     private final CarteraService carteraService;
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
 
     @Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -176,7 +180,13 @@ public class VentaServiceImpl implements VentaService {
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
 
-        // 1. Validar turno (opcional para vendedores sin caja)
+        // 1. Validar turno. Sigue siendo opcional para vendedores sin caja, pero
+        // el efectivo obliga: sin turno no hay dónde registrar el dinero físico
+        // y el cierre nunca lo vería. El front ya lo exige al abrir el punto de
+        // venta; esta validación cierra la puerta de atrás por API.
+        boolean hayEfectivo = dto.getPagos() != null && dto.getPagos().stream()
+                .anyMatch(p -> MediosPago.esEfectivo(p.getMetodoPago()));
+
         TurnoCajaEntity turno = null;
         SucursalEntity sucursal;
 
@@ -188,6 +198,10 @@ public class VentaServiceImpl implements VentaService {
             }
             sucursal = turno.getCaja().getSucursal();
         } else {
+            if (hayEfectivo) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Debe abrir un turno de caja para registrar ventas en efectivo");
+            }
             if (dto.getSucursalId() == null) {
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe indicar la sucursal para realizar la venta");
             }
@@ -500,6 +514,10 @@ public class VentaServiceImpl implements VentaService {
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             VentaPagoEntity pagoEntity = pagoMapper.toEntity(pago);
             pagoEntity.setVenta(venta);
+            // El cierre de caja compara metodo_pago = 'EFECTIVO' en SQL exacto:
+            // si se guarda en minúscula el dinero no entra al efectivo esperado
+            // y el cajero cierra con un sobrante que no existe.
+            pagoEntity.setMetodoPago(MediosPago.normalizar(pago.getMetodoPago()));
             pagoEntity.setMontoRecibido(pago.getMonto());                         // guarda lo tendido
             BigDecimal montoEfectivo = pago.getMonto().min(saldo);               // cap al saldo restante
             pagoEntity.setMonto(montoEfectivo);
@@ -507,14 +525,17 @@ public class VentaServiceImpl implements VentaService {
             saldo = saldo.subtract(montoEfectivo);
             pagoJPARepository.save(pagoEntity);
 
-            // Acreditar saldo en cuenta bancaria si el pago va a una cuenta específica
-            if (pago.getCuentaBancariaId() != null) {
-                cuentaBancariaJPARepository.findByIdAndEmpresaId(pago.getCuentaBancariaId(), empresaId)
-                        .ifPresent(cuenta -> {
-                            cuenta.setSaldoActual(cuenta.getSaldoActual().add(montoEfectivo));
-                            cuentaBancariaJPARepository.save(cuenta);
-                        });
-            }
+            // Entrada a la cuenta bancaria: sube el saldo y deja el movimiento
+            // en el extracto, que antes no se registraba.
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            pago.getCuentaBancariaId(), false, montoEfectivo,
+                            "Venta #" + venta.getId() + " - Recaudo",
+                            com.cloud_technological.aura_pos.utils.Terceros.nombreVisible(venta.getCliente()),
+                            pago.getReferencia() != null && !pago.getReferencia().isBlank()
+                                    ? pago.getReferencia().trim()
+                                    : "VENTA-" + venta.getId(),
+                            "VENTA"));
         }
 
         // 7. Actualizar totales y calcular pagos parciales (HU-004)
@@ -595,8 +616,18 @@ public class VentaServiceImpl implements VentaService {
         //    Así solo se factura la venta que se elija, no todas.
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
 
-        // 10. Si el vendedor tiene un empleado vinculado, crear automáticamente un pedido_vendedor COBRADA
-        if (usuario.getEmpleado() != null) {
+        // 10. Enlazar con el pedido de vendedor.
+        //     Si la venta nace del despacho de un pedido ya existente, se enlaza
+        //     a ese; crear el espejo aquí duplicaría el documento. Si nace en el
+        //     POS y el usuario tiene empleado vinculado, se crea el espejo.
+        if (dto.getPedidoVendedorId() != null) {
+            PedidoVendedorEntity pedido = pedidoVendedorJPARepository
+                    .findByIdAndEmpresaId(dto.getPedidoVendedorId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            "Pedido de vendedor no encontrado"));
+            pedido.setVenta(venta);
+            pedidoVendedorJPARepository.save(pedido);
+        } else if (usuario.getEmpleado() != null) {
             crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
         }
 

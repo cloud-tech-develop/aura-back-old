@@ -23,6 +23,7 @@ public class ComprobanteCajaQueryRepository {
             SELECT c.id, c.numero_comprobante, c.tipo, c.concepto, c.monto,
                    c.metodo_pago, c.entregado_a, c.origen, c.origen_id,
                    c.turno_caja_id, c.usuario_id, c.created_at,
+                   c.anulado, c.motivo_anulacion,
                    COUNT(*) OVER() AS total_rows
             FROM comprobante_caja c
             WHERE c.empresa_id = :empresaId
@@ -54,6 +55,10 @@ public class ComprobanteCajaQueryRepository {
             dto.setTurnoCajaId(rs.getObject("turno_caja_id") != null ? rs.getLong("turno_caja_id") : null);
             dto.setUsuarioId(rs.getObject("usuario_id") != null ? rs.getInt("usuario_id") : null);
             dto.setCreatedAt(rs.getString("created_at"));
+            // El mapeo es manual: cada columna nueva del SELECT hay que leerla
+            // aquí también, o el campo viaja en null y el front no se entera.
+            dto.setAnulado(rs.getBoolean("anulado"));
+            dto.setMotivoAnulacion(rs.getString("motivo_anulacion"));
             dto.setTotalRows(rs.getLong("total_rows"));
             return dto;
         });

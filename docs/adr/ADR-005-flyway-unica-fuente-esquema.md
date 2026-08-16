@@ -21,3 +21,27 @@ esquema real depende del orden de arranque. Es la deuda más peligrosa del proye
 - Hasta ejecutar el switch, ninguna entity nueva puede confiar en que Hibernate le
   cree la tabla: TODA tabla nueva nace con su migración (V85 ya cumple).
 - El switch requiere una ventana de verificación contra la BD de cada ambiente.
+
+## Enmienda (2026-08-13) — el runner pasa a Laravel
+
+`spring.flyway.enabled=false`. El esquema se aplica desde el proyecto de
+migraciones en Laravel (`aura-pos-migracion-old`), no desde este backend.
+
+**Por qué:** los dos proyectos apuntan a la misma BD y ambos migraban, así que
+cada cambio se aplicaba dos veces. Además, con Flyway encendido cualquier
+retoque a un `.sql` ya aplicado tumba el arranque con *checksum mismatch*
+aunque el esquema esté correcto — que es exactamente lo que pasó con V100 y
+V140.
+
+**Lo que NO cambia:** `ddl-auto=validate` sigue puesto. Hibernate no crea nada,
+y si a la BD le falta algo que una entity declara, la app no arranca. La
+garantía del punto 1 se mantiene; solo cambió quién ejecuta las migraciones.
+
+**Lo que cambia en la práctica:**
+- Los `.sql` de `db/migration` quedan como espejo y documentación del esquema.
+  Se siguen escribiendo para que el historial del backend sea legible, pero
+  **no se ejecutan**: lo que aplica el cambio es su migración en Laravel.
+- Toda tabla o columna nueva necesita su par: el `.sql` aquí y la migración
+  PHP allá, con el mismo número.
+- Si se reactiva Flyway habrá que hacer `flyway repair`: su historial quedará
+  desalineado respecto a lo aplicado desde Laravel.

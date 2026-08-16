@@ -13,6 +13,11 @@ import lombok.Setter;
 @Setter
 public class CreateVentaDto {
     private Long clienteId; // opcional, puede ser consumidor final
+    /**
+     * Pedido de vendedor que origina esta venta. Lo envía el despacho: la venta
+     * se enlaza al pedido existente en vez de crear un pedido espejo nuevo.
+     */
+    private Long pedidoVendedorId;
     private Long turnoCajaId;   // null cuando el usuario es VENDEDOR (sin caja)
     private Integer sucursalId; // requerido cuando turnoCajaId es null
     private String tipoDocumento = "POS";

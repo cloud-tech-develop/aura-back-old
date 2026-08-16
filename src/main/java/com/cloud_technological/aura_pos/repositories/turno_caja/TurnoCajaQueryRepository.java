@@ -57,10 +57,12 @@ public class TurnoCajaQueryRepository {
                         SELECT SUM(ac.monto)
                         FROM abonos_cobrar ac
                         WHERE ac.turno_caja_id = t.id
+                        AND (ac.metodo_pago IS NULL OR UPPER(ac.metodo_pago) LIKE '%EFECTIVO%')
                     ), 0) - COALESCE((
                         SELECT SUM(ap.monto)
                         FROM abonos_pagar ap
                         WHERE ap.turno_caja_id = t.id
+                        AND (ap.metodo_pago IS NULL OR UPPER(ap.metodo_pago) LIKE '%EFECTIVO%')
                     ), 0)
                 END AS diferencia,
                 t.estado,

@@ -38,7 +38,8 @@ public class AbonoCobroGenerador implements GeneradorAsiento {
         return Asiento.builder(ctx.origen(), abono.fecha())
                 .prefijo(PREFIJO)
                 .descripcion("Recaudo cartera — abono #" + ctx.origenId())
-                .debito(cuentaPago.resolver(ctx.empresaId(), abono.metodoPago(), abono.cuentaBancariaId()),
+                .debito(cuentaPago.resolver(ctx.empresaId(), abono.metodoPago(),
+                                abono.cuentaBancariaId(), abono.cuentaContableId()),
                         "Recaudo cartera (" + abono.metodoPago() + ")", ReglasAsiento.nz(abono.monto()))
                 .credito(cuentas.resolver(ctx.empresaId(), ConceptoContable.CLIENTES),
                         "Abono cartera cliente", ReglasAsiento.nz(abono.monto()), abono.terceroId())

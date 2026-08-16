@@ -78,6 +78,21 @@ public enum ConceptoContable {
     GASTO_GENERAL("5195", "Gasto general (cuenta por defecto)", "5"),
     PERDIDA_MERMA("5195", "Pérdida por merma de inventario", "5"),
 
+    // ── Obsequios (retiro de inventario sin contraprestación) ─────────────
+    /**
+     * El costo del producto regalado. Va a gasto de ventas y no a la 5195 de
+     * las mermas a propósito: lo que se regala es una decisión comercial que
+     * se mide, lo que se merma es una pérdida que se controla.
+     */
+    GASTO_OBSEQUIOS("523550", "Obsequios y muestras comerciales", "5"),
+    /**
+     * IVA que asume la empresa al retirar inventario para obsequio: el retiro
+     * se considera venta para efectos de IVA, así que se genera el impuesto
+     * aunque no se cobre nada. Cuenta separada porque su deducibilidad en
+     * renta la decide el contador, no el motor.
+     */
+    IVA_ASUMIDO_RETIRO("529505", "IVA asumido en retiro de inventario", "5"),
+
     // ── Devengo (E6) ──────────────────────────────────────────────────────
     ANTICIPOS_CLIENTES("2805", "Anticipos recibidos de clientes", "28"),
     ANTICIPOS_PROVEEDORES("1330", "Anticipos entregados a proveedores", "13"),

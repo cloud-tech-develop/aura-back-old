@@ -31,7 +31,7 @@ public class LectorAbonosJpa implements LectorAbonos {
         Long terceroId = abono.getCuentaCobrar() != null && abono.getCuentaCobrar().getTercero() != null
                 ? abono.getCuentaCobrar().getTercero().getId() : null;
         return new AbonoContable(LocalDate.now(), abono.getMonto(), terceroId,
-                abono.getMetodoPago(), null);
+                abono.getMetodoPago(), null, abono.getCuentaContableId());
     }
 
     @Override
@@ -42,6 +42,6 @@ public class LectorAbonosJpa implements LectorAbonos {
         Long terceroId = abono.getCuentaPagar() != null && abono.getCuentaPagar().getTercero() != null
                 ? abono.getCuentaPagar().getTercero().getId() : null;
         return new AbonoContable(LocalDate.now(), abono.getMonto(), terceroId,
-                abono.getMetodoPago(), abono.getCuentaBancariaId());
+                abono.getMetodoPago(), abono.getCuentaBancariaId(), abono.getCuentaContableId());
     }
 }

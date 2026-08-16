@@ -1,8 +1,8 @@
 package com.cloud_technological.aura_pos.contabilidad.application.generador;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -39,30 +39,31 @@ class AbonoGeneradoresTest {
     private LectorAbonos abonos;
     @Mock
     private ResolucionCuentas cuentas;
-    @Mock
-    private ResolucionCuentaPago cuentaPago;
+
+    /**
+     * Implementación real, no mock: la prioridad de la cuenta elegida a mano
+     * vive en el método {@code default} de la interfaz, y un mock lo
+     * interceptaría en vez de ejecutarlo. Así la regla queda ejercitada.
+     */
+    private final ResolucionCuentaPago cuentaPago = (empresaId, metodoPago, cuentaBancariaId) -> {
+        if (cuentaBancariaId != null) {
+            return 111005L;
+        }
+        return metodoPago != null && metodoPago.toUpperCase().contains("EFECTIVO")
+                ? 1105L : 1110L;
+    };
 
     @BeforeEach
     void resolvers() {
         lenient().when(cuentas.resolver(eq(EMPRESA), any(ConceptoContable.class)))
                 .thenAnswer(inv -> Long.parseLong(
                         ((ConceptoContable) inv.getArgument(1)).getCodigoDefault()));
-        lenient().when(cuentaPago.resolver(eq(EMPRESA), anyString(), any()))
-                .thenAnswer(inv -> {
-                    Long cuentaBancariaId = inv.getArgument(2);
-                    if (cuentaBancariaId != null) {
-                        return 111005L;
-                    }
-                    String metodo = inv.getArgument(1);
-                    return metodo != null && metodo.toUpperCase().contains("EFECTIVO")
-                            ? 1105L : 1110L;
-                });
     }
 
     @Test
     void recaudoCarteraEnEfectivo() {
         when(abonos.cargarCobro(10L, EMPRESA)).thenReturn(new AbonoContable(
-                FECHA, new BigDecimal("20000"), 55L, "EFECTIVO", null));
+                FECHA, new BigDecimal("20000"), 55L, "EFECTIVO", null, null));
 
         Asiento asiento = new AbonoCobroGenerador(abonos, cuentas, cuentaPago)
                 .generar(new ContextoContabilizacion("ABONO_COBRAR", 10L, EMPRESA, 7));
@@ -73,11 +74,40 @@ class AbonoGeneradoresTest {
     @Test
     void pagoProveedorPorTransferenciaBancaria() {
         when(abonos.cargarPago(20L, EMPRESA)).thenReturn(new AbonoContable(
-                FECHA, new BigDecimal("100000"), 77L, "TRANSFERENCIA", 9L));
+                FECHA, new BigDecimal("100000"), 77L, "TRANSFERENCIA", 9L, null));
 
         Asiento asiento = new AbonoPagoGenerador(abonos, cuentas, cuentaPago)
                 .generar(new ContextoContabilizacion("ABONO_PAGAR", 20L, EMPRESA, 7));
 
         GoldenAsientos.assertCoincide("abono-pago-transferencia.json", asiento);
+    }
+
+    @Test
+    void laCuentaElegidaAManoMandaSobreElMedioDePago() {
+        // El administrador paga sin caja abierta y sin banco: elige la cuenta.
+        // Aunque el método diga EFECTIVO (que resolvería a 1105), el asiento
+        // tiene que acreditar la cuenta elegida.
+        when(abonos.cargarPago(21L, EMPRESA)).thenReturn(new AbonoContable(
+                FECHA, new BigDecimal("50000"), 77L, "EFECTIVO", null, 233505L));
+
+        Asiento asiento = new AbonoPagoGenerador(abonos, cuentas, cuentaPago)
+                .generar(new ContextoContabilizacion("ABONO_PAGAR", 21L, EMPRESA, 7));
+
+        assertEquals(Long.valueOf(233505L), asiento.partidas().stream()
+                .filter(p -> p.credito().signum() > 0)
+                .findFirst().orElseThrow().cuentaId());
+    }
+
+    @Test
+    void sinCuentaElegidaDecideElMedioDePago() {
+        when(abonos.cargarCobro(11L, EMPRESA)).thenReturn(new AbonoContable(
+                FECHA, new BigDecimal("50000"), 55L, "EFECTIVO", null, null));
+
+        Asiento asiento = new AbonoCobroGenerador(abonos, cuentas, cuentaPago)
+                .generar(new ContextoContabilizacion("ABONO_COBRAR", 11L, EMPRESA, 7));
+
+        assertEquals(Long.valueOf(1105L), asiento.partidas().stream()
+                .filter(p -> p.debito().signum() > 0)
+                .findFirst().orElseThrow().cuentaId());
     }
 }
