@@ -425,6 +425,14 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         BigDecimal totalIngresosCaja = BigDecimal.ZERO;
         BigDecimal totalEgresosCaja = BigDecimal.ZERO;
         for (MovimientoCajaEntity m : movimientosCaja) {
+            // Un movimiento por transferencia se sigue listando en el detalle,
+            // pero no altera el efectivo esperado: no pasó por el cajón. Los
+            // movimientos sin método (los históricos) sí eran efectivo.
+            boolean afectaElArqueo = m.getMetodoPago() == null
+                    || com.cloud_technological.aura_pos.utils.MediosPago.esEfectivo(m.getMetodoPago());
+            if (!afectaElArqueo) {
+                continue;
+            }
             if ("INGRESO".equals(m.getTipo())) {
                 totalIngresosCaja = totalIngresosCaja.add(m.getMonto());
             } else if ("EGRESO".equals(m.getTipo())) {

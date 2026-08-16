@@ -33,7 +33,9 @@ import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepo
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
+import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Service
@@ -51,6 +53,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
     private final TurnoCajaJPARepository turnoCajaRepository;
     private final VentaJPARepository ventaRepository;
     private final CuentaCobrarMapper mapper;
+    private final com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
 
     @Autowired
     public CuentaCobrarServiceImpl(CuentaCobrarQueryRepository queryRepository,
@@ -61,7 +64,9 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
             VentaJPARepository ventaRepository,
-            CuentaCobrarMapper mapper) {
+            CuentaCobrarMapper mapper,
+            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService) {
+        this.origenFondosService = origenFondosService;
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
         this.abonoJpaRepository = abonoJpaRepository;
@@ -179,19 +184,26 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        // Obtener turno de caja (opcional)
-        TurnoCajaEntity turnoCaja = null;
-        if (dto.getTurnoCajaId() != null) {
-            turnoCaja = turnoCajaRepository.findById(dto.getTurnoCajaId()).orElse(null);
-        }
+        // Dónde entra la plata. Antes el turno salía de lo que mandara el front
+        // y si no venía nada el abono quedaba sin turno: el recaudo en efectivo
+        // del administrador no aparecía en el cierre de ninguna caja.
+        OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
+                new OrigenFondosService.Solicitud(
+                        dto.getMetodoPago(),
+                        dto.getTurnoCajaId(),
+                        null,
+                        dto.getCuentaContableId(),
+                        dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
+                        "abono a la cuenta por cobrar"));
 
         // Crear abono
         AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
                 .cuentaCobrar(cuenta)
                 .usuario(usuario)
-                .turnoCaja(turnoCaja)
+                .turnoCaja(origen.turno())
+                .cuentaContableId(dto.getCuentaContableId())
                 .monto(dto.getMonto())
-                .metodoPago(dto.getMetodoPago())
+                .metodoPago(MediosPago.normalizar(dto.getMetodoPago()))
                 .referencia(dto.getReferencia())
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
@@ -215,6 +227,17 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                         "ABONO_COBRAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toAbonoDto(abono);
+    }
+
+    /**
+     * Sucursal donde se recauda, cuando el front no la manda: la de la venta que
+     * originó la cuenta. Null en cuentas creadas a mano, y entonces el efectivo
+     * exige que el usuario indique sucursal o turno.
+     */
+    private Integer sucursalDeLaCuenta(CuentaCobrarEntity cuenta) {
+        return cuenta.getVenta() != null && cuenta.getVenta().getSucursal() != null
+                ? cuenta.getVenta().getSucursal().getId()
+                : null;
     }
 
     @Override

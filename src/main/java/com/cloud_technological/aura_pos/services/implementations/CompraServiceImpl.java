@@ -50,6 +50,8 @@ import com.cloud_technological.aura_pos.services.CompraService;
 import com.cloud_technological.aura_pos.services.CuentaPagarService;
 import com.cloud_technological.aura_pos.services.NotaContableService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
+import com.cloud_technological.aura_pos.utils.Terceros;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
@@ -72,8 +74,14 @@ public class CompraServiceImpl implements CompraService {
     private final CompraDetalleMapper detalleMapper;
     private final NotaContableService notaContableService;
     private final CuentaPagarService cuentaPagarService;
-    private final TurnoCajaJPARepository turnoCajaJPARepository;
     private final MovimientoCajaJPARepository movimientoCajaJPARepository;
+    private final com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
+    @Autowired
+    private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
+    @Autowired
+    private com.cloud_technological.aura_pos.services.ComprobanteCajaService comprobanteCajaService;
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository cuentaPagarJPARepository;
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
 
     @Autowired
@@ -124,9 +132,10 @@ public class CompraServiceImpl implements CompraService {
             CompraDetalleMapper detalleMapper,
             NotaContableService notaContableService,
             CuentaPagarService cuentaPagarService,
-            TurnoCajaJPARepository turnoCajaJPARepository,
             MovimientoCajaJPARepository movimientoCajaJPARepository,
-            CuentaBancariaJPARepository cuentaBancariaJPARepository) {
+            CuentaBancariaJPARepository cuentaBancariaJPARepository,
+            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService) {
+        this.origenFondosService = origenFondosService;
         this.compraRepository = compraRepository;
         this.compraJPARepository = compraJPARepository;
         this.compraPagoJPARepository = compraPagoJPARepository;
@@ -143,7 +152,6 @@ public class CompraServiceImpl implements CompraService {
         this.detalleMapper = detalleMapper;
         this.notaContableService = notaContableService;
         this.cuentaPagarService = cuentaPagarService;
-        this.turnoCajaJPARepository = turnoCajaJPARepository;
         this.movimientoCajaJPARepository = movimientoCajaJPARepository;
         this.cuentaBancariaJPARepository = cuentaBancariaJPARepository;
     }
@@ -292,33 +300,75 @@ public class CompraServiceImpl implements CompraService {
         // que pudieran venir en el payload (evita líneas a Bancos/Caja en el asiento,
         // descontar saldo bancario sin movimiento real y CxP inconsistentes).
         boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
-        if (!esCredito && dto.getPagos() != null && !dto.getPagos().isEmpty()) {
+        registrarPagos(compra, dto, empresaId, usuarioId);
+
+        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
+        if (esCredito) {
+            crearCuentaPorPagar(compra, dto, empresaId, usuarioId);
+        }
+
+        // 6. Egreso de caja, uno por cada pago que salió del cajón.
+        //
+        //    Antes se registraba un solo egreso por la neta a pagar con solo ver
+        //    que la compra fuera CONTADO: una compra pagada por transferencia
+        //    descontaba de la caja física dinero que nunca salió de ahí. Y como
+        //    el turno se buscaba por usuario con ifPresent, si quien compraba no
+        //    tenía caja abierta el egreso se perdía sin aviso.
+        registrarEgresosDeCaja(compra, dto, empresaId, usuarioId);
+
+        // 7. Comprobante de egreso que soporta el pago al proveedor.
+        sincronizarComprobanteEgreso(compra, dto, empresaId, usuarioId);
+
+        // Disparar la generación del asiento contable tras el commit de la compra.
+        // Si la contabilización falla, la compra NO se revierte (se registra en ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.CompraContabilizableEvent(
+                        compra.getId(), empresaId, usuarioId.intValue()));
+
+        return obtenerPorId(compra.getId(), empresaId);
+    }
+
+    /**
+     * Guarda los pagos de la compra y mueve la plata que sale por banco.
+     *
+     * <p>Una compra a CRÉDITO no tiene salida de dinero al momento de la compra:
+     * toda la obligación queda con el proveedor. Por eso se ignoran los pagos
+     * que pudieran venir en el payload (evita líneas a Bancos/Caja en el asiento,
+     * descontar saldo bancario sin movimiento real y CxP inconsistentes).
+     */
+    private void registrarPagos(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
+        boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
+        if (!esCredito) {
             UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
             BigDecimal montoPagado = BigDecimal.ZERO;
 
-            for (CreateCompraPagoDto pagoDto : dto.getPagos()) {
+            for (CreateCompraPagoDto pagoDto : pagosDeContado(dto, compra)) {
                 // Guardar pago
                 CompraPagoEntity pagoEntity = new CompraPagoEntity();
                 pagoEntity.setCompra(compra);
-                pagoEntity.setMetodoPago(pagoDto.getMetodoPago());
+                pagoEntity.setMetodoPago(MediosPago.normalizar(pagoDto.getMetodoPago()));
                 pagoEntity.setMonto(pagoDto.getMonto());
                 pagoEntity.setBanco(pagoDto.getBanco());
                 pagoEntity.setFechaPago(LocalDateTime.now());
                 pagoEntity.setUsuario(usuario);
                 pagoEntity.setActivo(true);
                 pagoEntity.setCuentaBancariaId(pagoDto.getCuentaBancariaId());
+                pagoEntity.setCuentaContableId(pagoDto.getCuentaContableId());
                 compraPagoJPARepository.save(pagoEntity);
 
-                // Descontar saldo de la cuenta bancaria si aplica
-                if (pagoDto.getCuentaBancariaId() != null) {
-                    cuentaBancariaJPARepository.findByIdAndEmpresaId(pagoDto.getCuentaBancariaId(), empresaId)
-                            .ifPresent(cuenta -> {
-                                cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(pagoDto.getMonto()));
-                                cuentaBancariaJPARepository.save(cuenta);
-                            });
-                }
+                // Salida de la cuenta bancaria. Antes solo se bajaba el saldo,
+                // sin dejar movimiento: la cuenta perdía plata y en su extracto
+                // no aparecía nada que lo explicara.
+                tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                        new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                                pagoDto.getCuentaBancariaId(), true, pagoDto.getMonto(),
+                                "Compra #" + compra.getId() + " - Pago a proveedor",
+                                Terceros.nombreVisible(compra.getProveedor()),
+                                referenciaDelPago(pagoDto, compra),
+                                "COMPRA"));
 
                 montoPagado = montoPagado.add(pagoDto.getMonto());
 
@@ -342,51 +392,148 @@ public class CompraServiceImpl implements CompraService {
                 );
             }
         }
+    }
 
-        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
-        // La deuda con el proveedor es la neta a pagar (total menos retenciones
-        // practicadas), igual que la línea de Proveedores del asiento contable.
-        if (esCredito) {
-            CreateCuentaPagarDto cuentaPagarDto = new CreateCuentaPagarDto();
-            cuentaPagarDto.setProveedorId(dto.getProveedorId());
-            cuentaPagarDto.setCompraId(compra.getId());
-            cuentaPagarDto.setTotalDeuda(compra.getNetaAPagar() != null
-                    ? compra.getNetaAPagar() : compra.getTotal());
-            cuentaPagarDto.setFechaEmision(compra.getFecha());
-            cuentaPagarDto.setFechaVencimiento(dto.getFechaVencimiento() != null ? dto.getFechaVencimiento() : compra.getFecha().plusDays(30));
-            cuentaPagarDto.setObservaciones("Compra #" + compra.getId() + " - Compra a crédito");
+    /**
+     * La deuda con el proveedor es la neta a pagar (total menos retenciones
+     * practicadas), igual que la línea de Proveedores del asiento contable.
+     */
+    private void crearCuentaPorPagar(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
+        CreateCuentaPagarDto cuentaPagarDto = new CreateCuentaPagarDto();
+        cuentaPagarDto.setProveedorId(compra.getProveedor().getId());
+        cuentaPagarDto.setCompraId(compra.getId());
+        cuentaPagarDto.setTotalDeuda(compra.getNetaAPagar() != null
+                ? compra.getNetaAPagar() : compra.getTotal());
+        cuentaPagarDto.setFechaEmision(compra.getFecha());
+        cuentaPagarDto.setFechaVencimiento(dto.getFechaVencimiento() != null
+                ? dto.getFechaVencimiento() : compra.getFecha().plusDays(30));
+        cuentaPagarDto.setObservaciones("Compra #" + compra.getId() + " - Compra a crédito");
 
-            cuentaPagarService.crear(cuentaPagarDto, empresaId, usuarioId);
-        }
+        cuentaPagarService.crear(cuentaPagarDto, empresaId, usuarioId);
+    }
 
-        // 6. Si es CONTADO y el usuario tiene turno abierto → egreso de caja
+    private void registrarEgresosDeCaja(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
         if ("CONTADO".equalsIgnoreCase(compra.getFormaPago())) {
             UsuarioEntity usuarioEgreso = usuarioRepository.findById(usuarioId.intValue()).orElse(null);
-            if (usuarioEgreso != null) {
-                final CompraEntity compraFinal = compra;
-                final UsuarioEntity usuarioFinal = usuarioEgreso;
-                turnoCajaJPARepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA")
-                    .ifPresent(turno -> {
-                        BigDecimal montoEgreso = compraFinal.getNetaAPagar() != null ? compraFinal.getNetaAPagar() : compraFinal.getTotal();
-                        MovimientoCajaEntity egreso = MovimientoCajaEntity.builder()
-                            .turnoCaja(turno)
-                            .usuario(usuarioFinal)
-                            .tipo("EGRESO")
-                            .concepto("Compra #" + compraFinal.getId() + " - Pago contado a proveedor")
-                            .monto(montoEgreso)
-                            .build();
-                        movimientoCajaJPARepository.save(egreso);
-                    });
+            Integer sucursalIdCompra = compra.getSucursal() != null ? compra.getSucursal().getId() : null;
+
+            for (PagoEfectivo pago : pagosQueSalenDeCaja(dto, compra)) {
+                var origen = origenFondosService.resolver(empresaId,
+                        new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
+                                pago.metodoPago(), null, pago.cuentaBancariaId(),
+                                pago.cuentaContableId(), sucursalIdCompra, "pago de la compra"));
+
+                if (!origen.generaMovimientoCaja()) {
+                    continue;
+                }
+                MovimientoCajaEntity egreso = MovimientoCajaEntity.builder()
+                        .turnoCaja(origen.turno())
+                        .usuario(usuarioEgreso)
+                        .tipo("EGRESO")
+                        .concepto("Compra #" + compra.getId() + " - Pago contado a proveedor")
+                        .monto(pago.monto())
+                        .metodoPago(MediosPago.normalizar(pago.metodoPago()))
+                        .build();
+                movimientoCajaJPARepository.save(egreso);
             }
         }
+    }
 
-        // Disparar la generación del asiento contable tras el commit de la compra.
-        // Si la contabilización falla, la compra NO se revierte (se registra en ErrorLog).
-        eventPublisher.publishEvent(
-                new com.cloud_technological.aura_pos.event.CompraContabilizableEvent(
-                        compra.getId(), empresaId, usuarioId.intValue()));
+    /**
+     * Emite (o pone al día) el comprobante de egreso de la compra.
+     *
+     * <p>Toda salida de dinero necesita su soporte, sin importar por dónde salió:
+     * antes no se generaba ninguno, ni con caja abierta ni pagando por banco. El
+     * comprobante es uno solo por compra y se conserva al editarla — emitir uno
+     * nuevo dejaría dos soportes para el mismo pago.
+     *
+     * <p>Solo aplica a compras de CONTADO: a crédito no hay egreso todavía, la
+     * plata sale después con el abono a la cuenta por pagar, que lleva el suyo.
+     */
+    private void sincronizarComprobanteEgreso(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
+        if (!"CONTADO".equalsIgnoreCase(compra.getFormaPago())) {
+            // Se registró de contado y al editarla se corrigió a crédito —
+            // equivocarse de medio de pago es lo más común. El egreso ya no
+            // ocurrió: la plata saldrá después con el abono a la cuenta por
+            // pagar, así que el comprobante emitido queda anulado.
+            comprobanteCajaService.anularDeDocumento(empresaId, "COMPRA", compra.getId(),
+                    "La compra pasó a crédito: el pago no se realizó");
+            return;
+        }
+        List<PagoEfectivo> pagos = pagosQueSalenDeCaja(dto, compra);
+        BigDecimal totalPagado = pagos.stream()
+                .map(PagoEfectivo::monto)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        return obtenerPorId(compra.getId(), empresaId);
+        // Con varios medios el comprobante es uno solo, así que el método deja
+        // de ser uno: MIXTO evita afirmar que todo salió por el primero.
+        String metodo = pagos.size() == 1
+                ? MediosPago.normalizar(pagos.get(0).metodoPago())
+                : "MIXTO";
+
+        comprobanteCajaService.sincronizarDeDocumento(empresaId,
+                usuarioId != null ? usuarioId.intValue() : null,
+                "EGRESO",
+                "Pago compra #" + compra.getId()
+                        + (compra.getNumeroCompra() != null ? " (" + compra.getNumeroCompra() + ")" : ""),
+                totalPagado,
+                metodo,
+                Terceros.nombreVisible(compra.getProveedor()),
+                "COMPRA", compra.getId(), null);
+    }
+
+    /**
+     * Referencia del pago para el extracto bancario. Si el front no mandó una
+     * (lo habitual en efectivo), se usa el número de factura del proveedor y,
+     * en último caso, el consecutivo de la compra: sin referencia el movimiento
+     * queda imposible de cruzar contra el extracto real del banco.
+     */
+    private String referenciaDelPago(CreateCompraPagoDto pagoDto, CompraEntity compra) {
+        if (pagoDto.getReferencia() != null && !pagoDto.getReferencia().isBlank()) {
+            return pagoDto.getReferencia().trim();
+        }
+        if (compra.getNumeroCompra() != null && !compra.getNumeroCompra().isBlank()) {
+            return compra.getNumeroCompra().trim();
+        }
+        return "COMPRA-" + compra.getId();
+    }
+
+    /** Un pago visto desde la caja: cuánto, por qué medio y contra qué cuenta. */
+    private record PagoEfectivo(String metodoPago, BigDecimal monto, Long cuentaBancariaId,
+            Long cuentaContableId) {
+    }
+
+    /**
+     * Los pagos de una compra de contado, siempre con al menos uno.
+     *
+     * <p>Si el documento no trae desglose se asume uno en efectivo por la neta a
+     * pagar. Antes ese pago sintético solo existía para el egreso de caja y no
+     * se guardaba: el asiento no encontraba pagos, mandaba todo el saldo a
+     * Proveedores y no se creaba cuenta por pagar, así que la caja bajaba
+     * mientras contablemente la deuda seguía viva. Al materializarlo como un
+     * `compra_pago` real, el documento, la caja y el asiento dicen lo mismo.
+     */
+    private List<CreateCompraPagoDto> pagosDeContado(CreateCompraDto dto, CompraEntity compra) {
+        if (dto.getPagos() != null && !dto.getPagos().isEmpty()) {
+            return dto.getPagos();
+        }
+        CreateCompraPagoDto sintetico = new CreateCompraPagoDto();
+        sintetico.setMetodoPago(MediosPago.EFECTIVO);
+        sintetico.setMonto(compra.getNetaAPagar() != null
+                ? compra.getNetaAPagar() : compra.getTotal());
+        return List.of(sintetico);
+    }
+
+    /** Los mismos pagos, vistos desde la caja. */
+    private List<PagoEfectivo> pagosQueSalenDeCaja(CreateCompraDto dto, CompraEntity compra) {
+        return pagosDeContado(dto, compra).stream()
+                .map(p -> new PagoEfectivo(p.getMetodoPago(), p.getMonto(),
+                        p.getCuentaBancariaId(), p.getCuentaContableId()))
+                .toList();
     }
 
     @Override
@@ -397,6 +544,10 @@ public class CompraServiceImpl implements CompraService {
 
         if (compra.getEstado().equals("ANULADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La compra ya está anulada");
+
+        // El soporte del pago no puede seguir vigente si la compra no existe.
+        comprobanteCajaService.anularDeDocumento(empresaId, "COMPRA", id,
+                "Compra anulada");
 
         List<CompraDetalleEntity> detalles = detalleJPARepository.findByCompraId(id);
 
@@ -571,7 +722,124 @@ public class CompraServiceImpl implements CompraService {
         if (dto.getFormaPago() != null) compra.setFormaPago(dto.getFormaPago());
         compraJPARepository.save(compra);
 
+        // 6. Rehacer la forma de pago. Equivocarse aquí es lo más común —
+        //    registrar de contado algo que era a crédito — y hasta ahora editar
+        //    no tocaba nada de esto: los pagos quedaban vivos, la cuenta por
+        //    pagar nunca se creaba y el comprobante seguía diciendo "efectivo".
+        revertirPagosAnteriores(compra, empresaId, usuarioId);
+        registrarPagos(compra, dto, empresaId, usuarioId);
+        registrarEgresosDeCaja(compra, dto, empresaId, usuarioId);
+        sincronizarCuentaPorPagar(compra, dto, empresaId, usuarioId);
+        sincronizarComprobanteEgreso(compra, dto, empresaId, usuarioId);
+
+        // 7. Rehacer el asiento contable. El listener reversa el vigente y
+        //    genera el nuevo: hasta ahora editar dejaba el asiento con los
+        //    valores originales, así que el documento y la contabilidad decían
+        //    cosas distintas.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.CompraContabilizableEvent(
+                        compra.getId(), empresaId, usuarioId.intValue()));
+
         return obtenerPorId(compra.getId(), empresaId);
+    }
+
+    /**
+     * Deshace los pagos que tenía la compra antes de editarla: los desactiva y
+     * devuelve la plata a donde salió.
+     *
+     * <p>Sin esto, corregir una compra deja el dinero descontado dos veces (o
+     * descontado sin razón, si pasó a crédito): el banco y la caja ya se
+     * movieron cuando se registró la primera vez.
+     */
+    private void revertirPagosAnteriores(CompraEntity compra, Integer empresaId, Long usuarioId) {
+        List<CompraPagoEntity> anteriores = compraPagoJPARepository
+                .findByCompraIdAndActivoTrue(compra.getId());
+        if (anteriores.isEmpty()) {
+            return;
+        }
+        UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue()).orElse(null);
+
+        for (CompraPagoEntity pago : anteriores) {
+            // Devolver al banco lo que había salido de él.
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            pago.getCuentaBancariaId(), false, pago.getMonto(),
+                            "Reverso pago compra #" + compra.getId() + " (edición)",
+                            Terceros.nombreVisible(compra.getProveedor()),
+                            "COMPRA-" + compra.getId(), "COMPRA"));
+
+            // Y a la caja, si había salido del cajón.
+            if (MediosPago.esEfectivo(pago.getMetodoPago()) && pago.getCuentaBancariaId() == null) {
+                Integer sucursalId = compra.getSucursal() != null ? compra.getSucursal().getId() : null;
+                var origen = origenFondosService.resolver(empresaId,
+                        new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
+                                pago.getMetodoPago(), null, null, pago.getCuentaContableId(),
+                                sucursalId, "reverso del pago de la compra"));
+                if (origen.generaMovimientoCaja()) {
+                    movimientoCajaJPARepository.save(MovimientoCajaEntity.builder()
+                            .turnoCaja(origen.turno())
+                            .usuario(usuario)
+                            .tipo("INGRESO")
+                            .concepto("Reverso pago compra #" + compra.getId() + " (edición)")
+                            .monto(pago.getMonto())
+                            .metodoPago(MediosPago.normalizar(pago.getMetodoPago()))
+                            .build());
+                }
+            }
+
+            pago.setActivo(false);
+            compraPagoJPARepository.save(pago);
+        }
+    }
+
+    /**
+     * Pone la cuenta por pagar de acuerdo con la forma de pago vigente.
+     *
+     * <p>Es el caso que faltaba: una compra registrada de contado y corregida a
+     * crédito no generaba la deuda con el proveedor, así que el pasivo
+     * desaparecía. Y al revés, pasar de crédito a contado dejaba viva una cuenta
+     * que ya nadie debe.
+     */
+    private void sincronizarCuentaPorPagar(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
+        boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
+        com.cloud_technological.aura_pos.entity.CuentaPagarEntity existente = cuentaPagarJPARepository
+                .findFirstByCompraIdAndEmpresaId(compra.getId(), empresaId).orElse(null);
+
+        if (esCredito) {
+            BigDecimal deuda = compra.getNetaAPagar() != null
+                    ? compra.getNetaAPagar() : compra.getTotal();
+            if (existente == null) {
+                crearCuentaPorPagar(compra, dto, empresaId, usuarioId);
+                return;
+            }
+            // Si ya tiene abonos no se puede recalcular sin descuadrar la
+            // cartera: el saldo dejaría de coincidir con lo abonado.
+            if (existente.getTotalAbonado() != null
+                    && existente.getTotalAbonado().signum() > 0) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La cuenta por pagar de esta compra ya tiene abonos: anule los abonos "
+                                + "antes de cambiar el valor o la forma de pago");
+            }
+            existente.setTotalDeuda(deuda);
+            existente.setSaldoPendiente(deuda);
+            existente.setEstado("pendiente");
+            cuentaPagarJPARepository.save(existente);
+            return;
+        }
+
+        // Pasó a contado: la deuda ya no existe.
+        if (existente != null) {
+            if (existente.getTotalAbonado() != null
+                    && existente.getTotalAbonado().signum() > 0) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La cuenta por pagar de esta compra ya tiene abonos: no se puede "
+                                + "pasar a contado sin anularlos primero");
+            }
+            existente.setEstado("anulada");
+            existente.setSaldoPendiente(BigDecimal.ZERO);
+            cuentaPagarJPARepository.save(existente);
+        }
     }
 
     // ─── Métodos privados de apoyo ───────────────────────────────────────────

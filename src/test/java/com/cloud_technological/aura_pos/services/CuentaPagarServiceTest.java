@@ -72,6 +72,12 @@ class CuentaPagarServiceTest {
     @Mock
     private CuentaPagarMapper mapper;
 
+    @Mock
+    private com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private CuentaPagarServiceImpl cuentaPagarService;
 
@@ -321,6 +327,9 @@ class CuentaPagarServiceTest {
 
         when(jpaRepository.findByIdAndEmpresaId(1L, 1)).thenReturn(Optional.of(cuentaPagarMock));
         when(usuarioRepository.findById(1)).thenReturn(Optional.of(usuarioMock));
+        when(origenFondosService.resolver(anyInt(), any())).thenReturn(
+                new com.cloud_technological.aura_pos.services.OrigenFondosService.OrigenFondos(
+                        com.cloud_technological.aura_pos.services.OrigenFondosService.Tipo.CAJA, 1105L, null));
         when(abonoJpaRepository.save(any(AbonoPagarEntity.class))).thenReturn(abonoMock);
         when(jpaRepository.save(any(CuentaPagarEntity.class))).thenReturn(cuentaPagarMock);
 
@@ -358,6 +367,9 @@ class CuentaPagarServiceTest {
 
         when(jpaRepository.findByIdAndEmpresaId(1L, 1)).thenReturn(Optional.of(cuentaPagarMock));
         when(usuarioRepository.findById(1)).thenReturn(Optional.of(usuarioMock));
+        when(origenFondosService.resolver(anyInt(), any())).thenReturn(
+                new com.cloud_technological.aura_pos.services.OrigenFondosService.OrigenFondos(
+                        com.cloud_technological.aura_pos.services.OrigenFondosService.Tipo.CAJA, 1105L, null));
         when(abonoJpaRepository.save(any(AbonoPagarEntity.class))).thenReturn(abonoMock);
         when(jpaRepository.save(any(CuentaPagarEntity.class))).thenAnswer(invocation -> {
             CuentaPagarEntity cuenta = invocation.getArgument(0);
@@ -800,6 +812,9 @@ class CuentaPagarServiceTest {
 
         when(jpaRepository.findByIdAndEmpresaId(1L, 1)).thenReturn(Optional.of(cuentaPagarMock));
         when(usuarioRepository.findById(1)).thenReturn(Optional.of(usuarioMock));
+        when(origenFondosService.resolver(anyInt(), any())).thenReturn(
+                new com.cloud_technological.aura_pos.services.OrigenFondosService.OrigenFondos(
+                        com.cloud_technological.aura_pos.services.OrigenFondosService.Tipo.CAJA, 1105L, null));
         when(abonoJpaRepository.save(any(AbonoPagarEntity.class))).thenReturn(abonoMock);
         when(jpaRepository.save(any(CuentaPagarEntity.class))).thenReturn(cuentaPagarMock);
 

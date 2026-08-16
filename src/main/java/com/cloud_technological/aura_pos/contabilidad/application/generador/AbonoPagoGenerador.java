@@ -40,7 +40,8 @@ public class AbonoPagoGenerador implements GeneradorAsiento {
                 .descripcion("Pago a proveedor — abono #" + ctx.origenId())
                 .debito(cuentas.resolver(ctx.empresaId(), ConceptoContable.PROVEEDORES),
                         "Pago a proveedor", ReglasAsiento.nz(abono.monto()), abono.terceroId())
-                .credito(cuentaPago.resolver(ctx.empresaId(), abono.metodoPago(), abono.cuentaBancariaId()),
+                .credito(cuentaPago.resolver(ctx.empresaId(), abono.metodoPago(),
+                                abono.cuentaBancariaId(), abono.cuentaContableId()),
                         "Egreso pago (" + abono.metodoPago() + ")", ReglasAsiento.nz(abono.monto()))
                 .build();
     }

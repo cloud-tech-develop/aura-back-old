@@ -16,7 +16,15 @@ public class AbonoPagarDto {
     private Long usuarioId;
     private String usuarioNombre;
     private Long turnoCajaId;
-    
+    /**
+     * Sucursal de cuya caja sale el efectivo. Solo entra, no se persiste: sirve
+     * para ubicar el turno abierto cuando quien paga no es el cajero. Si no
+     * viene, se deduce de la compra que originó la cuenta.
+     */
+    private Integer sucursalId;
+    /** Cuenta contable de la que sale el pago, si no sale de caja ni de un banco. */
+    private Long cuentaContableId;
+
     @NotNull(message = "El monto es requerido")
     private BigDecimal monto;
 

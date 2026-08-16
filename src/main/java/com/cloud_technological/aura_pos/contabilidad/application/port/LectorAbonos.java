@@ -18,12 +18,16 @@ public interface LectorAbonos {
     /**
      * @param fecha fecha contable del abono (hoy, como el flujo legacy)
      * @param cuentaBancariaId cuenta bancaria del pago; null en cobros de caja
+     * @param cuentaContableId cuenta elegida a mano (V142); manda sobre el
+     *                         resto cuando el movimiento no pasa por caja ni
+     *                         por un banco
      */
     record AbonoContable(
             LocalDate fecha,
             BigDecimal monto,
             Long terceroId,
             String metodoPago,
-            Long cuentaBancariaId) {
+            Long cuentaBancariaId,
+            Long cuentaContableId) {
     }
 }

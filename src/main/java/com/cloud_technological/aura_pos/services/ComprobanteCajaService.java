@@ -12,4 +12,29 @@ public interface ComprobanteCajaService {
             String tipo, String concepto, BigDecimal monto,
             String metodoPago, String entregadoA,
             String origen, Long origenId, Long turnoCajaId);
+
+    /**
+     * Crea el comprobante del documento o, si ya existe, lo pone al día.
+     *
+     * <p>Un documento tiene un solo comprobante durante toda su vida: al editar
+     * la compra hay que corregir el que ya se emitió, no emitir uno nuevo — dos
+     * comprobantes para un mismo pago es un soporte duplicado. Por eso conserva
+     * el número original y solo actualiza monto, concepto y método.
+     *
+     * @return null si el documento no mueve dinero (monto nulo o cero)
+     */
+    ComprobanteCajaEntity sincronizarDeDocumento(Integer empresaId, Integer usuarioId,
+            String tipo, String concepto, BigDecimal monto,
+            String metodoPago, String entregadoA,
+            String origen, Long origenId, Long turnoCajaId);
+
+    /**
+     * Invalida el comprobante de un documento cuyo pago dejó de existir, sin
+     * borrarlo: conserva el número para no dejar huecos en la serie.
+     *
+     * <p>No falla si el documento nunca tuvo comprobante ni si ya estaba
+     * anulado — se llama desde flujos de edición donde ambas cosas son
+     * normales.
+     */
+    void anularDeDocumento(Integer empresaId, String origen, Long origenId, String motivo);
 }

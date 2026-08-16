@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,9 @@ import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorPageableDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.PedidoVendedorTableDto;
 import com.cloud_technological.aura_pos.dto.pedidos_vendedor.RegistrarCobroPedidoDto;
+import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDetalleDto;
+import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDto;
+import com.cloud_technological.aura_pos.dto.ventas.CreateVentaPagoDto;
 import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
 import com.cloud_technological.aura_pos.entity.CuentaCobrarEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
@@ -41,6 +45,7 @@ import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.PedidoVendedorService;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 
 import jakarta.transaction.Transactional;
 
@@ -83,6 +88,9 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
     @Lazy
     @Autowired
     private VentaService ventaService;
+
+    @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Override
     public PageImpl<PedidoVendedorTableDto> listar(PedidoVendedorPageableDto pageable, Integer empresaId) {
@@ -184,8 +192,64 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
                     "Solo se pueden despachar pedidos en estado CREADA o PENDIENTE_DESPACHO");
         }
 
+        // El despacho es el hecho económico: hasta aquí era solo un pedido, y al
+        // entregar la mercancía sale del inventario y nace el ingreso. Por eso
+        // la venta se genera en este punto y no al crear el pedido.
+        if (pedido.getVenta() == null) {
+            generarVentaDelDespacho(pedido, empresaId);
+        }
+
         pedido.setEstado("DESPACHADA");
         pedidoJPARepository.save(pedido);
+    }
+
+    /**
+     * Crea la venta que respalda el despacho, reutilizando el motor de ventas
+     * (inventario, cuenta por cobrar y asiento contable).
+     *
+     * <p>Nace a crédito a propósito: la mercancía sale ahora pero la plata entra
+     * después, en {@link #registrarCobro}. Ese cobro cierra la cuenta por cobrar
+     * con un abono, que es justo lo que el flujo ya hacía.
+     */
+    private void generarVentaDelDespacho(PedidoVendedorEntity pedido, Integer empresaId) {
+        if (pedido.getCliente() == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El pedido debe tener un cliente para despacharse: la entrega genera "
+                            + "una cuenta por cobrar y toda deuda necesita un deudor");
+        }
+        if (pedido.getDetalles() == null || pedido.getDetalles().isEmpty()) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El pedido no tiene productos para despachar");
+        }
+
+        CreateVentaDto ventaDto = new CreateVentaDto();
+        ventaDto.setPedidoVendedorId(pedido.getId());
+        ventaDto.setClienteId(pedido.getCliente().getId());
+        ventaDto.setSucursalId(pedido.getSucursal().getId());
+        ventaDto.setObservaciones("Despacho del pedido " + pedido.getNumeroPedido());
+
+        List<CreateVentaDetalleDto> detalles = new ArrayList<>();
+        for (PedidoVendedorDetalleEntity det : pedido.getDetalles()) {
+            CreateVentaDetalleDto linea = new CreateVentaDetalleDto();
+            linea.setProductoId(det.getProducto().getId());
+            linea.setCantidad(det.getCantidad());
+            linea.setPrecioUnitario(det.getPrecioUnitario());
+            linea.setDescuentoValor(det.getDescuentoValor() != null
+                    ? det.getDescuentoValor() : BigDecimal.ZERO);
+            linea.setImpuestoValor(det.getImpuestoValor() != null
+                    ? det.getImpuestoValor() : BigDecimal.ZERO);
+            detalles.add(linea);
+        }
+        ventaDto.setDetalles(detalles);
+
+        CreateVentaPagoDto pago = new CreateVentaPagoDto();
+        pago.setMetodoPago(MediosPago.CREDITO);
+        pago.setMonto(pedido.getTotal());
+        ventaDto.setPagos(List.of(pago));
+
+        // La venta se atribuye al vendedor del pedido, no a quien pulsa
+        // despachar: de ahí salen sus comisiones.
+        ventaService.crear(ventaDto, empresaId, Long.valueOf(pedido.getVendedor().getId()));
     }
 
     @Override
@@ -207,7 +271,8 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
 
         // Si el pedido tiene venta vinculada, cerrar la cuenta por cobrar y marcar venta COMPLETADA
         if (pedido.getVenta() != null) {
-            cerrarCuentaCobrarDeVenta(pedido.getVenta(), dto.getMetodoPago(), dto.getReferencia(), empresaId);
+            cerrarCuentaCobrarDeVenta(pedido.getVenta(), dto.getMetodoPago(), dto.getReferencia(),
+                    empresaId, pedido.getVendedor());
         }
     }
 
@@ -215,7 +280,8 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
      * Cierra la cuenta por cobrar asociada a la venta y actualiza el estado de la venta a COMPLETADA.
      * Se registra un abono por el saldo pendiente completo.
      */
-    private void cerrarCuentaCobrarDeVenta(VentaEntity venta, String metodoPago, String referencia, Integer empresaId) {
+    private void cerrarCuentaCobrarDeVenta(VentaEntity venta, String metodoPago, String referencia,
+            Integer empresaId, UsuarioEntity cobrador) {
         // Actualizar cuenta por cobrar
         cuentaCobrarJPARepository.findByVentaIdAndEmpresaId(venta.getId(), empresaId)
                 .ifPresent(cuenta -> {
@@ -228,10 +294,20 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
                         AbonoCobrarEntity abono = new AbonoCobrarEntity();
                         abono.setCuentaCobrar(cuenta);
                         abono.setMonto(saldo);
-                        abono.setMetodoPago(metodoPago);
+                        abono.setMetodoPago(MediosPago.normalizar(metodoPago));
                         abono.setReferencia(referencia);
+                        abono.setUsuario(cobrador);
                         abono.setFechaPago(LocalDateTime.now());
                         abonoCobrarJPARepository.save(abono);
+
+                        // Asiento del recaudo (ADR-003). Sin esto la cuenta se
+                        // cerraba en la tabla pero el cliente seguía debiendo en
+                        // el balance: cartera operativa y contable se separaban.
+                        eventPublisher.publishEvent(
+                                new com.cloud_technological.aura_pos.contabilidad.infrastructure.event
+                                        .DocumentoContabilizableEvent(
+                                        "ABONO_COBRAR", abono.getId(), empresaId,
+                                        cobrador != null ? cobrador.getId() : null));
 
                         // Cerrar la cuenta
                         cuenta.setTotalAbonado(cuenta.getTotalDeuda());
@@ -259,17 +335,19 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         PedidoVendedorEntity pedido = pedidoJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
 
-        if ("COBRADA".equals(pedido.getEstado())) {
-            // Solo se puede anular si vino de una venta automática; en ese caso también se anula la venta
-            if (pedido.getVenta() == null) {
-                throw new GlobalException(HttpStatus.BAD_REQUEST,
-                        "No se puede anular un pedido ya cobrado");
-            }
-            // Anular la venta vinculada (revierte inventario, etc.)
-            ventaService.anular(pedido.getVenta().getId(), empresaId);
-        }
         if ("ANULADA".equals(pedido.getEstado())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El pedido ya está anulado");
+        }
+
+        if ("COBRADA".equals(pedido.getEstado()) && pedido.getVenta() == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No se puede anular un pedido ya cobrado");
+        }
+
+        // Cualquier pedido con venta vinculada ya movió inventario y contabilizó,
+        // esté COBRADA o solo DESPACHADA: anular la venta es lo que lo revierte.
+        if (pedido.getVenta() != null) {
+            ventaService.anular(pedido.getVenta().getId(), empresaId);
         }
 
         pedido.setEstado("ANULADA");

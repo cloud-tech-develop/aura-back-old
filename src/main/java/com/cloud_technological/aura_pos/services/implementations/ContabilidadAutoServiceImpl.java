@@ -56,6 +56,7 @@ import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ConfiguracionContableService;
 import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
 import com.cloud_technological.aura_pos.utils.AsientoBalanceValidator;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 
 @Service
 public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
@@ -98,6 +99,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     //  Prefijos de comprobante (Regla 1)
     //  VT = Venta  |  CO = Compra  |  CD = Comprobante de Diario (manual)
     // ────────────────────────────────────────────────────────────────────────
+    /** Estados de un asiento: solo el CONTABILIZADO representa al documento. */
+    private static final String ESTADO_CONTABILIZADO = "CONTABILIZADO";
+    private static final String ESTADO_ANULADO       = "ANULADO";
+
     private static final String PREFIX_VENTA      = "VT";
     private static final String PREFIX_COMPRA     = "CO";
     private static final String PREFIX_REVERSA    = "RV";
@@ -123,7 +128,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     public AsientoContableTableDto generarDesdeVenta(Long ventaId, Integer empresaId,
             Integer usuarioId) {
         // Idempotencia: no duplicar si ya existe
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("VENTA", ventaId, empresaId)) {
+        if (yaContabilizado("VENTA", ventaId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la venta #" + ventaId);
         }
@@ -217,7 +222,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeCompra(Long compraId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("COMPRA", compraId, empresaId)) {
+        if (yaContabilizado("COMPRA", compraId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la compra #" + compraId);
         }
@@ -329,7 +334,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         for (CompraPagoEntity pago : compraPagoRepo.findByCompraIdAndActivoTrue(compraId)) {
             BigDecimal monto = nz(pago.getMonto());
             if (monto.signum() <= 0) continue;
-            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(), pago.getCuentaBancariaId());
+            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(),
+                    pago.getCuentaBancariaId(), pago.getCuentaContableId());
             detalles.add(linea(cuenta.getId(),
                     "Pago compra (" + pago.getMetodoPago() + ")", BigDecimal.ZERO, monto));
             pagado = pagado.add(monto);
@@ -380,15 +386,16 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             Integer empresaId, Integer usuarioId) {
         String tipoReversa = "ANULACION_" + origenTipo;
 
-        // Idempotencia: no reversar dos veces
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId(tipoReversa, origenId, empresaId)) {
-            return null;
-        }
-
-        // Asiento original a reversar. Si no existe (operación previa al auto-posting
-        // o cuyo asiento nunca se generó), no hay nada que reversar → no-op.
+        // Asiento VIGENTE del documento. Si no hay (nunca se generó, o ya se
+        // reversó antes), no hay nada que reversar → no-op.
+        //
+        // La idempotencia va por el estado del asiento y no por la existencia de
+        // una reversa previa: un documento puede editarse varias veces, y cada
+        // edición reversa el que estaba vigente y genera uno nuevo. Anclarla al
+        // par (ANULACION_X, origenId) bloqueaba la segunda edición.
         AsientoContableEntity original = asientoRepo
-                .findByTipoOrigenAndOrigenIdAndEmpresaId(origenTipo, origenId, empresaId)
+                .findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+                        origenTipo, origenId, empresaId, ESTADO_CONTABILIZADO)
                 .orElse(null);
         if (original == null) {
             return null;
@@ -426,6 +433,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         detalles.forEach(x -> x.setAsiento(asiento));
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
+
+        // El original deja de estar vigente. Queda en la contabilidad con su
+        // número —no se borra— pero ya no representa al documento, y por eso
+        // otra generación puede tomar su lugar cuando el documento se edita.
+        original.setEstado(ESTADO_ANULADO);
+        asientoRepo.save(original);
+
         AsientoContableTableDto result = toDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
         return result;
@@ -435,7 +449,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeDevolucion(Long devolucionId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("DEVOLUCION", devolucionId, empresaId)) {
+        if (yaContabilizado("DEVOLUCION", devolucionId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la devolución #" + devolucionId);
         }
@@ -587,7 +601,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeAbonoCobro(Long abonoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("ABONO_COBRAR", abonoId, empresaId)) {
+        if (yaContabilizado("ABONO_COBRAR", abonoId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el abono de cobro #" + abonoId);
         }
@@ -614,7 +628,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeAbonoPago(Long abonoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("ABONO_PAGAR", abonoId, empresaId)) {
+        if (yaContabilizado("ABONO_PAGAR", abonoId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el abono de pago #" + abonoId);
         }
@@ -641,7 +655,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeGasto(Long gastoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("GASTO", gastoId, empresaId)) {
+        if (yaContabilizado("GASTO", gastoId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el gasto #" + gastoId);
         }
@@ -687,10 +701,23 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEICA_PRACTICADA);
             detalles.add(linea(c.getId(), "ReteICA gasto", BigDecimal.ZERO, reteica, terceroId));
         }
-        // CR · pago de contado (caja)
+        // CR · de dónde salió la plata (V142).
+        //
+        // Antes esta línea acreditaba CAJA siempre, sin mirar cómo se pagó: un
+        // gasto por transferencia dejaba la caja contable en negativo y el banco
+        // intacto. Ahora manda la cuenta que resolvió el origen de fondos; y si
+        // el gasto es a crédito no hay salida de dinero, sino deuda al tercero.
         if (neto.signum() > 0) {
-            PlanCuentaEntity caja = config.resolverCuenta(empresaId, ConceptoContable.CAJA);
-            detalles.add(linea(caja.getId(), "Pago gasto", BigDecimal.ZERO, neto));
+            if (MediosPago.CREDITO.equalsIgnoreCase(gasto.getFormaPago())) {
+                PlanCuentaEntity prov = config.resolverCuenta(empresaId, ConceptoContable.PROVEEDORES);
+                detalles.add(linea(prov.getId(), "Gasto por pagar", BigDecimal.ZERO, neto, terceroId));
+            } else {
+                Long cuentaPagoId = gasto.getCuentaPagoId() != null
+                        ? gasto.getCuentaPagoId()
+                        : resolucionCuentaPago.resolver(empresaId, gasto.getMetodoPago(),
+                                gasto.getCuentaBancariaId());
+                detalles.add(linea(cuentaPagoId, "Pago gasto", BigDecimal.ZERO, neto));
+            }
         }
 
         // Dimensiones del gasto propagadas a TODAS las líneas (E7).
@@ -711,7 +738,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeMerma(Long mermaId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("MERMA", mermaId, empresaId)) {
+        if (yaContabilizado("MERMA", mermaId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la merma #" + mermaId);
         }
@@ -741,7 +768,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeNomina(Long nominaId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("NOMINA", nominaId, empresaId)) {
+        if (yaContabilizado("NOMINA", nominaId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la nómina #" + nominaId);
         }
@@ -822,7 +849,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdePagoNomina(Long nominaId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("NOMINA_PAGO", nominaId, empresaId)) {
+        if (yaContabilizado("NOMINA_PAGO", nominaId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento de pago para la nómina #" + nominaId);
         }
@@ -862,7 +889,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdePagoPrestacion(Long prestacionId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("PRESTACION_PAGO", prestacionId, empresaId)) {
+        if (yaContabilizado("PRESTACION_PAGO", prestacionId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento de pago para la prestación #" + prestacionId);
         }
@@ -947,7 +974,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     public AsientoContableTableDto generarCierre(Long periodoId, Integer empresaId,
             Integer usuarioId) {
         // Idempotencia: no cerrar dos veces el mismo período.
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("CIERRE", periodoId, empresaId)) {
+        if (yaContabilizado("CIERRE", periodoId, empresaId)) {
             return null;
         }
 
@@ -1012,7 +1039,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional
     public AsientoContableTableDto generarReclasificacionSobregiro(Long periodoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("SOBREGIRO", periodoId, empresaId)) {
+        if (yaContabilizado("SOBREGIRO", periodoId, empresaId)) {
             return null;
         }
 
@@ -1053,7 +1080,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeObligacion(Long obligacionId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("OBLIGACION", obligacionId, empresaId)) {
+        if (yaContabilizado("OBLIGACION", obligacionId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la obligación #" + obligacionId);
         }
@@ -1080,7 +1107,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdePagoCuota(Long cuotaId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("CUOTA_OBLIGACION", cuotaId, empresaId)) {
+        if (yaContabilizado("CUOTA_OBLIGACION", cuotaId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la cuota #" + cuotaId);
         }
@@ -1122,7 +1149,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeMovimientoCaja(Long movimientoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("MOVIMIENTO_CAJA", movimientoId, empresaId)) {
+        if (yaContabilizado("MOVIMIENTO_CAJA", movimientoId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el movimiento de caja #" + movimientoId);
         }
@@ -1179,7 +1206,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public AsientoContableTableDto generarDesdeTesoreria(Long movimientoId, Integer empresaId,
             Integer usuarioId) {
-        if (asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId("TESORERIA", movimientoId, empresaId)) {
+        if (yaContabilizado("TESORERIA", movimientoId, empresaId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el movimiento de tesorería #" + movimientoId);
         }
@@ -1262,10 +1289,33 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
      * los flujos legacy y los migrados al registry.
      */
     private PlanCuentaEntity resolverCuentaPago(Integer empresaId, String metodoPago, Long cuentaBancariaId) {
-        Long cuentaId = resolucionCuentaPago.resolver(empresaId, metodoPago, cuentaBancariaId);
+        return resolverCuentaPago(empresaId, metodoPago, cuentaBancariaId, null);
+    }
+
+    /**
+     * Cuenta contra la que se registra un movimiento de dinero. La prioridad
+     * (cuenta elegida a mano → banco → forma de pago → CAJA/BANCOS) la define
+     * {@link ResolucionCuentaPago}; aquí solo se materializa la entity.
+     */
+    private PlanCuentaEntity resolverCuentaPago(Integer empresaId, String metodoPago,
+            Long cuentaBancariaId, Long cuentaContableId) {
+        Long cuentaId = resolucionCuentaPago.resolver(empresaId, metodoPago,
+                cuentaBancariaId, cuentaContableId);
         return planRepo.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                         "La cuenta contable resuelta para el pago no existe."));
+    }
+
+    /**
+     * ¿El documento ya tiene asiento <b>vigente</b>?
+     *
+     * <p>Ignora los ANULADOS a propósito: cuando un documento se edita, su
+     * asiento se reversa y queda anulado, y el documento tiene que poder
+     * generar el nuevo que refleja los valores corregidos.
+     */
+    private boolean yaContabilizado(String tipoOrigen, Long origenId, Integer empresaId) {
+        return asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+                tipoOrigen, origenId, empresaId, ESTADO_CONTABILIZADO);
     }
 
     private PeriodoContableEntity periodoAbierto(Integer empresaId) {

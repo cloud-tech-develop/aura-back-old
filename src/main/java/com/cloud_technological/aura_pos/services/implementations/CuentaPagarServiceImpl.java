@@ -31,7 +31,9 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.CuentaPagarService;
+import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Service
@@ -49,6 +51,9 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
     private final TurnoCajaJPARepository turnoCajaRepository;
     private final com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository;
     private final CuentaPagarMapper mapper;
+    private final com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
+    @Autowired
+    private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
 
     @Autowired
     public CuentaPagarServiceImpl(CuentaPagarQueryRepository queryRepository,
@@ -59,7 +64,9 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
             com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepository,
-            CuentaPagarMapper mapper) {
+            CuentaPagarMapper mapper,
+            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService) {
+        this.origenFondosService = origenFondosService;
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
         this.abonoJpaRepository = abonoJpaRepository;
@@ -172,19 +179,26 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        // Obtener turno de caja (opcional)
-        TurnoCajaEntity turnoCaja = null;
-        if (dto.getTurnoCajaId() != null) {
-            turnoCaja = turnoCajaRepository.findById(dto.getTurnoCajaId()).orElse(null);
-        }
+        // De dónde sale la plata. Si es efectivo tiene que salir de una caja
+        // abierta y quedar en su cierre, aunque quien pague sea el administrador
+        // y no el cajero; si sale de un banco, no toca el arqueo.
+        OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
+                new OrigenFondosService.Solicitud(
+                        dto.getMetodoPago(),
+                        dto.getTurnoCajaId(),
+                        dto.getCuentaBancariaId(),
+                        dto.getCuentaContableId(),
+                        dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
+                        "abono a la cuenta por pagar"));
 
         // Crear abono
         AbonoPagarEntity abono = AbonoPagarEntity.builder()
                 .cuentaPagar(cuenta)
                 .usuario(usuario)
-                .turnoCaja(turnoCaja)
+                .turnoCaja(origen.turno())
+                .cuentaContableId(dto.getCuentaContableId())
                 .monto(dto.getMonto())
-                .metodoPago(dto.getMetodoPago())
+                .metodoPago(MediosPago.normalizar(dto.getMetodoPago()))
                 .referencia(dto.getReferencia())
                 .banco(dto.getBanco())
                 .cuentaBancariaId(dto.getCuentaBancariaId())
@@ -193,14 +207,18 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
 
         abono = abonoJpaRepository.save(abono);
 
-        // Si el abono sale de una cuenta bancaria, descontar su saldo real.
-        if (dto.getCuentaBancariaId() != null) {
-            cuentaBancariaRepository.findByIdAndEmpresaId(dto.getCuentaBancariaId(), empresaId)
-                    .ifPresent(cb -> {
-                        cb.setSaldoActual(cb.getSaldoActual().subtract(dto.getMonto()));
-                        cuentaBancariaRepository.save(cb);
-                    });
-        }
+        // Salida de la cuenta bancaria: baja el saldo y deja el movimiento en el
+        // extracto. Antes solo bajaba el saldo y el pago no aparecía por ningún
+        // lado en la cuenta.
+        tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                        dto.getCuentaBancariaId(), true, dto.getMonto(),
+                        "Abono a cuenta por pagar #" + cuenta.getId(),
+                        com.cloud_technological.aura_pos.utils.Terceros.nombreVisible(cuenta.getTercero()),
+                        dto.getReferencia() != null && !dto.getReferencia().isBlank()
+                                ? dto.getReferencia().trim()
+                                : "ABONO-CXP-" + cuenta.getId(),
+                        "ABONO_PAGAR"));
 
         // Actualizar cuenta
         cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
@@ -219,6 +237,16 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                         "ABONO_PAGAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toAbonoDto(abono);
+    }
+
+    /**
+     * Sucursal de cuya caja sale el pago, cuando el front no la manda: la de la
+     * compra que originó la cuenta. Null en cuentas creadas a mano.
+     */
+    private Integer sucursalDeLaCuenta(CuentaPagarEntity cuenta) {
+        return cuenta.getCompra() != null && cuenta.getCompra().getSucursal() != null
+                ? cuenta.getCompra().getSucursal().getId()
+                : null;
     }
 
     @Override

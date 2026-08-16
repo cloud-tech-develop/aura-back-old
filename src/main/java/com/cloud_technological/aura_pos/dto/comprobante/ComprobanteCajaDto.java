@@ -13,10 +13,13 @@ public class ComprobanteCajaDto {
     private BigDecimal monto;
     private String metodoPago;
     private String entregadoA;
-    private String origen;       // MANUAL | DEVOLUCION | ABONO_CXC | ABONO_CXP
+    private String origen;       // MANUAL | DEVOLUCION | ABONO_CXC | ABONO_CXP | COMPRA
     private Long origenId;
     private Long turnoCajaId;
     private Integer usuarioId;
     private String createdAt;
+    /** Conserva su número pero ya no soporta ningún pago (V143). */
+    private Boolean anulado;
+    private String motivoAnulacion;
     private Long totalRows;
 }

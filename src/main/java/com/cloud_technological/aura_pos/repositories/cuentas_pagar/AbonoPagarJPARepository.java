@@ -15,6 +15,9 @@ public interface AbonoPagarJPARepository extends JpaRepository<AbonoPagarEntity,
     List<AbonoPagarEntity> findByCuentaPagarId(Long cuentaPagarId);
     List<AbonoPagarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
-    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoPagarEntity a WHERE a.turnoCaja.id = :turnoCajaId")
+    // Solo el efectivo sale del cajón; un pago por banco no baja el arqueo.
+    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoPagarEntity a "
+            + "WHERE a.turnoCaja.id = :turnoCajaId "
+            + "AND (a.metodoPago IS NULL OR UPPER(a.metodoPago) LIKE '%EFECTIVO%')")
     BigDecimal sumMontoByTurnoCajaId(@Param("turnoCajaId") Long turnoCajaId);
 }

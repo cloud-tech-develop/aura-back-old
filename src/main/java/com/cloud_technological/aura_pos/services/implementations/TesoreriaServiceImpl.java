@@ -76,6 +76,39 @@ public class TesoreriaServiceImpl implements TesoreriaService {
 
     @Override
     @Transactional
+    public void registrarMovimientoDeDocumento(Integer empresaId, Integer usuarioId,
+            MovimientoDocumento mov) {
+        if (mov == null || mov.cuentaBancariaId() == null
+                || mov.monto() == null || mov.monto().signum() <= 0) {
+            return;
+        }
+        CuentaBancariaEntity cuenta = getCuenta(mov.cuentaBancariaId(), empresaId);
+        if (mov.egreso()) {
+            validarSaldoConSobregiro(cuenta, mov.monto());
+            cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(mov.monto()));
+        } else {
+            cuenta.setSaldoActual(cuenta.getSaldoActual().add(mov.monto()));
+        }
+        cuentaRepo.save(cuenta);
+
+        // contrapartidaCuentaId queda null a propósito: el documento de origen
+        // ya contabiliza la línea del banco en su propio asiento.
+        movRepo.save(TesoreriaMovimientoEntity.builder()
+                .empresaId(empresaId)
+                .cuentaBancariaId(cuenta.getId())
+                .tipo(mov.egreso() ? "EGRESO" : "RECAUDO")
+                .monto(mov.monto())
+                .concepto(mov.concepto())
+                .beneficiario(mov.beneficiario())
+                .referencia(mov.referencia())
+                .categoria(mov.categoria())
+                .fecha(java.time.LocalDate.now())
+                .usuarioId(usuarioId)
+                .build());
+    }
+
+    @Override
+    @Transactional
     public TesoreriaMovimientoDto crearRecaudo(Integer empresaId, Integer usuarioId, CreateMovimientoDto dto) {
         CuentaBancariaEntity cuenta = getCuenta(dto.getCuentaBancariaId(), empresaId);
         cuenta.setSaldoActual(cuenta.getSaldoActual().add(dto.getMonto()));
