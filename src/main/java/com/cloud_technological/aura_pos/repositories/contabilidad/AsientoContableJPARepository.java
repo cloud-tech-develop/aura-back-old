@@ -14,6 +14,17 @@ public interface AsientoContableJPARepository extends JpaRepository<AsientoConta
 
     Optional<AsientoContableEntity> findByTipoOrigenAndOrigenIdAndEmpresaId(String tipoOrigen, Long origenId, Integer empresaId);
 
+    /**
+     * El asiento que hoy representa al documento, ignorando los que quedaron
+     * ANULADOS por una edición anterior. Un documento puede tener varios
+     * asientos a lo largo de su vida, pero solo uno vigente.
+     */
+    Optional<AsientoContableEntity> findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+            String tipoOrigen, Long origenId, Integer empresaId, String estado);
+
+    boolean existsByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+            String tipoOrigen, Long origenId, Integer empresaId, String estado);
+
     Optional<AsientoContableEntity> findFirstByEmpresaIdAndTipoOrigen(Integer empresaId, String tipoOrigen);
 
     long countByEmpresaIdAndTipoOrigenNot(Integer empresaId, String tipoOrigen);

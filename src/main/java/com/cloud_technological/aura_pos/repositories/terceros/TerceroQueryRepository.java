@@ -35,9 +35,17 @@ public class TerceroQueryRepository {
                 t.id,
                 t.tipo_documento,
                 t.numero_documento,
-                COALESCE(NULLIF(t.razon_social, ''),
-                         TRIM(CONCAT_WS(' ', t.nombre1, t.nombre2, t.apellido1, t.apellido2)),
-                         CONCAT(t.nombres, ' ', t.apellidos)) AS nombre_completo,
+                COALESCE(
+                    NULLIF(TRIM(t.razon_social), ''),
+                    NULLIF(
+                        TRIM(CONCAT_WS(' ', t.nombre1, t.nombre2, t.apellido1, t.apellido2)),
+                        ''
+                    ),
+                    NULLIF(
+                        TRIM(CONCAT_WS(' ', t.nombres, t.apellidos)),
+                        ''
+                    )
+                ) AS nombre_completo,
                 t.telefono,
                 t.email,
                 t.es_cliente,
@@ -46,16 +54,20 @@ public class TerceroQueryRepository {
                 t.es_banco,
                 t.activo
             FROM tercero t
-            JOIN tercero_rol tr ON tr.tercero_id = t.id AND tr.rol = :rol
+            JOIN tercero_rol tr
+                ON tr.tercero_id = t.id
+                AND tr.rol = :rol
             WHERE t.empresa_id = :empresaId
             AND t.activo = true
             AND t.deleted_at IS NULL
-            AND (LOWER(t.numero_documento) LIKE :search
+            AND (
+                LOWER(t.numero_documento) LIKE :search
                 OR LOWER(t.razon_social) LIKE :search
                 OR LOWER(t.nombres) LIKE :search
-                OR LOWER(t.apellido1) LIKE :search)
+                OR LOWER(t.apellido1) LIKE :search
+            )
             ORDER BY nombre_completo ASC
-            LIMIT 50
+            LIMIT 50;
         """;
         MapSqlParameterSource params = new MapSqlParameterSource();
         params.addValue("rol", rol);

@@ -111,7 +111,15 @@
       "Bash(mv src/main/resources/db/migration/V100__composicion_receta.sql src/main/resources/db/migration/V138__composicion_receta.sql)",
       "Bash(rm -f target/classes/db/migration/V100__composicion_receta.sql)",
       "Bash(tail *)",
-      "PowerShell($p = Get-Command psql -ErrorAction SilentlyContinue; if \\($p\\) { $p.Source } else { \"psql no encontrado\" })"
+      "PowerShell($p = Get-Command psql -ErrorAction SilentlyContinue; if \\($p\\) { $p.Source } else { \"psql no encontrado\" })",
+      "Bash(php -l database/migrations/2026_07_03_000140_obsequio.php)",
+      "Bash(./mvnw -o test -Dtest=ObsequioGeneradorTest -DfailIfNoTests=false)",
+      "Bash(mkdir -p obsequios/index obsequios/form obsequios/detalles)",
+      "Bash(cp mermas/index/index-mermas.component.scss obsequios/index/index-obsequios.component.scss)",
+      "Bash(cp mermas/form/form-merma.component.scss obsequios/form/form-obsequio.component.scss)",
+      "Bash(cp mermas/detalles/detalle-merma.component.scss obsequios/detalles/detalle-obsequio.component.scss)",
+      "Bash(php -l database/migrations/2026_07_03_000141_obsequio_puc_padre.php)",
+      "PowerShell(git *)"
     ]
   }
 }

@@ -33,7 +33,10 @@ DO $$
 DECLARE
     huerfanos INT;
 BEGIN
-    SELECT COUNT(*) INTO huerfanos FROM empleados WHERE tercero_id IS NULL;
+    SELECT COUNT(*) INTO huerfanos
+    FROM empleados
+    WHERE tercero_id IS NULL;
+
     IF huerfanos > 0 THEN
         RAISE EXCEPTION
             'V100 abortada: % empleados sin tercero_id. Completar la reconciliación de V99 antes de aplicar. Consulta: SELECT id, nombres, apellidos, numero_documento FROM empleados WHERE tercero_id IS NULL;',
@@ -45,11 +48,20 @@ ALTER TABLE empleados
     ALTER COLUMN tercero_id SET NOT NULL;
 
 -- Una persona = un registro de empleado por empresa.
--- Si un cliente necesita multi-vínculo simultáneo, eso se modela en
--- contrato_laboral (V102), NO duplicando el empleado.
-ALTER TABLE empleados
-    ADD CONSTRAINT uq_empleado_tercero UNIQUE (empresa_id, tercero_id);
-
+-- Crear la restricción solamente si todavía no existe.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uq_empleado_tercero'
+          AND conrelid = 'empleados'::regclass
+    ) THEN
+        ALTER TABLE empleados
+            ADD CONSTRAINT uq_empleado_tercero
+            UNIQUE (empresa_id, tercero_id);
+    END IF;
+END $$;
 
 -- ── Columnas deprecadas (NO borrar todavía) ─────────────────────────────────
 -- `empleados.nombres`, `apellidos`, `tipo_documento`, `numero_documento`,

@@ -266,6 +266,35 @@ public class CotizacionServiceImpl implements CotizacionService {
 
     @Override
     @Transactional
+    public CotizacionDto reactivar(Long id, Integer empresaId, Long usuarioId) {
+        CotizacionEntity entity = cotizacionJPARepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cotización no encontrada"));
+
+        if (!"VENCIDA".equals(entity.getEstado())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Solo se reactivan cotizaciones vencidas; esta está " + entity.getEstado());
+        }
+        if (entity.getVecesReactivada() != null && entity.getVecesReactivada() >= 1) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Esta cotización ya se reactivó una vez. Cree una nueva para revisar los precios");
+        }
+
+        // Los precios y los detalles no se tocan: el cliente vuelve por lo que
+        // se le cotizó. Solo se corre la vigencia desde hoy.
+        int dias = entity.getDiasVigencia() != null ? entity.getDiasVigencia() : 3;
+        entity.setEstado("PENDIENTE");
+        entity.setFechaVencimiento(LocalDate.now().plusDays(dias));
+        entity.setVecesReactivada(1);
+        entity.setReactivadaAt(LocalDateTime.now());
+        entity.setReactivadaPor(usuarioId != null ? usuarioId.intValue() : null);
+        cotizacionJPARepository.save(entity);
+
+        CotizacionDto dto = cotizacionMapper.toDto(entity);
+        dto.setDetalles(cotizacionRepository.obtenerDetalles(entity.getId()));
+        return dto;
+    }
+
+    @Override
     public void vencerCotizacionesExpiradas() {
         List<CotizacionEntity> expiradas = cotizacionJPARepository.findAll().stream()
                 .filter(c -> "PENDIENTE".equals(c.getEstado())

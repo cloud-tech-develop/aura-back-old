@@ -187,6 +187,13 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             { "5160","Depreciaciones",                  "GASTO",   "DEBITO",  3, "51" },
             { "5195","Otros Gastos",                    "GASTO",   "DEBITO",  3, "51" },
             { "5199","Provisiones y Deterioros",        "GASTO",   "DEBITO",  3, "51" },
+            // Obsequios: el costo de lo regalado es gasto de VENTAS (52), no
+            // administrativo, y el IVA que se asume por el retiro va aparte.
+            { "52", "Gastos Operacionales de Ventas",   "GASTO",   "DEBITO",  2, "5" },
+            { "5235","Servicios",                       "GASTO",   "DEBITO",  3, "52" },
+            { "523550","Publicidad Propaganda y Promocion","GASTO","DEBITO",  4, "5235" },
+            { "5295","Diversos",                        "GASTO",   "DEBITO",  3, "52" },
+            { "529505","IVA Asumido en Retiro de Inventario","GASTO","DEBITO",4, "5295" },
             { "53", "Gastos No Operacionales",          "GASTO",   "DEBITO",  2, "5" },
             { "5305","Financieros",                     "GASTO",   "DEBITO",  3, "53" },
             // E9: cargos del banco que nacen del extracto (conciliación)

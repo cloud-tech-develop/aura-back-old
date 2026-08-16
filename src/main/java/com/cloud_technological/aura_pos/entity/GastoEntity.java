@@ -58,10 +58,32 @@ public class GastoEntity {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    // ── Origen de fondos (V142) ─────────────────────────────────
+    /** CONTADO paga de una vez; CREDITO deja una cuenta por pagar. */
+    @Column(name = "forma_pago", nullable = false, length = 20)
+    private String formaPago = "CONTADO";
+
+    /** EFECTIVO exige caja abierta; el resto no toca el arqueo. */
+    @Column(name = "metodo_pago", nullable = false, length = 30)
+    private String metodoPago = "EFECTIVO";
+
+    /** Cuenta bancaria DE DONDE sale el dinero. */
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
+    /**
+     * Cuenta contable de la que sale la plata: el CRÉDITO del asiento. No
+     * confundir con {@link #cuentaContableId}, que es el DÉBITO — a qué gasto
+     * se imputa. Invertirlas da vuelta el asiento entero.
+     */
+    @Column(name = "cuenta_pago_id")
+    private Long cuentaPagoId;
+
     // ── Campos tributarios (V54) ────────────────────────────────
     @Column(name = "tercero_id")
     private Long terceroId;
 
+    /** Cuenta de DÉBITO: a qué cuenta de gasto se imputa. */
     @Column(name = "cuenta_contable_id")
     private Long cuentaContableId;
 

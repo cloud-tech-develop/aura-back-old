@@ -16,7 +16,16 @@ public class AbonoCobrarDto {
     private Long usuarioId;
     private String usuarioNombre;
     private Long turnoCajaId;
-    
+    /**
+     * Sucursal cuya caja recibe el efectivo. Solo entra, no se persiste: sirve
+     * para ubicar el turno abierto cuando quien registra el abono no es el
+     * cajero (el administrador no tiene turno propio). Si no viene, se deduce
+     * de la venta que originó la cuenta.
+     */
+    private Integer sucursalId;
+    /** Cuenta contable donde entra el recaudo, si no va a caja ni a un banco. */
+    private Long cuentaContableId;
+
     @NotNull(message = "El monto es requerido")
     private BigDecimal monto;
 

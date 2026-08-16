@@ -30,8 +30,19 @@ public class CreateGastoDto {
 
     @NotNull(message = "Debe indicar si el gasto es deducible")
     private Boolean deducible;
+    // Origen de fondos (V142): de dónde sale la plata.
+    private String formaPago  = "CONTADO";   // CONTADO | CREDITO
+    private String metodoPago = "EFECTIVO";
+    /** Cuenta bancaria de la que sale el pago. */
+    private Long cuentaBancariaId;
+    /** Cuenta contable de la que sale el pago (crédito del asiento). */
+    private Long cuentaPagoId;
+    /** Vencimiento de la cuenta por pagar cuando el gasto es a crédito. */
+    private java.time.LocalDateTime fechaVencimiento;
+
     // Campos tributarios (V54)
     private Long terceroId;
+    /** Cuenta de gasto a la que se imputa (débito del asiento). */
     private Long cuentaContableId;
     private Long centroCostoId;
     private Long periodoContableId;

@@ -61,6 +61,10 @@ public class AbonoPagarEntity {
     @Column(name = "cuenta_bancaria_id")
     private Long cuentaBancariaId;
 
+    /** Cuenta contable de la que salió el pago, elegida a mano (V142). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 

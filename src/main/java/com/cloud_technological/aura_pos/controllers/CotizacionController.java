@@ -66,6 +66,20 @@ public class CotizacionController {
                 HttpStatus.CREATED);
     }
 
+    /**
+     * Revive una cotización vencida conservando sus precios, para no tener que
+     * pedirle a nadie que la habilite cuando el cliente vuelve tarde.
+     */
+    @PatchMapping("/{id}/reactivar")
+    public ResponseEntity<ApiResponse<CotizacionDto>> reactivar(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        CotizacionDto result = cotizacionService.reactivar(id, empresaId, usuarioId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Cotización reactivada", false, result),
+                HttpStatus.OK);
+    }
+
     @PatchMapping("/{id}/anular")
     public ResponseEntity<ApiResponse<Boolean>> anular(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();

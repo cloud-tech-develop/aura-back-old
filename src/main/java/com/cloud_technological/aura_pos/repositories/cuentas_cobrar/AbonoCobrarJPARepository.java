@@ -15,6 +15,11 @@ public interface AbonoCobrarJPARepository extends JpaRepository<AbonoCobrarEntit
     List<AbonoCobrarEntity> findByCuentaCobrarId(Long cuentaCobrarId);
     List<AbonoCobrarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
-    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoCobrarEntity a WHERE a.turnoCaja.id = :turnoCajaId")
+    // Solo el efectivo cuenta para el arqueo: un abono con datáfono o
+    // transferencia queda atado al turno para trazabilidad, pero si se sumara
+    // aquí el cajero cerraría con un faltante que nunca existió.
+    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoCobrarEntity a "
+            + "WHERE a.turnoCaja.id = :turnoCajaId "
+            + "AND (a.metodoPago IS NULL OR UPPER(a.metodoPago) LIKE '%EFECTIVO%')")
     BigDecimal sumMontoByTurnoCajaId(@Param("turnoCajaId") Long turnoCajaId);
 }

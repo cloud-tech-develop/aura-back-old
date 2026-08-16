@@ -23,6 +23,12 @@ public class GastoDto {
     private Boolean deducible;
     private String estado;
     private LocalDateTime createdAt;
+    // Origen de fondos (V142): de dónde salió la plata.
+    private String formaPago;
+    private String metodoPago;
+    private Long cuentaBancariaId;
+    /** Cuenta contable acreditada (crédito); distinta de cuentaContableId. */
+    private Long cuentaPagoId;
     // Campos tributarios (V54)
     private Long terceroId;
     private String terceroNombre;

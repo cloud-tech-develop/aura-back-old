@@ -54,6 +54,10 @@ public class AbonoCobrarEntity {
     @Column(length = 255)
     private String referencia;
 
+    /** Cuenta contable donde entró el recaudo, elegida a mano (V142). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 
