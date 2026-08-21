@@ -37,6 +37,7 @@ public class GastoServiceImpl implements GastoService {
     @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Autowired private com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository terceroJPARepository;
     @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaJPARepository;
+    @Autowired private com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva;
     @Autowired private GastoJPARepository gastoJPARepository;
     @Autowired private GastoQueryRepository gastoQueryRepository;
     @Autowired private EmpresaJPARepository empresaJPARepository;
@@ -85,6 +86,7 @@ public class GastoServiceImpl implements GastoService {
         // caja contable en negativo con el banco intacto, y como nunca se
         // registraba movimiento_caja tampoco aparecía en el cierre del cajero.
         boolean esCredito = MediosPago.CREDITO.equalsIgnoreCase(dto.getFormaPago());
+        boolean salidaOtroDia = Boolean.TRUE.equals(dto.getSalidaCajaOtroDia());
         OrigenFondosService.OrigenFondos origen = null;
         if (!esCredito) {
             origen = origenFondosService.resolver(empresaId,
@@ -94,8 +96,24 @@ public class GastoServiceImpl implements GastoService {
                             dto.getCuentaBancariaId(),
                             dto.getCuentaPagoId(),
                             dto.getSucursalId(),
-                            "gasto"));
+                            "gasto",
+                            salidaOtroDia));
             gasto.setCuentaPagoId(origen.cuentaContableId());
+            gasto.setSalidaCajaOtroDia(salidaOtroDia);
+        }
+
+        // Freno de documentos viejos: solo cuando la plata sale de la caja, que
+        // es la única vía que le descuadra el arqueo a otra persona.
+        Integer autorizadoPor = controlFechaRetroactiva.validar(
+                empresaId,
+                dto.getFecha(),
+                origen != null && origen.generaMovimientoCaja(),
+                dto.getMotivoRetroactivo(),
+                usuarioId,
+                "gasto");
+        if (autorizadoPor != null) {
+            gasto.setMotivoRetroactivo(dto.getMotivoRetroactivo().trim());
+            gasto.setAutorizadoPor(autorizadoPor);
         }
 
         gasto = gastoJPARepository.save(gasto);
@@ -132,6 +150,15 @@ public class GastoServiceImpl implements GastoService {
                 .concepto("Gasto #" + gasto.getId()
                         + (gasto.getCategoria() != null ? " — " + gasto.getCategoria() : ""))
                 .monto(gasto.getMonto())
+                // La plata sale hoy aunque el gasto sea de otra fecha: el turno
+                // que se afecta es el de hoy, y la fecha del documento se guarda
+                // aparte para que el cierre muestre el desfase en vez de
+                // esconderlo dentro del total.
+                .fecha(java.time.LocalDate.now())
+                .fechaDocumento(gasto.getFecha())
+                .origenTipo(MovimientoCajaEntity.ORIGEN_GASTO)
+                .origenId(gasto.getId())
+                .origenInferido(origen.turnoInferido())
                 .metodoPago(gasto.getMetodoPago())
                 .build();
         movimientoCajaJPARepository.save(egreso);
@@ -295,6 +322,7 @@ public class GastoServiceImpl implements GastoService {
         dto.setMetodoPago(g.getMetodoPago());
         dto.setCuentaBancariaId(g.getCuentaBancariaId());
         dto.setCuentaPagoId(g.getCuentaPagoId());
+        dto.setSalidaCajaOtroDia(g.getSalidaCajaOtroDia());
         // Campos tributarios
         dto.setTerceroId(g.getTerceroId());
         dto.setCuentaContableId(g.getCuentaContableId());

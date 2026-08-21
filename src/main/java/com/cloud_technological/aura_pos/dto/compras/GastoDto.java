@@ -29,6 +29,15 @@ public class GastoDto {
     private Long cuentaBancariaId;
     /** Cuenta contable acreditada (crédito); distinta de cuentaContableId. */
     private Long cuentaPagoId;
+
+    /**
+     * El documento se registró declarando que la plata ya había salido del
+     * cajón otro día. Necesario al editar: sin esto el formulario lo
+     * reconstruiría como un pago de caja normal y generaría un movimiento que
+     * no debe existir.
+     */
+    private Boolean salidaCajaOtroDia;
+
     // Campos tributarios (V54)
     private Long terceroId;
     private String terceroNombre;

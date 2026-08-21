@@ -44,6 +44,13 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
     }
 
     @Override
+    public List<PlanCuentaDto> listarMediosPago(Integer empresaId) {
+        return repo
+                .findByEmpresaIdAndEsMedioPagoTrueAndActivaTrueAndAuxiliarTrueOrderByCodigoAsc(empresaId)
+                .stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    @Override
     @Transactional
     public PlanCuentaDto crear(Integer empresaId, CreatePlanCuentaDto dto) {
         if (repo.existsByEmpresaIdAndCodigo(empresaId, dto.getCodigo().trim())) {
@@ -59,6 +66,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
                 .nivel(dto.getNivel())
                 .padreId(dto.getPadreId())
                 .auxiliar(dto.getAuxiliar() != null && dto.getAuxiliar())
+                .esMedioPago(dto.getEsMedioPago() != null && dto.getEsMedioPago())
                 .codigoDian(dto.getCodigoDian())
                 .activa(true)
                 .build();
@@ -76,6 +84,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         e.setNivel(dto.getNivel());
         e.setPadreId(dto.getPadreId());
         if (dto.getAuxiliar() != null) e.setAuxiliar(dto.getAuxiliar());
+        if (dto.getEsMedioPago() != null) e.setEsMedioPago(dto.getEsMedioPago());
         e.setCodigoDian(dto.getCodigoDian());
         return toDto(repo.save(e));
     }
@@ -127,7 +136,12 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             // ── Clase 1 · Activo ──────────────────────────────────────────────
             { "11", "Disponible",                       "ACTIVO",  "DEBITO",  2, "1" },
             { "1105", "Caja",                           "ACTIVO",  "DEBITO",  3, "11" },
+            // La caja menor nace como subcuenta de Caja: es el fondo fijo que
+            // maneja el administrador para gastos menores. Al ser cuenta propia,
+            // sus pagos no pasan por el arqueo del cajero del punto de venta.
+            { "110505", "Caja Menor",                   "ACTIVO",  "DEBITO",  4, "1105" },
             { "1110", "Bancos",                         "ACTIVO",  "DEBITO",  3, "11" },
+            { "1120", "Cuentas de Ahorro",              "ACTIVO",  "DEBITO",  3, "11" },
             { "13", "Deudores",                         "ACTIVO",  "DEBITO",  2, "1" },
             { "1305", "Clientes",                       "ACTIVO",  "DEBITO",  3, "13" },
             { "1355", "Anticipo de Impuestos y Retenciones","ACTIVO","DEBITO",3, "13" },
@@ -238,10 +252,20 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
                     .padreId(padreId)
                     .activa(true)
                     .auxiliar(((Integer) g[4]) >= 3)
+                    .esMedioPago(esDisponible(codigo))
                     .build();
             PlanCuentaEntity saved = repo.save(e);
             idsByCodigo.put(codigo, saved.getId());
         }
+    }
+
+    /**
+     * El disponible del PUC con el que efectivamente se paga: caja (incluida la
+     * caja menor), bancos y cuentas de ahorro. Se deja fuera 1115 (remesas en
+     * tránsito) a propósito: es una cuenta puente de recaudo, no un medio de pago.
+     */
+    private static boolean esDisponible(String codigo) {
+        return codigo.startsWith("1105") || codigo.startsWith("1110") || codigo.startsWith("1120");
     }
 
     private PlanCuentaDto toDto(PlanCuentaEntity e) {
@@ -255,6 +279,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         dto.setPadreId(e.getPadreId());
         dto.setActiva(e.getActiva());
         dto.setAuxiliar(e.getAuxiliar());
+        dto.setEsMedioPago(e.getEsMedioPago());
         dto.setCodigoDian(e.getCodigoDian());
         return dto;
     }

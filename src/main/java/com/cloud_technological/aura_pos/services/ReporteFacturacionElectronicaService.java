@@ -290,12 +290,10 @@ public class ReporteFacturacionElectronicaService {
     }
 
     private void autoAjustar(XSSFSheet ws, int cols) {
-        for (int i = 0; i < cols; i++) {
-            ws.autoSizeColumn(i);
-            // autoSizeColumn se dispara con el CUFE/CUDE (96 caracteres): tope el ancho.
-            int ancho = Math.min(ws.getColumnWidth(i) + 512, 12_000);
-            ws.setColumnWidth(i, ancho);
-        }
+        // Se mide el texto, no la fuente: autoSizeColumn usa AWT y en el
+        // servidor de producción no están las librerías nativas de fuentes,
+        // así que el reporte moría con UnsatisfiedLinkError sobre libfreetype.
+        com.cloud_technological.aura_pos.utils.ExcelAnchoColumnas.ajustar(ws, cols);
     }
 
     private void texto(Row r, int col, String valor, XSSFCellStyle estilo) {

@@ -24,7 +24,15 @@ public interface OrigenFondosService {
         /** Cuenta bancaria de la empresa: afecta su cuenta contable y su saldo. */
         BANCO,
         /** Cuenta contable directa o la parametrizada en la forma de pago. */
-        CUENTA_CONTABLE
+        CUENTA_CONTABLE,
+        /**
+         * La plata ya salió del cajón otro día y ese arqueo ya se cerró.
+         *
+         * <p>Contablemente acredita CAJA, igual que un pago en efectivo, pero
+         * NO genera movimiento de caja: la caja de hoy no lo vio salir, y la de
+         * aquel día ya cuadró contra el conteo físico, que sí lo contemplaba.
+         */
+        CAJA_OTRO_DIA
     }
 
     /**
@@ -42,14 +50,34 @@ public interface OrigenFondosService {
             Long cuentaBancariaId,
             Long cuentaContableId,
             Integer sucursalId,
-            String documento) {
+            String documento,
+            boolean salidaDeCajaOtroDia) {
+
+        /** El caso normal: la vía se deduce de los identificadores. */
+        public Solicitud(String metodoPago, Long turnoCajaId, Long cuentaBancariaId,
+                Long cuentaContableId, Integer sucursalId, String documento) {
+            this(metodoPago, turnoCajaId, cuentaBancariaId, cuentaContableId, sucursalId,
+                    documento, false);
+        }
     }
 
     /**
-     * @param turno turno donde cae el movimiento; puede venir informado aunque
-     *              el tipo no sea CAJA (trazabilidad de quién lo registró).
+     * @param turno         turno donde cae el movimiento; puede venir informado
+     *                      aunque el tipo no sea CAJA (trazabilidad de quién lo
+     *                      registró).
+     * @param turnoInferido true si el turno no lo eligió nadie sino que lo
+     *                      dedujo el sistema por ser el único abierto en la
+     *                      sucursal. El movimiento queda marcado para poder
+     *                      auditar qué cayó en una caja sin que una persona lo
+     *                      decidiera.
      */
-    record OrigenFondos(Tipo tipo, Long cuentaContableId, TurnoCajaEntity turno) {
+    record OrigenFondos(Tipo tipo, Long cuentaContableId, TurnoCajaEntity turno,
+            boolean turnoInferido) {
+
+        /** El origen lo declaró el documento: es el caso normal. */
+        public OrigenFondos(Tipo tipo, Long cuentaContableId, TurnoCajaEntity turno) {
+            this(tipo, cuentaContableId, turno, false);
+        }
 
         /** Solo el efectivo mueve el arqueo; tarjeta y banco no. */
         public boolean generaMovimientoCaja() {

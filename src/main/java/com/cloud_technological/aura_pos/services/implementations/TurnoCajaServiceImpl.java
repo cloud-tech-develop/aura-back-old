@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -58,6 +59,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     private final MovimientoCajaJPARepository movimientoCajaRepository;
     private final ComprobanteCajaService comprobanteCajaService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva;
+    private final com.cloud_technological.aura_pos.contabilidad.application.port.PeriodoContablePort periodoContable;
 
     @Autowired
     public TurnoCajaServiceImpl(TurnoCajaQueryRepository turnoRepository,
@@ -71,7 +74,9 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
             CuentaPagarJPARepository cuentaPagarRepository,
             MovimientoCajaJPARepository movimientoCajaRepository,
             ComprobanteCajaService comprobanteCajaService,
-            org.springframework.context.ApplicationEventPublisher eventPublisher) {
+            org.springframework.context.ApplicationEventPublisher eventPublisher,
+            com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva,
+            com.cloud_technological.aura_pos.contabilidad.application.port.PeriodoContablePort periodoContable) {
         this.turnoRepository = turnoRepository;
         this.turnoJPARepository = turnoJPARepository;
         this.cajaJPARepository = cajaJPARepository;
@@ -84,6 +89,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         this.movimientoCajaRepository = movimientoCajaRepository;
         this.comprobanteCajaService = comprobanteCajaService;
         this.eventPublisher = eventPublisher;
+        this.controlFechaRetroactiva = controlFechaRetroactiva;
+        this.periodoContable = periodoContable;
     }
 
     @Override
@@ -102,6 +109,18 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     public TurnoCajaDto obtenerTurnoActivo(Long usuarioId) {
         return turnoRepository.obtenerTurnoActivo(usuarioId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "No hay turno activo"));
+    }
+
+    @Override
+    public List<TurnoCajaDto> listarAbiertos(Integer empresaId, Integer sucursalId) {
+        return turnoJPARepository
+                .findByCajaSucursalEmpresaIdAndEstadoOrderByFechaAperturaAsc(empresaId, "ABIERTA")
+                .stream()
+                .filter(t -> sucursalId == null
+                        || (t.getCaja() != null && t.getCaja().getSucursal() != null
+                                && sucursalId.equals(t.getCaja().getSucursal().getId())))
+                .map(turnoMapper::toDto)
+                .toList();
     }
 
     @Override
@@ -291,6 +310,11 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 .tipo(dto.getTipo())
                 .concepto(dto.getConcepto())
                 .monto(dto.getMonto())
+                // Movimiento que el cajero registra a mano sobre su propio
+                // turno abierto: la fecha del dinero y la del documento son la
+                // misma, así que fechaDocumento se queda en null.
+                .fecha(java.time.LocalDate.now())
+                .origenTipo(MovimientoCajaEntity.ORIGEN_MANUAL)
                 .conceptoCajaId(dto.getConceptoCajaId())
                 .metodoPago(dto.getMetodoPago())
                 .build();
@@ -321,7 +345,11 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         dto.setTipo("INGRESO");
         dto.setConcepto(e.getReferencia());
         dto.setMonto(e.getMonto());
-        dto.setFecha(e.getFechaPago() != null ? e.getFechaPago().toString() : null);
+        // `fecha` es el día en toda la lista; el instante va en registradoEn.
+        // Mezclar formatos rompía el orden del detalle, que compara texto.
+        dto.setFecha(e.getFechaPago() != null ? e.getFechaPago().toLocalDate().toString() : null);
+        dto.setRegistradoEn(e.getFechaPago() != null ? e.getFechaPago().toString() : null);
+        dto.setEsDeOtraFecha(Boolean.FALSE);
         dto.setUsuarioNombre(e.getUsuario() != null ? e.getUsuario().getUsername() : null);
         if (e.getCuentaCobrar() != null) {
             dto.setCuentaNumero(e.getCuentaCobrar().getNumeroCuenta());
@@ -336,7 +364,9 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         dto.setTipo("EGRESO");
         dto.setConcepto(e.getReferencia());
         dto.setMonto(e.getMonto());
-        dto.setFecha(e.getFechaPago() != null ? e.getFechaPago().toString() : null);
+        dto.setFecha(e.getFechaPago() != null ? e.getFechaPago().toLocalDate().toString() : null);
+        dto.setRegistradoEn(e.getFechaPago() != null ? e.getFechaPago().toString() : null);
+        dto.setEsDeOtraFecha(Boolean.FALSE);
         dto.setUsuarioNombre(e.getUsuario() != null ? e.getUsuario().getUsername() : null);
         if (e.getCuentaPagar() != null) {
             dto.setCuentaNumero(e.getCuentaPagar().getNumeroCuenta());
@@ -345,13 +375,133 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         return dto;
     }
 
+    @Override
+    @Transactional
+    public MovimientoCajaDto registrarAjusteRetroactivo(Long turnoId,
+            com.cloud_technological.aura_pos.dto.caja.CreateAjusteRetroactivoDto dto,
+            Integer empresaId, Long usuarioId) {
+
+        TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(turnoId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Turno no encontrado"));
+
+        // Sobre un turno abierto no hay nada que corregir: se registra el
+        // movimiento normal y el cierre lo recoge solo.
+        if (!"CERRADA".equals(turno.getEstado())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El turno todavía está abierto. Registre el movimiento normalmente; "
+                            + "el ajuste retroactivo es solo para arqueos ya cerrados");
+        }
+        if (!"INGRESO".equals(dto.getTipo()) && !"EGRESO".equals(dto.getTipo())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El ajuste debe ser INGRESO (sobró plata) o EGRESO (salió y no se registró)");
+        }
+        controlFechaRetroactiva.exigirRolAutorizador(empresaId, "corregir un arqueo cerrado");
+
+        // La fecha manda sobre el período contable. Si el período de esa fecha
+        // ya cerró, el asiento no puede nacer ahí: se rechaza aquí, con nombres
+        // que el usuario entiende, en vez de fallar después en el posting.
+        LocalDate fechaAjuste = dto.getFechaDocumento() != null
+                ? dto.getFechaDocumento()
+                : (turno.getFechaCierre() != null
+                        ? turno.getFechaCierre().toLocalDate() : LocalDate.now());
+        try {
+            periodoContable.abiertoPara(empresaId, fechaAjuste);
+        } catch (RuntimeException ex) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El período contable de " + fechaAjuste + " está cerrado, así que el ajuste "
+                            + "no puede registrarse en esa fecha. Use una fecha dentro de un "
+                            + "período abierto");
+        }
+
+        UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
+                .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Usuario no encontrado"));
+
+        // El cierre original se conserva: al primer ajuste se copia, y de ahí en
+        // adelante `diferencia` ya no se vuelve a tocar.
+        if (turno.getDiferenciaOriginal() == null) {
+            turno.setDiferenciaOriginal(turno.getDiferencia());
+        }
+
+        MovimientoCajaEntity ajuste = MovimientoCajaEntity.builder()
+                .turnoCaja(turno)
+                .usuario(usuario)
+                .tipo(dto.getTipo())
+                .concepto(dto.getConcepto() != null && !dto.getConcepto().isBlank()
+                        ? dto.getConcepto().trim()
+                        : "Ajuste retroactivo del cierre")
+                .monto(dto.getMonto())
+                .fecha(fechaAjuste)
+                .fechaDocumento(fechaAjuste)
+                .origenTipo(MovimientoCajaEntity.ORIGEN_MANUAL)
+                .esAjusteRetroactivo(Boolean.TRUE)
+                .motivoAjuste(dto.getMotivo().trim())
+                .autorizadoPor(usuarioId.intValue())
+                .conceptoCajaId(dto.getConceptoCajaId())
+                .metodoPago("EFECTIVO")
+                .build();
+        MovimientoCajaEntity saved = movimientoCajaRepository.save(ajuste);
+
+        turno.setDiferenciaAjustada(calcularDiferenciaAjustada(turno));
+        turnoJPARepository.save(turno);
+
+        // Asiento del ajuste con SU fecha, no la de hoy.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.MovimientoCajaContabilizableEvent(
+                        saved.getId(), empresaId, usuarioId.intValue()));
+
+        return movimientoCajaToDto(saved);
+    }
+
+    /**
+     * El cierre original más todo lo que los ajustes movieron después.
+     *
+     * <p>Un EGRESO que no se había registrado hace el faltante mayor (la plata
+     * ya no estaba); un INGRESO lo reduce.
+     */
+    private BigDecimal calcularDiferenciaAjustada(TurnoCajaEntity turno) {
+        BigDecimal base = turno.getDiferenciaOriginal() != null
+                ? turno.getDiferenciaOriginal()
+                : (turno.getDiferencia() != null ? turno.getDiferencia() : BigDecimal.ZERO);
+
+        for (MovimientoCajaEntity m : movimientoCajaRepository
+                .findByTurnoCajaIdOrderByCreatedAtAsc(turno.getId())) {
+            if (!Boolean.TRUE.equals(m.getEsAjusteRetroactivo()) || m.getMonto() == null) {
+                continue;
+            }
+            base = "EGRESO".equals(m.getTipo())
+                    ? base.add(m.getMonto())
+                    : base.subtract(m.getMonto());
+        }
+        return base;
+    }
+
+    private static BigDecimal sumarPorTipo(List<MovimientoCajaDto> movimientos, String tipo) {
+        return movimientos.stream()
+                .filter(m -> tipo.equals(m.getTipo()))
+                .map(MovimientoCajaDto::getMonto)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private MovimientoCajaDto movimientoCajaToDto(MovimientoCajaEntity e) {
         MovimientoCajaDto dto = new MovimientoCajaDto();
         dto.setId(e.getId());
         dto.setTipo(e.getTipo());
         dto.setConcepto(e.getConcepto());
         dto.setMonto(e.getMonto());
-        dto.setFecha(e.getCreatedAt() != null ? e.getCreatedAt().toString() : null);
+        // `fecha` es el día del dinero, no el instante de digitación: antes se
+        // devolvía created_at y el desfase con el documento quedaba invisible.
+        dto.setFecha(e.getFecha() != null ? e.getFecha().toString() : null);
+        dto.setRegistradoEn(e.getCreatedAt() != null ? e.getCreatedAt().toString() : null);
+        dto.setFechaDocumento(e.getFechaDocumento() != null
+                ? e.getFechaDocumento().toString() : null);
+        dto.setOrigenTipo(e.getOrigenTipo());
+        dto.setOrigenId(e.getOrigenId());
+        dto.setEsDeOtraFecha(e.esDeOtraFecha());
+        dto.setEsAjusteRetroactivo(e.getEsAjusteRetroactivo());
+        dto.setMotivoAjuste(e.getMotivoAjuste());
+        dto.setAutorizadoPor(e.getAutorizadoPor());
         dto.setUsuarioNombre(e.getUsuario() != null ? e.getUsuario().getUsername() : null);
         return dto;
     }
@@ -415,7 +565,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         movimientoCajaRepository.findByTurnoCajaIdOrderByCreatedAtAsc(turnoId)
                 .stream().map(this::movimientoCajaToDto).forEach(movimientos::add);
         movimientos.sort(Comparator.comparing(
-                m -> m.getFecha() != null ? m.getFecha() : "",
+                m -> m.getRegistradoEn() != null ? m.getRegistradoEn()
+                        : (m.getFecha() != null ? m.getFecha() : ""),
                 Comparator.naturalOrder()));
 
         BigDecimal totalIngresosAbonos = abonoCobrarRepository.sumMontoByTurnoCajaId(turnoId);
@@ -472,6 +623,27 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         resumen.setMovimientos(movimientos);
         resumen.setTotalIngresos(ingresosBD);
         resumen.setTotalEgresos(egresosBD);
+
+        // Lo que el cajero no reconoce, separado: documentos de otras fechas
+        // pagados desde esta caja. Siguen contando en el efectivo esperado —
+        // la plata sí salió del cajón — pero mostrados aparte deja de ser un
+        // faltante inexplicable y pasa a ser una cifra con nombre.
+        List<MovimientoCajaDto> otrasFechas = movimientos.stream()
+                .filter(m -> Boolean.TRUE.equals(m.getEsDeOtraFecha()))
+                .toList();
+        resumen.setMovimientosDeOtrasFechas(otrasFechas);
+        resumen.setTotalIngresosOtrasFechas(sumarPorTipo(otrasFechas, "INGRESO"));
+        resumen.setTotalEgresosOtrasFechas(sumarPorTipo(otrasFechas, "EGRESO"));
+
+        // Correcciones hechas después del cierre. El original no se toca: se
+        // muestran las tres cifras para que se vea qué firmó el cajero ese día
+        // y qué se corrigió encima.
+        resumen.setAjustesRetroactivos(movimientos.stream()
+                .filter(m -> Boolean.TRUE.equals(m.getEsAjusteRetroactivo()))
+                .toList());
+        resumen.setDiferenciaOriginal(entity.getDiferenciaOriginal() != null
+                ? entity.getDiferenciaOriginal() : entity.getDiferencia());
+        resumen.setDiferenciaAjustada(entity.getDiferenciaAjustada());
         resumen.setComisiones(comisionesList);
         resumen.setTotalComisiones(totalComisiones);
 

@@ -58,6 +58,17 @@ public class ContabilidadController {
                 planCuentasService.listar(empresaId)));
     }
 
+    /**
+     * Cuentas que pueden elegirse como origen de un pago. Es la lista del combo
+     * "¿de dónde sale la plata?" de compras y gastos: caja, caja menor, bancos.
+     */
+    @GetMapping("/plan-cuentas/medios-pago")
+    public ResponseEntity<ApiResponse<List<PlanCuentaDto>>> listarMediosPago() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                planCuentasService.listarMediosPago(empresaId)));
+    }
+
     @PostMapping("/plan-cuentas")
     public ResponseEntity<ApiResponse<PlanCuentaDto>> crearCuenta(
             @Valid @RequestBody CreatePlanCuentaDto dto) {

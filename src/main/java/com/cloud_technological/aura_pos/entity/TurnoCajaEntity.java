@@ -47,6 +47,23 @@ public class TurnoCajaEntity {
     @Column(name = "total_efectivo_real")
     private BigDecimal totalEfectivoReal;
 
+    /**
+     * Lo que el cajero firmó al cerrar. NO se toca nunca: es la prueba de lo que
+     * entregó ese día, y una cifra reescribible deja de probar nada.
+     */
     private BigDecimal diferencia;
+
+    /**
+     * Copia de {@link #diferencia} tomada al registrar el primer ajuste
+     * retroactivo, para que quede constancia de cuál era el cierre original
+     * aunque alguien mire solo esta fila.
+     */
+    @Column(name = "diferencia_original")
+    private BigDecimal diferenciaOriginal;
+
+    /** El cierre original más los ajustes posteriores. */
+    @Column(name = "diferencia_ajustada")
+    private BigDecimal diferenciaAjustada;
+
     private String estado;
 }
