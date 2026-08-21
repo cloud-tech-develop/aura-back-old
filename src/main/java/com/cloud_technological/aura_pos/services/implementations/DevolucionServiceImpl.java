@@ -587,6 +587,10 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .tipo("EGRESO")
                         .concepto(concepto)
                         .monto(monto)
+                        .fecha(java.time.LocalDate.now())
+                        .fechaDocumento(dev.getFechaDevolucion())
+                        .origenTipo(MovimientoCajaEntity.ORIGEN_DEVOLUCION)
+                        .origenId(dev.getId())
                         .build();
                 dev.setMovimientoCajaId(movimientoCajaRepository.save(mc).getId());
                 turnoCajaIdParaComprobante = turno.get().getId();
@@ -690,6 +694,10 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .tipo("INGRESO")
                         .concepto(concepto)
                         .monto(faltante)
+                        .fecha(java.time.LocalDate.now())
+                        .fechaDocumento(dev.getFechaDevolucion())
+                        .origenTipo(MovimientoCajaEntity.ORIGEN_DEVOLUCION)
+                        .origenId(dev.getId())
                         .build();
                 dev.setMovimientoCajaId(movimientoCajaRepository.save(mc).getId());
                 turnoCajaIdParaComprobante = turno.get().getId();
@@ -808,6 +816,12 @@ public class DevolucionServiceImpl implements DevolucionService {
                                     .tipo(fueIngreso ? "EGRESO" : "INGRESO")
                                     .concepto("Reverso anulación DEV-" + dev.getConsecutivo())
                                     .monto(mc.getMonto())
+                                    // El reverso es de hoy: la devolución
+                                    // original puede ser de un turno ya cerrado.
+                                    .fecha(java.time.LocalDate.now())
+                                    .fechaDocumento(dev.getFechaDevolucion())
+                                    .origenTipo(MovimientoCajaEntity.ORIGEN_DEVOLUCION)
+                                    .origenId(dev.getId())
                                     .build();
                             movimientoCajaRepository.save(reverso);
                         }

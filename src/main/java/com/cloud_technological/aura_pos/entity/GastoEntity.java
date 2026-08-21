@@ -55,6 +55,26 @@ public class GastoEntity {
     @Column(nullable = false, length = 20)
     private String estado;
 
+
+    /**
+     * Por qué un documento de fecha anterior se cargó a la caja de hoy, y quién
+     * lo autorizó. Sin esto la autorización no sirve: el objetivo no es solo
+     * frenar, es poder preguntar después qué pasó ese día.
+     */
+    @Column(name = "motivo_retroactivo", length = 500)
+    private String motivoRetroactivo;
+
+    @Column(name = "autorizado_por")
+    private Integer autorizadoPor;
+
+    /**
+     * La plata ya había salido del cajón otro día cuando se registró este
+     * documento. No genera movimiento de caja — ni en la de hoy ni en la de
+     * aquel día, que ya cerró cuadrada contra el conteo físico.
+     */
+    @Column(name = "salida_caja_otro_dia", nullable = false)
+    private Boolean salidaCajaOtroDia = Boolean.FALSE;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

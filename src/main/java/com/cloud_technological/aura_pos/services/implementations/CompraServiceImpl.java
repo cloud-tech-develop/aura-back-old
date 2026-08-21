@@ -76,6 +76,7 @@ public class CompraServiceImpl implements CompraService {
     private final CuentaPagarService cuentaPagarService;
     private final MovimientoCajaJPARepository movimientoCajaJPARepository;
     private final com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
+    private final com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva;
     @Autowired
     private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
     @Autowired
@@ -134,8 +135,10 @@ public class CompraServiceImpl implements CompraService {
             CuentaPagarService cuentaPagarService,
             MovimientoCajaJPARepository movimientoCajaJPARepository,
             CuentaBancariaJPARepository cuentaBancariaJPARepository,
-            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService) {
+            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService,
+            com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva) {
         this.origenFondosService = origenFondosService;
+        this.controlFechaRetroactiva = controlFechaRetroactiva;
         this.compraRepository = compraRepository;
         this.compraJPARepository = compraJPARepository;
         this.compraPagoJPARepository = compraPagoJPARepository;
@@ -213,7 +216,24 @@ public class CompraServiceImpl implements CompraService {
         compra.setCuentaContableId(dto.getCuentaContableId());
         compra.setProyectoId(dto.getProyectoId());
         compra.setFrenteId(dto.getFrenteId());
+        compra.setSalidaCajaOtroDia(Boolean.TRUE.equals(dto.getSalidaCajaOtroDia()));
         compra.setCreatedAt(LocalDateTime.now());
+
+        // Freno de documentos viejos, antes de tocar inventario: si la compra
+        // no puede pagarse desde la caja, no debe existir a medias con el stock
+        // ya movido. Solo mira la vía CAJA — las demás no descuadran a nadie.
+        Integer autorizadoPor = controlFechaRetroactiva.validar(
+                empresaId,
+                compra.getFecha() != null ? compra.getFecha().toLocalDate() : null,
+                saleDeCaja(dto),
+                dto.getMotivoRetroactivo(),
+                usuarioId,
+                "compra");
+        if (autorizadoPor != null) {
+            compra.setMotivoRetroactivo(dto.getMotivoRetroactivo().trim());
+            compra.setAutorizadoPor(autorizadoPor);
+        }
+
         compra = compraJPARepository.save(compra);
 
         BigDecimal subtotalBruto = BigDecimal.ZERO;
@@ -423,7 +443,8 @@ public class CompraServiceImpl implements CompraService {
                 var origen = origenFondosService.resolver(empresaId,
                         new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
                                 pago.metodoPago(), null, pago.cuentaBancariaId(),
-                                pago.cuentaContableId(), sucursalIdCompra, "pago de la compra"));
+                                pago.cuentaContableId(), sucursalIdCompra, "pago de la compra",
+                                Boolean.TRUE.equals(dto.getSalidaCajaOtroDia())));
 
                 if (!origen.generaMovimientoCaja()) {
                     continue;
@@ -434,6 +455,16 @@ public class CompraServiceImpl implements CompraService {
                         .tipo("EGRESO")
                         .concepto("Compra #" + compra.getId() + " - Pago contado a proveedor")
                         .monto(pago.monto())
+                        // El egreso es de hoy — hoy salió la plata del cajón —
+                        // aunque la factura del proveedor sea de días atrás. La
+                        // fecha del documento va aparte para que el cierre pueda
+                        // mostrar el desfase en vez de diluirlo en el total.
+                        .fecha(java.time.LocalDate.now())
+                        .fechaDocumento(compra.getFecha() != null
+                                ? compra.getFecha().toLocalDate() : null)
+                        .origenTipo(MovimientoCajaEntity.ORIGEN_COMPRA)
+                        .origenId(compra.getId())
+                        .origenInferido(origen.turnoInferido())
                         .metodoPago(MediosPago.normalizar(pago.metodoPago()))
                         .build();
                 movimientoCajaJPARepository.save(egreso);
@@ -529,6 +560,28 @@ public class CompraServiceImpl implements CompraService {
     }
 
     /** Los mismos pagos, vistos desde la caja. */
+    /**
+     * Algún pago de la compra va a salir del cajón.
+     *
+     * <p>Se decide con los mismos datos que usará después el resolutor de origen
+     * — efectivo, sin cuenta bancaria y sin cuenta contable elegida — para que
+     * el freno y el movimiento de caja no puedan discrepar.
+     */
+    private boolean saleDeCaja(CreateCompraDto dto) {
+        if (MediosPago.CREDITO.equalsIgnoreCase(dto.getFormaPago()) || dto.getPagos() == null) {
+            return false;
+        }
+        // "Ya salió otro día" no mueve ningún arqueo, así que no hay a quién
+        // proteger: el freno de documentos viejos no tiene nada que frenar.
+        if (Boolean.TRUE.equals(dto.getSalidaCajaOtroDia())) {
+            return false;
+        }
+        return dto.getPagos().stream().anyMatch(p ->
+                MediosPago.esEfectivo(p.getMetodoPago())
+                        && p.getCuentaBancariaId() == null
+                        && p.getCuentaContableId() == null);
+    }
+
     private List<PagoEfectivo> pagosQueSalenDeCaja(CreateCompraDto dto, CompraEntity compra) {
         return pagosDeContado(dto, compra).stream()
                 .map(p -> new PagoEfectivo(p.getMetodoPago(), p.getMonto(),
@@ -782,6 +835,15 @@ public class CompraServiceImpl implements CompraService {
                             .tipo("INGRESO")
                             .concepto("Reverso pago compra #" + compra.getId() + " (edición)")
                             .monto(pago.getMonto())
+                            // El reverso entra hoy a la caja que lo recibe, que
+                            // no tiene por qué ser la que pagó: si aquel turno
+                            // ya cerró, devolverle la plata no lo reabre.
+                            .fecha(java.time.LocalDate.now())
+                            .fechaDocumento(compra.getFecha() != null
+                                    ? compra.getFecha().toLocalDate() : null)
+                            .origenTipo(MovimientoCajaEntity.ORIGEN_COMPRA)
+                            .origenId(compra.getId())
+                            .origenInferido(origen.turnoInferido())
                             .metodoPago(MediosPago.normalizar(pago.getMetodoPago()))
                             .build());
                 }
