@@ -196,6 +196,9 @@ public class ObligacionFinancieraServiceImpl implements ObligacionFinancieraServ
                                     .concepto("Pago cuota #" + cuota.getNumeroCuota()
                                             + " — obligación #" + o.getId())
                                     .monto(cuota.getCuota())
+                                    .fecha(java.time.LocalDate.now())
+                                    .origenTipo(MovimientoCajaEntity.ORIGEN_OBLIGACION)
+                                    .origenId(o.getId())
                                     .build();
                             movimientoCajaRepo.save(egreso);
                         });

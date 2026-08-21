@@ -45,6 +45,19 @@ public class CreateCompraDto {
     private Long centroCostoId;
     private Long cuentaContableId;
 
+
+    /**
+     * La plata ya salió del cajón otro día y ese arqueo ya se cerró. Registra el
+     * documento contablemente contra CAJA, sin tocar ningún arqueo.
+     */
+    private Boolean salidaCajaOtroDia = Boolean.FALSE;
+
+    /**
+     * Por qué una compra de fecha anterior se carga a la caja de hoy. Obligatorio
+     * solo cuando excede la ventana de gracia de la empresa y va por caja.
+     */
+    private String motivoRetroactivo;
+
     // Dimensiones proyecto/frente (E7), propagadas a las líneas del asiento.
     private Long proyectoId;
     private Long frenteId;

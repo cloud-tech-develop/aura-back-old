@@ -37,6 +37,19 @@ public class CreateGastoDto {
     private Long cuentaBancariaId;
     /** Cuenta contable de la que sale el pago (crédito del asiento). */
     private Long cuentaPagoId;
+
+    /**
+     * La plata ya salió del cajón otro día y ese arqueo ya se cerró. Registra el
+     * documento contablemente contra CAJA, sin tocar ningún arqueo.
+     */
+    private Boolean salidaCajaOtroDia = Boolean.FALSE;
+
+    /**
+     * Por qué un gasto de fecha anterior se carga a la caja de hoy. Obligatorio
+     * solo cuando excede la ventana de gracia de la empresa y va por caja.
+     */
+    private String motivoRetroactivo;
+
     /** Vencimiento de la cuenta por pagar cuando el gasto es a crédito. */
     private java.time.LocalDateTime fechaVencimiento;
 

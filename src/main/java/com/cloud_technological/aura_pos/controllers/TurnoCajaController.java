@@ -16,10 +16,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.caja.AbrirTurnoDto;
 import com.cloud_technological.aura_pos.dto.caja.CerrarTurnoDto;
+import com.cloud_technological.aura_pos.dto.caja.CreateAjusteRetroactivoDto;
 import com.cloud_technological.aura_pos.dto.caja.CreateMovimientoCajaDto;
 import com.cloud_technological.aura_pos.dto.caja.MovimientoCajaDto;
 import com.cloud_technological.aura_pos.dto.caja.ResumenTurnoDto;
@@ -76,6 +78,19 @@ public class TurnoCajaController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Turno activo", false, result), HttpStatus.OK);
     }
 
+    /**
+     * Cajas con turno abierto. Es lo que el front necesita para preguntar de qué
+     * caja sale o entra la plata, en vez de que el backend lo deduzca: con dos
+     * cajas abiertas, inferirlo equivale a adivinar de cuál cajón salió.
+     */
+    @GetMapping("/abiertos")
+    public ResponseEntity<ApiResponse<List<TurnoCajaDto>>> listarAbiertos(
+            @RequestParam(required = false) Integer sucursalId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "OK", false,
+                turnoService.listarAbiertos(empresaId, sucursalId)));
+    }
+
     @PostMapping("/abrir")
     public ResponseEntity<ApiResponse<TurnoCajaDto>> abrir(@Valid @RequestBody AbrirTurnoDto dto) {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -109,6 +124,26 @@ public class TurnoCajaController {
         return new ResponseEntity<>(
             new ApiResponse<>(HttpStatus.OK.value(), "Resumen del turno", false, result),
             HttpStatus.OK);
+    }
+
+    /**
+     * Corrige un arqueo ya cerrado sin reabrirlo.
+     *
+     * <p>El cierre original queda intacto y el ajuste se suma encima: un cierre
+     * que se puede reescribir deja de probar lo que el cajero entregó ese día.
+     * Solo el rol autorizador de la empresa puede hacerlo, y con motivo.
+     */
+    @PostMapping("/{id}/ajustes-retroactivos")
+    public ResponseEntity<ApiResponse<MovimientoCajaDto>> registrarAjusteRetroactivo(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateAjusteRetroactivoDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        MovimientoCajaDto result =
+                turnoService.registrarAjusteRetroactivo(id, dto, empresaId, usuarioId);
+        return new ResponseEntity<>(
+            new ApiResponse<>(HttpStatus.CREATED.value(), "Ajuste registrado", false, result),
+            HttpStatus.CREATED);
     }
 
     @PostMapping("/{id}/movimientos")

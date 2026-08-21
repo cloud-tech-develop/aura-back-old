@@ -84,9 +84,9 @@ public class ExogenaExcelExporter {
                 }
                 fila.createCell(9).setCellValue(linea.getValor().doubleValue());
             }
-            for (int i = 0; i < COLUMNAS.length; i++) {
-                hoja.autoSizeColumn(i);
-            }
+            // Sin AWT: autoSizeColumn necesita libfreetype, que no está en el
+            // servidor de producción (ver ExcelAnchoColumnas).
+            com.cloud_technological.aura_pos.utils.ExcelAnchoColumnas.ajustar(hoja, COLUMNAS.length);
             wb.write(out);
             return out.toByteArray();
         } catch (IOException e) {

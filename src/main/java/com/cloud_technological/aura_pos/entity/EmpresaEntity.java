@@ -67,6 +67,21 @@ public class EmpresaEntity {
     @Column(name = "factura_electronica", nullable = false)
     private boolean facturaElectronica = false;
 
+    // ── Control de documentos con fecha retroactiva (V149) ──────────────────
+    // Solo afecta a la vía CAJA: las demás no descuadran el arqueo de nadie.
+
+    /** Días hacia atrás que se aceptan sin explicación. */
+    @Column(name = "dias_gracia_documento_retroactivo", nullable = false)
+    private Integer diasGraciaDocumentoRetroactivo = 3;
+
+    /** Pasada la ventana, la vía CAJA queda cerrada salvo autorización. */
+    @Column(name = "bloquear_caja_retroactiva", nullable = false)
+    private Boolean bloquearCajaRetroactiva = Boolean.TRUE;
+
+    /** Rol que puede saltarse la ventana, comparado contra el rol del token. */
+    @Column(name = "rol_autoriza_retroactivo", nullable = false, length = 40)
+    private String rolAutorizaRetroactivo = "ADMIN";
+
     @Column(name = "factus_client_id", length = 255)
     private String factusClientId;
 

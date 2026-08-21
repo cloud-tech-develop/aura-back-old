@@ -34,6 +34,15 @@ public class CompraDto {
     private BigDecimal totalRetenciones;
     private BigDecimal netaAPagar;
     private String formaPago;
+
+    /**
+     * El documento se registró declarando que la plata ya había salido del
+     * cajón otro día. Necesario al editar: sin esto el formulario lo
+     * reconstruiría como un pago de caja normal y generaría un movimiento que
+     * no debe existir.
+     */
+    private Boolean salidaCajaOtroDia;
+
     private String tipoDocumento;
     private BigDecimal fletes;
     private List<CompraDetalleDto> detalles;

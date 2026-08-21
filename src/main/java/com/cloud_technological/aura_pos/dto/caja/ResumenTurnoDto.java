@@ -40,10 +40,35 @@ public class ResumenTurnoDto {
     // ResumenTurnoDto.java
     private BigDecimal totalEsperado; // base inicial + ventas en efectivo
 
-    // Movimientos manuales de caja (ingresos / egresos)
+    // Movimientos manuales de caja (ingresos / egresos). Incluye TODOS, también
+    // los de otras fechas, para no romper a quien ya consume esta lista.
     private List<MovimientoCajaDto> movimientos = new ArrayList<>();
     private BigDecimal totalIngresos = BigDecimal.ZERO;
     private BigDecimal totalEgresos  = BigDecimal.ZERO;
+
+    /**
+     * Movimientos cuyo documento es de otro día: una factura de la semana
+     * pasada que se pagó hoy de esta caja, por ejemplo.
+     *
+     * <p>Van aparte porque son la parte del arqueo que el cajero no reconoce:
+     * él no hizo ese gasto, solo entregó la plata. Mezclados en el total, tenía
+     * que cuadrar a ciegas un faltante que no podía explicar.
+     */
+    private List<MovimientoCajaDto> movimientosDeOtrasFechas = new ArrayList<>();
+    private BigDecimal totalIngresosOtrasFechas = BigDecimal.ZERO;
+    private BigDecimal totalEgresosOtrasFechas  = BigDecimal.ZERO;
+
+    /**
+     * Correcciones registradas DESPUÉS de cerrar el turno, sin reabrirlo.
+     *
+     * <p>El cierre original (arriba, en {@link #diferencia}) queda intacto: un
+     * arqueo que se puede reescribir deja de probar lo que el cajero entregó.
+     * Estas tres cifras — original, ajustes, ajustada — se muestran juntas para
+     * que se vea qué se corrigió y qué se firmó ese día.
+     */
+    private List<MovimientoCajaDto> ajustesRetroactivos = new ArrayList<>();
+    private BigDecimal diferenciaOriginal;
+    private BigDecimal diferenciaAjustada;
 
     // Comisiones generadas en el turno
     private List<ComisionResumenTurnoDto> comisiones = new ArrayList<>();
