@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.utils;
 
+import java.util.stream.Collectors;
+
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -62,6 +65,11 @@ public class GlobalExceptionHandler {
 	// Manejo de cualquier otra excepción no especificada
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<?> handleGenericException(Exception ex, HttpServletRequest request) {
+		// A stdout tambien, no solo a la tabla error_log: registrarError es
+		// asincrono y escribe en la BD, asi que un 500 no dejaba rastro alguno
+		// en los logs del contenedor y habia que ir a consultar la tabla.
+		logger.error("500 en {} {}", request != null ? request.getMethod() : "?",
+				request != null ? request.getRequestURI() : "?", ex);
 		registrarError(HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage(), stackTrace(ex), request);
 		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage(),
 				true, null);
@@ -123,6 +131,27 @@ public class GlobalExceptionHandler {
 		registrarError(ex.getStatus().value(), ex.getMessage(), null, request);
 		ApiResponse<Object> response = new ApiResponse<>(ex.getStatus().value(), ex.getMessage(), true, null);
 		return new ResponseEntity<>(response, ex.getStatus());
+	}
+
+	// Método HTTP equivocado: GET a un endpoint que solo acepta POST, etc.
+	// Sin este handler la excepción caía en handleGenericException y salía como
+	// 500 "Request method 'GET' is not supported": parecía una falla del
+	// servidor cuando en realidad el cliente está llamando mal la ruta.
+	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+	public ResponseEntity<?> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex,
+			HttpServletRequest request) {
+		String soportados = ex.getSupportedHttpMethods() == null ? ""
+				: ex.getSupportedHttpMethods().stream().map(Object::toString).collect(Collectors.joining(", "));
+		String uri = request != null ? request.getRequestURI() : "";
+		String mensaje = "El método " + ex.getMethod() + " no está permitido en " + uri
+				+ (soportados.isEmpty() ? "." : ". Métodos permitidos: " + soportados + ".");
+		registrarError(HttpStatus.METHOD_NOT_ALLOWED.value(), mensaje, null, request);
+		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.METHOD_NOT_ALLOWED.value(), mensaje, true, null);
+		var builder = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+		if (!soportados.isEmpty()) {
+			builder.header("Allow", soportados);
+		}
+		return builder.body(response);
 	}
 
 	// ── Registro asíncrono de error ───────────────────────────
