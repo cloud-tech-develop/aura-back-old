@@ -13,6 +13,9 @@ import com.cloud_technological.aura_pos.entity.AbonoPagarEntity;
 public interface AbonoPagarJPARepository extends JpaRepository<AbonoPagarEntity, Long> {
     Optional<AbonoPagarEntity> findByIdAndCuentaPagarId(Long id, Long cuentaPagarId);
     List<AbonoPagarEntity> findByCuentaPagarId(Long cuentaPagarId);
+
+    /** Los abonos que dejó un documento concreto; los busca su reversa. */
+    List<AbonoPagarEntity> findByCuentaPagarIdAndReferencia(Long cuentaPagarId, String referencia);
     List<AbonoPagarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
     // Solo el efectivo sale del cajón; un pago por banco no baja el arqueo.

@@ -37,6 +37,20 @@ public class CreateCompraDto {
     // Tipo de documento
     private String tipoDocumento; // FACTURA_COMPRA | NOTA_DEBITO | NOTA_CREDITO | RECIBO
 
+    /**
+     * Factura de compra que corrige la nota crédito. Obligatorio cuando
+     * {@link #tipoDocumento} es {@code NOTA_CREDITO}: la NC anula mercancía de
+     * una compra concreta, no del proveedor en abstracto.
+     */
+    private Long compraOrigenId;
+
+    /**
+     * Qué pasa con la plata de la nota crédito:
+     * {@code CRUCE_CXP} | {@code DEVOLUCION_DINERO} | {@code SALDO_A_FAVOR}.
+     * Solo aplica a NOTA_CREDITO.
+     */
+    private String destinoNotaCredito;
+
     // Fletes / transporte
     private java.math.BigDecimal fletes;
 

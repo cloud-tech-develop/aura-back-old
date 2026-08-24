@@ -44,6 +44,14 @@ public class CompraDto {
     private Boolean salidaCajaOtroDia;
 
     private String tipoDocumento;
+
+    /** Factura de compra que corrige la nota crédito (solo NOTA_CREDITO). */
+    private Long compraOrigenId;
+    /** Número de esa factura, para mostrarlo sin otra consulta. */
+    private String compraOrigenNumero;
+    /** CRUCE_CXP | DEVOLUCION_DINERO | SALDO_A_FAVOR (solo NOTA_CREDITO). */
+    private String destinoNotaCredito;
+
     private BigDecimal fletes;
     private List<CompraDetalleDto> detalles;
     private List<CompraPagoDto> pagos;
