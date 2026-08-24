@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableDto;
+import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraTableDto;
 import com.cloud_technological.aura_pos.dto.compras.CreateCompraDto;
@@ -27,7 +29,7 @@ import com.cloud_technological.aura_pos.utils.SecurityUtils;
 @RestController
 @RequestMapping("/api/compras")
 public class CompraController {
-    
+
     @Autowired
     private CompraService compraService;
 
@@ -39,9 +41,45 @@ public class CompraController {
             @RequestBody PageableDto<Object> pageable) {
         Integer empresaId = securityUtils.getEmpresaId();
         PageImpl<CompraTableDto> result = compraService.listar(pageable, empresaId);
-        if (result.isEmpty())
+        if (result.isEmpty()) {
             throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron registros");
+        }
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    /**
+     * Facturas del proveedor sobre las que se puede emitir una nota crédito.
+     * Las consume el selector del formulario: una NC siempre corrige una
+     * factura concreta, nunca al proveedor en abstracto.
+     *
+     * <p>
+     * Paginado y con búsqueda en el servidor — el proveedor puede tener miles
+     * de facturas. El proveedor y la sucursal van en {@code params}.
+     *
+     * <p>
+     * A diferencia del listado general de compras, una página vacía NO es un
+     * 206: el selector la pide en cada tecleo y un error por "no hay
+     * resultados" lo dejaría en blanco sin poder seguir buscando.
+     */
+    @PostMapping("/acreditables/page")
+    public ResponseEntity<ApiResponse<PageImpl<CompraAcreditableDto>>> acreditables(
+            @RequestBody PageableDto<Object> pageable) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        PageImpl<CompraAcreditableDto> result = compraService.facturasAcreditables(pageable, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    /**
+     * Lo que queda por acreditar de cada producto de una factura de compra.
+     */
+    @GetMapping("/{id}/acreditable")
+    public ResponseEntity<ApiResponse<java.util.List<CompraAcreditableItemDto>>> itemsAcreditables(
+            @PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        var result = compraService.itemsAcreditables(empresaId, id);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                "Listado exitoso", false, result), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")

@@ -246,6 +246,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         BigDecimal costoInventario = subtotal.subtract(descuento).add(fletes);
         Long proveedorId = compra.getProveedor() != null ? compra.getProveedor().getId() : null;
 
+        // Una nota crédito de compra se guarda como el documento negativo de la
+        // factura que corrige. El asiento es el mismo, con cada línea del lado
+        // contrario — eso lo resuelve lineaFirmada() a partir del signo, así que
+        // aquí solo cambia el texto del comprobante.
+        boolean esNotaCredito = "NOTA_CREDITO".equalsIgnoreCase(compra.getTipoDocumento());
+        String etiqueta = esNotaCredito ? "Nota crédito compra" : "Compra";
+
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
         // ── DÉBITO · destino de la compra ─────────────────────────────────────
@@ -254,8 +261,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // El delta por fletes/descuento de cabecera se ajusta al grupo mayor.
         if (costoInventario.signum() != 0) {
             if (compra.getCuentaContableId() != null) {
-                detalles.add(linea(compra.getCuentaContableId(), "Compra — destino contable",
-                        costoInventario, BigDecimal.ZERO));
+                detalles.add(lineaFirmada(compra.getCuentaContableId(),
+                        etiqueta + " — destino contable", costoInventario, true, null));
             } else {
                 java.util.Map<Long, BigDecimal> porCuenta = new java.util.LinkedHashMap<>();
                 for (var det : compraDetalleRepo.findByCompraId(compraId)) {
@@ -272,23 +279,26 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     BigDecimal suma = porCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
                     BigDecimal delta = costoInventario.subtract(suma);
                     if (delta.signum() != 0) {
+                        // Con importes negativos (nota crédito) el grupo "mayor"
+                        // es el de mayor valor absoluto, no el aritmético.
                         Long mayor = porCuenta.entrySet().stream()
-                                .max(java.util.Map.Entry.comparingByValue())
+                                .max(java.util.Comparator.comparing(e -> e.getValue().abs()))
                                 .map(java.util.Map.Entry::getKey).orElseThrow();
                         porCuenta.merge(mayor, delta, BigDecimal::add);
                     }
                 }
                 porCuenta.forEach((cuentaId, monto) ->
-                        detalles.add(linea(cuentaId, "Inventario compra", monto, BigDecimal.ZERO)));
+                        detalles.add(lineaFirmada(cuentaId, "Inventario " + etiqueta.toLowerCase(),
+                                monto, true, null)));
             }
         }
 
         // ── DÉBITO · IVA descontable agrupado por cuenta del impuesto (E5) ────
-        if (impuestos.signum() > 0) {
+        if (impuestos.signum() != 0) {
             java.util.Map<Long, BigDecimal> ivaPorCuenta = new java.util.LinkedHashMap<>();
             for (var det : compraDetalleRepo.findByCompraId(compraId)) {
                 BigDecimal ivaLinea = nz(det.getImpuestoValor());
-                if (ivaLinea.signum() <= 0) {
+                if (ivaLinea.signum() == 0) {
                     continue;
                 }
                 Long productoId = det.getProducto() != null ? det.getProducto().getId() : null;
@@ -302,51 +312,58 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 BigDecimal suma = ivaPorCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
                 BigDecimal delta = impuestos.subtract(suma);
                 if (delta.signum() != 0) {
+                    // Con importes negativos (nota crédito) el grupo "mayor" es
+                    // el de mayor valor absoluto, no el aritméticamente mayor.
                     Long mayor = ivaPorCuenta.entrySet().stream()
-                            .max(java.util.Map.Entry.comparingByValue())
+                            .max(java.util.Comparator.comparing(e -> e.getValue().abs()))
                             .map(java.util.Map.Entry::getKey).orElseThrow();
                     ivaPorCuenta.merge(mayor, delta, BigDecimal::add);
                 }
             }
             ivaPorCuenta.forEach((cuentaId, monto) ->
-                    detalles.add(linea(cuentaId, "IVA descontable", monto, BigDecimal.ZERO)));
+                    detalles.add(lineaFirmada(cuentaId, "IVA descontable", monto, true, null)));
         }
 
         // ── CRÉDITO · retenciones practicadas al proveedor ────────────────────
         BigDecimal retefuente = nz(compra.getRetefuenteValor());
-        if (retefuente.signum() > 0) {
+        if (retefuente.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEFUENTE_PRACTICADA);
-            detalles.add(linea(c.getId(), "Retención en la fuente", BigDecimal.ZERO, retefuente, proveedorId));
+            detalles.add(lineaFirmada(c.getId(), "Retención en la fuente", retefuente, false, proveedorId));
         }
         BigDecimal reteiva = nz(compra.getReteivaValor());
-        if (reteiva.signum() > 0) {
+        if (reteiva.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEIVA_PRACTICADA);
-            detalles.add(linea(c.getId(), "ReteIVA", BigDecimal.ZERO, reteiva, proveedorId));
+            detalles.add(lineaFirmada(c.getId(), "ReteIVA", reteiva, false, proveedorId));
         }
         BigDecimal reteica = nz(compra.getReteicaValor());
-        if (reteica.signum() > 0) {
+        if (reteica.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEICA_PRACTICADA);
-            detalles.add(linea(c.getId(), "ReteICA", BigDecimal.ZERO, reteica, proveedorId));
+            detalles.add(lineaFirmada(c.getId(), "ReteICA", reteica, false, proveedorId));
         }
 
         // ── CRÉDITO · pago de contado (caja/bancos) ───────────────────────────
         BigDecimal pagado = BigDecimal.ZERO;
         for (CompraPagoEntity pago : compraPagoRepo.findByCompraIdAndActivoTrue(compraId)) {
             BigDecimal monto = nz(pago.getMonto());
-            if (monto.signum() <= 0) continue;
+            // En una nota crédito el movimiento está en negativo — es plata que
+            // vuelve — y lineaFirmada lo manda al débito de caja/bancos.
+            if (monto.signum() == 0) continue;
             PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(),
                     pago.getCuentaBancariaId(), pago.getCuentaContableId());
-            detalles.add(linea(cuenta.getId(),
-                    "Pago compra (" + pago.getMetodoPago() + ")", BigDecimal.ZERO, monto));
+            detalles.add(lineaFirmada(cuenta.getId(),
+                    (monto.signum() < 0 ? "Devolución del proveedor (" : "Pago compra (")
+                            + pago.getMetodoPago() + ")", monto, false, null));
             pagado = pagado.add(monto);
         }
 
         // ── CRÉDITO · saldo a crédito al proveedor ────────────────────────────
+        // En la nota crédito el saldo sale negativo y la línea cae al débito:
+        // baja la deuda con el proveedor (o la deja a favor si ya no había).
         BigDecimal saldoProveedor = netaAPagar.subtract(pagado);
-        if (saldoProveedor.signum() > 0) {
+        if (saldoProveedor.signum() != 0) {
             PlanCuentaEntity prov = config.resolverCuenta(empresaId, ConceptoContable.PROVEEDORES);
-            detalles.add(linea(prov.getId(), "Cuenta por pagar proveedor",
-                    BigDecimal.ZERO, saldoProveedor, proveedorId));
+            detalles.add(lineaFirmada(prov.getId(), "Cuenta por pagar proveedor",
+                    saldoProveedor, false, proveedorId));
         }
 
         if (detalles.isEmpty()) {
@@ -369,8 +386,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_COMPRA);
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
                 compra.getFecha().toLocalDate(), comprobante,
-                "Compra #" + compraId + (compra.getNumeroCompra() != null
-                        ? " — " + compra.getNumeroCompra() : ""),
+                etiqueta + " #" + compraId + (compra.getNumeroCompra() != null
+                        ? " — " + compra.getNumeroCompra() : "")
+                        + (esNotaCredito && compra.getCompraOrigenId() != null
+                                ? " (corrige compra #" + compra.getCompraOrigenId() + ")" : ""),
                 "COMPRA", compraId, periodo.getId(), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
@@ -1441,6 +1460,29 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 .credito(credito)
                 .terceroId(terceroId)
                 .build();
+    }
+
+    /**
+     * Línea del asiento cuyo lado lo decide el signo del importe.
+     *
+     * <p>Una nota crédito de compra se guarda como el documento negativo de la
+     * factura que corrige, así que sus importes llegan aquí en negativo y cada
+     * línea va del lado contrario al de la factura: el inventario se acredita,
+     * el IVA descontable se acredita y la deuda con el proveedor se debita.
+     *
+     * <p>Sin esto el asiento salía con débitos negativos — que ni existen en
+     * contabilidad ni pasan el validador de balance.
+     *
+     * @param alDebito lado natural de la línea cuando el importe es positivo
+     */
+    private AsientoDetalleEntity lineaFirmada(Long cuentaId, String desc,
+            BigDecimal monto, boolean alDebito, Long terceroId) {
+        boolean debito = monto.signum() >= 0 ? alDebito : !alDebito;
+        BigDecimal valor = monto.abs();
+        return linea(cuentaId, desc,
+                debito ? valor : BigDecimal.ZERO,
+                debito ? BigDecimal.ZERO : valor,
+                terceroId);
     }
 
     private AsientoContableEntity buildAsiento(Integer empresaId, Integer usuarioId,

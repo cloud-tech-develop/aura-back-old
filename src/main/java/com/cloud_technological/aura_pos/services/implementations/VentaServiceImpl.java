@@ -3,7 +3,6 @@ package com.cloud_technological.aura_pos.services.implementations;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -266,7 +265,19 @@ public class VentaServiceImpl implements VentaService {
          * mismo * consecutivo
          */
         venta.setConsecutivo(ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
-        venta.setFechaEmision(LocalDateTime.now(ZoneId.of("America/Bogota")));
+        // Sin zona explícita: la JVM ya corre en America/Bogota (ver
+        // AuraPosApplication).
+        //
+        // Este era el ÚNICO punto de todo el sistema que guardaba hora real de
+        // Colombia mientras el servidor corría en UTC: el resto de las fechas
+        // quedaban cinco horas adelante. Forzar la zona aquí tapaba el síntoma
+        // en la pantalla que más se mira, pero dejaba a `fecha_emision`
+        // desalineada con `factura.created_at`, escrita en el mismo instante.
+        //
+        // Con la zona de la JVM ya fijada, el parche sobra y volverlo a poner
+        // solo reintroduciría esa discrepancia. Los dos cambios van juntos: sin
+        // la zona de la JVM, quitar esto manda las ventas cinco horas adelante.
+        venta.setFechaEmision(LocalDateTime.now());
         venta.setObservaciones(dto.getObservaciones());
         venta.setEstadoVenta("COMPLETADA");
 

@@ -91,6 +91,162 @@ public class CompraServiceImpl implements CompraService {
     @Autowired
     private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaRepo;
 
+    // ── Nota crédito de compra ───────────────────────────────────
+    //
+    // Una nota crédito NO es una compra: anula mercancía que no llegó (o que se
+    // devolvió) de una factura concreta. Se registra como el documento negativo
+    // de esa factura — cantidades e importes en negativo — para que todo lo que
+    // ya suma sobre `compra` (dashboard, estado de cuenta del proveedor,
+    // kardex) se nete solo, sin que cada consumidor conozca el tipo de
+    // documento.
+
+    private static final String TIPO_NOTA_CREDITO = "NOTA_CREDITO";
+
+    /** La nota crédito baja la deuda de la factura origen. */
+    public static final String NC_CRUCE_CXP = "CRUCE_CXP";
+    /** El proveedor devuelve la plata: entra a caja o al banco. */
+    public static final String NC_DEVOLUCION_DINERO = "DEVOLUCION_DINERO";
+    /** Queda como crédito con el proveedor para compras futuras. */
+    public static final String NC_SALDO_A_FAVOR = "SALDO_A_FAVOR";
+
+    private static final java.util.Set<String> DESTINOS_NC =
+            java.util.Set.of(NC_CRUCE_CXP, NC_DEVOLUCION_DINERO, NC_SALDO_A_FAVOR);
+
+    private static boolean esNotaCredito(String tipoDocumento) {
+        return TIPO_NOTA_CREDITO.equalsIgnoreCase(tipoDocumento);
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
+    /**
+     * Valida la nota crédito contra la factura que corrige y la devuelve.
+     *
+     * <p>Se corre ANTES de tocar inventario: una NC que acredite más de lo
+     * comprado, o que apunte a otro proveedor, deja el kardex y la cartera
+     * imposibles de cuadrar después.
+     *
+     * @param excluirCompraId nota crédito que no cuenta en el acumulado ya
+     *                        acreditado (ella misma, al reprocesarla)
+     */
+    private CompraEntity validarNotaCredito(CreateCompraDto dto, Integer empresaId,
+            TerceroEntity proveedor, SucursalEntity sucursal, Long excluirCompraId) {
+        if (dto.getCompraOrigenId() == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Una nota crédito debe indicar la factura de compra que corrige.");
+        }
+        CompraEntity origen = compraJPARepository
+                .findByIdAndEmpresaId(dto.getCompraOrigenId(), empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La factura de compra #" + dto.getCompraOrigenId() + " no existe."));
+
+        if ("ANULADA".equalsIgnoreCase(origen.getEstado())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La compra #" + origen.getId() + " está anulada: ya no hay nada que acreditar.");
+        }
+        if (esNotaCredito(origen.getTipoDocumento())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No se puede emitir una nota crédito sobre otra nota crédito.");
+        }
+        Long proveedorOrigen = origen.getProveedor() != null ? origen.getProveedor().getId() : null;
+        if (!proveedor.getId().equals(proveedorOrigen)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La nota crédito debe ser del mismo proveedor de la compra #" + origen.getId() + ".");
+        }
+        Integer sucursalOrigen = origen.getSucursal() != null ? origen.getSucursal().getId() : null;
+        if (!sucursal.getId().equals(sucursalOrigen)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La nota crédito debe ser de la misma sucursal de la compra #" + origen.getId()
+                            + ": la mercancía tiene que salir de donde entró.");
+        }
+        validarCantidadesAcreditables(dto, origen, empresaId, excluirCompraId);
+        return origen;
+    }
+
+    /**
+     * Ningún producto puede acreditarse por encima de lo que trajo la factura,
+     * contando lo que ya acreditaron notas crédito anteriores.
+     */
+    private void validarCantidadesAcreditables(CreateCompraDto dto, CompraEntity origen,
+            Integer empresaId, Long excluirCompraId) {
+        java.util.Map<Long, BigDecimal> comprado = new java.util.HashMap<>();
+        for (CompraDetalleEntity det : detalleJPARepository.findByCompraId(origen.getId())) {
+            if (det.getProducto() == null) continue;
+            comprado.merge(det.getProducto().getId(), nz(det.getCantidad()).abs(), BigDecimal::add);
+        }
+
+        // Lo que ya se acreditó: las cantidades de las NC previas están en
+        // negativo, así que se toman en valor absoluto.
+        java.util.Map<Long, BigDecimal> acreditado = new java.util.HashMap<>();
+        for (CompraEntity nc : compraJPARepository
+                .findByCompraOrigenIdAndEmpresaId(origen.getId(), empresaId)) {
+            if ("ANULADA".equalsIgnoreCase(nc.getEstado())) continue;
+            if (excluirCompraId != null && excluirCompraId.equals(nc.getId())) continue;
+            for (CompraDetalleEntity det : detalleJPARepository.findByCompraId(nc.getId())) {
+                if (det.getProducto() == null) continue;
+                acreditado.merge(det.getProducto().getId(), nz(det.getCantidad()).abs(), BigDecimal::add);
+            }
+        }
+
+        java.util.Map<Long, BigDecimal> pedido = new java.util.LinkedHashMap<>();
+        for (CreateCompraDetalleDto item : dto.getDetalles()) {
+            pedido.merge(item.getProductoId(), nz(item.getCantidad()).abs(), BigDecimal::add);
+        }
+
+        for (var e : pedido.entrySet()) {
+            BigDecimal enFactura = comprado.get(e.getKey());
+            if (enFactura == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "El producto " + nombreProducto(e.getKey())
+                                + " no está en la compra #" + origen.getId() + ".");
+            }
+            BigDecimal disponible = enFactura.subtract(nz(acreditado.get(e.getKey())));
+            if (e.getValue().compareTo(disponible) > 0) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "No se puede acreditar " + e.getValue().stripTrailingZeros().toPlainString()
+                                + " de " + nombreProducto(e.getKey())
+                                + ": la compra #" + origen.getId() + " solo tiene "
+                                + disponible.stripTrailingZeros().toPlainString()
+                                + " sin acreditar.");
+            }
+        }
+    }
+
+    private String nombreProducto(Long productoId) {
+        return productoJPARepository.findById(productoId)
+                .map(ProductoEntity::getNombre)
+                .orElse("#" + productoId);
+    }
+
+    /**
+     * Qué se hace con la plata de la nota crédito. Si el usuario no eligió, se
+     * asume lo natural: bajar la deuda si la factura todavía se debe, y dejarla
+     * a favor si ya estaba pagada.
+     */
+    private String resolverDestinoNotaCredito(CreateCompraDto dto, CompraEntity origen,
+            Integer empresaId) {
+        String destino = dto.getDestinoNotaCredito() != null
+                ? dto.getDestinoNotaCredito().trim().toUpperCase() : "";
+        if (destino.isBlank()) {
+            return saldoPendienteDe(origen, empresaId).signum() > 0
+                    ? NC_CRUCE_CXP : NC_SALDO_A_FAVOR;
+        }
+        if (!DESTINOS_NC.contains(destino)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Destino de nota crédito no válido: " + destino
+                            + ". Use CRUCE_CXP, DEVOLUCION_DINERO o SALDO_A_FAVOR.");
+        }
+        return destino;
+    }
+
+    private BigDecimal saldoPendienteDe(CompraEntity origen, Integer empresaId) {
+        return cuentaPagarJPARepository.findFirstByCompraIdAndEmpresaId(origen.getId(), empresaId)
+                .filter(c -> !"anulada".equalsIgnoreCase(c.getEstado()))
+                .map(c -> nz(c.getSaldoPendiente()))
+                .orElse(BigDecimal.ZERO);
+    }
+
     /**
      * Guardarraíl del destino contable de la compra (E2): la cuenta débito
      * alternativa debe ser auxiliar, activa y de clase 1/5/6/7 (activo,
@@ -165,12 +321,34 @@ public class CompraServiceImpl implements CompraService {
     }
 
     @Override
+    public PageImpl<com.cloud_technological.aura_pos.dto.compras.CompraAcreditableDto>
+            facturasAcreditables(PageableDto<Object> pageable, Integer empresaId) {
+        return compraRepository.facturasAcreditables(pageable, empresaId);
+    }
+
+    @Override
+    public List<com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto>
+            itemsAcreditables(Integer empresaId, Long compraId) {
+        compraJPARepository.findByIdAndEmpresaId(compraId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Compra no encontrada"));
+        return compraRepository.itemsAcreditables(empresaId, compraId);
+    }
+
+    @Override
     public CompraDto obtenerPorId(Long id, Integer empresaId) {
         CompraEntity entity = compraJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Compra no encontrada"));
 
         CompraDto dto = compraMapper.toDto(entity);
         dto.setDetalles(compraRepository.obtenerDetalles(entity.getId()));
+
+        // El número de la factura que corrige la nota crédito, para no obligar
+        // al front a pedirla aparte solo para mostrar "NC de la FC-123".
+        if (entity.getCompraOrigenId() != null) {
+            compraJPARepository.findByIdAndEmpresaId(entity.getCompraOrigenId(), empresaId)
+                    .ifPresent(o -> dto.setCompraOrigenNumero(
+                            o.getNumeroCompra() != null ? o.getNumeroCompra() : "#" + o.getId()));
+        }
 
         List<CompraPagoDto> pagos = compraPagoJPARepository
                 .findByCompraIdAndActivoTrue(entity.getId())
@@ -201,6 +379,18 @@ public class CompraServiceImpl implements CompraService {
         TerceroEntity proveedor = terceroJPARepository.findByIdAndEmpresaId(dto.getProveedorId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
 
+        // 0. Una nota crédito anula mercancía de una factura concreta: se valida
+        //    contra ella ANTES de tocar inventario, y a partir de aquí el
+        //    documento entero va con signo negativo.
+        final boolean esNC = esNotaCredito(dto.getTipoDocumento());
+        final CompraEntity compraOrigen = esNC
+                ? validarNotaCredito(dto, empresaId, proveedor, sucursal, null)
+                : null;
+        final String destinoNC = esNC
+                ? resolverDestinoNotaCredito(dto, compraOrigen, empresaId)
+                : null;
+        final BigDecimal signo = esNC ? BigDecimal.ONE.negate() : BigDecimal.ONE;
+
         // 1. Crear cabecera
         CompraEntity compra = compraMapper.toEntity(dto);
         compra.setEmpresa(empresa);
@@ -208,24 +398,35 @@ public class CompraServiceImpl implements CompraService {
         compra.setProveedor(proveedor);
         compra.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDateTime.now());
         compra.setEstado("RECIBIDA");
-        compra.setFormaPago(dto.getFormaPago() != null ? dto.getFormaPago() : "CONTADO");
         compra.setTipoDocumento(dto.getTipoDocumento() != null ? dto.getTipoDocumento() : "FACTURA_COMPRA");
-        compra.setFletes(dto.getFletes() != null ? dto.getFletes() : BigDecimal.ZERO);
+        compra.setCompraOrigenId(esNC ? compraOrigen.getId() : null);
+        compra.setDestinoNotaCredito(destinoNC);
+        // En una nota crédito la forma de pago la manda el destino: solo
+        // DEVOLUCION_DINERO mueve plata, y por eso es la única de "contado".
+        compra.setFormaPago(esNC
+                ? (NC_DEVOLUCION_DINERO.equals(destinoNC) ? "CONTADO" : "CREDITO")
+                : (dto.getFormaPago() != null ? dto.getFormaPago() : "CONTADO"));
+        compra.setFletes(nz(dto.getFletes()).abs().multiply(signo));
         validarCuentaDestino(empresaId, dto.getCuentaContableId());
         compra.setCentroCostoId(dto.getCentroCostoId());
         compra.setCuentaContableId(dto.getCuentaContableId());
         compra.setProyectoId(dto.getProyectoId());
         compra.setFrenteId(dto.getFrenteId());
-        compra.setSalidaCajaOtroDia(Boolean.TRUE.equals(dto.getSalidaCajaOtroDia()));
+        // "Ya salió de la caja otro día" habla de un egreso pasado; en una nota
+        // crédito no hay egreso que declarar.
+        compra.setSalidaCajaOtroDia(!esNC && Boolean.TRUE.equals(dto.getSalidaCajaOtroDia()));
         compra.setCreatedAt(LocalDateTime.now());
 
         // Freno de documentos viejos, antes de tocar inventario: si la compra
         // no puede pagarse desde la caja, no debe existir a medias con el stock
         // ya movido. Solo mira la vía CAJA — las demás no descuadran a nadie.
+        // Una nota crédito nunca saca plata del cajón: en el peor caso la mete
+        // (el proveedor devuelve). El freno de documentos viejos protege contra
+        // egresos de arqueos ya cerrados, así que aquí no tiene nada que frenar.
         Integer autorizadoPor = controlFechaRetroactiva.validar(
                 empresaId,
                 compra.getFecha() != null ? compra.getFecha().toLocalDate() : null,
-                saleDeCaja(dto),
+                !esNC && saleDeCaja(dto),
                 dto.getMotivoRetroactivo(),
                 usuarioId,
                 "compra");
@@ -246,22 +447,27 @@ public class CompraServiceImpl implements CompraService {
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "Producto no encontrado: " + item.getProductoId()));
 
-            // 2.1 Crear detalle con descuento
+            // 2.1 Crear detalle con descuento. El front siempre manda cantidades
+            //     positivas ("devuélveme 3"); el signo lo pone el documento.
+            BigDecimal cantidad = nz(item.getCantidad()).abs().multiply(signo);
+            BigDecimal impuestoLinea = nz(item.getImpuestoValor()).abs().multiply(signo);
             BigDecimal descPct = item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO;
-            BigDecimal brutoLinea = item.getCantidad().multiply(item.getCostoUnitario());
+            BigDecimal brutoLinea = cantidad.multiply(item.getCostoUnitario());
             BigDecimal descValor = brutoLinea.multiply(descPct).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal netoLinea = brutoLinea.subtract(descValor);
 
             CompraDetalleEntity detalle = detalleMapper.toEntity(item);
             detalle.setCompra(compra);
             detalle.setProducto(producto);
+            detalle.setCantidad(cantidad);
+            detalle.setImpuestoValor(impuestoLinea);
             detalle.setDescuentoPct(descPct);
             detalle.setDescuentoValor(descValor);
             detalle.setSubtotalLinea(netoLinea);
 
             subtotalBruto = subtotalBruto.add(brutoLinea);
             descuentoTotal = descuentoTotal.add(descValor);
-            impuestosTotal = impuestosTotal.add(item.getImpuestoValor());
+            impuestosTotal = impuestosTotal.add(impuestoLinea);
 
             // 2.2 Precios de venta en el detalle
             detalle.setLote(null);
@@ -270,21 +476,36 @@ public class CompraServiceImpl implements CompraService {
             detalle.setPrecioVenta3(item.getPrecioVenta3());
             detalleJPARepository.save(detalle);
 
-            // 2.3 Actualizar costo y precios de venta en el producto
-            actualizarPreciosProducto(producto, item);
+            // 2.3 Actualizar costo y precios de venta en el producto.
+            //     Una nota crédito no los toca: devolver mercancía no es
+            //     comprarla más barata, y dejar que el costo del producto lo
+            //     fije una devolución arrastra el error a todas las ventas.
+            if (!esNC) {
+                actualizarPreciosProducto(producto, item);
+            }
 
             // 2.4 Actualizar inventario
             InventarioEntity inventario = resolverInventario(sucursal, producto);
             BigDecimal saldoAnterior = inventario.getStockActual();
-            BigDecimal saldoNuevo = saldoAnterior.add(item.getCantidad());
+            BigDecimal saldoNuevo = saldoAnterior.add(cantidad);
+            if (esNC && saldoNuevo.signum() < 0) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "No hay stock suficiente para la nota crédito en "
+                                + producto.getNombre() + ": quedan "
+                                + saldoAnterior.stripTrailingZeros().toPlainString()
+                                + " y se acreditan "
+                                + cantidad.abs().stripTrailingZeros().toPlainString()
+                                + ". Esa mercancía ya salió del inventario.");
+            }
             inventario.setStockActual(saldoNuevo);
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
             // 2.5 Kardex
-            registrarMovimiento(sucursal, producto, null, item.getCantidad(),
-                    saldoAnterior, saldoNuevo, item.getCostoUnitario(), "COMPRA",
-                    "Compra #" + compra.getId());
+            registrarMovimiento(sucursal, producto, null, cantidad,
+                    saldoAnterior, saldoNuevo, item.getCostoUnitario(),
+                    esNC ? "NOTA_CREDITO_COMPRA" : "COMPRA",
+                    (esNC ? "Nota crédito compra #" : "Compra #") + compra.getId());
         }
 
         // 3. Actualizar totales
@@ -319,25 +540,31 @@ public class CompraServiceImpl implements CompraService {
         // toda la obligación queda con el proveedor. Por eso se ignoran los pagos
         // que pudieran venir en el payload (evita líneas a Bancos/Caja en el asiento,
         // descontar saldo bancario sin movimiento real y CxP inconsistentes).
-        boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
-        registrarPagos(compra, dto, empresaId, usuarioId);
+        if (esNC) {
+            // La nota crédito no paga nada: baja una deuda, recupera plata o
+            // queda a favor. Cada camino se resuelve aparte.
+            aplicarDestinoNotaCredito(compra, dto, empresaId, usuarioId);
+        } else {
+            boolean esCredito = "CREDITO".equalsIgnoreCase(compra.getFormaPago());
+            registrarPagos(compra, dto, empresaId, usuarioId);
 
-        // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
-        if (esCredito) {
-            crearCuentaPorPagar(compra, dto, empresaId, usuarioId);
+            // 5. Registrar cuenta por pagar solo si la forma de pago es CRÉDITO.
+            if (esCredito) {
+                crearCuentaPorPagar(compra, dto, empresaId, usuarioId);
+            }
+
+            // 6. Egreso de caja, uno por cada pago que salió del cajón.
+            //
+            //    Antes se registraba un solo egreso por la neta a pagar con solo ver
+            //    que la compra fuera CONTADO: una compra pagada por transferencia
+            //    descontaba de la caja física dinero que nunca salió de ahí. Y como
+            //    el turno se buscaba por usuario con ifPresent, si quien compraba no
+            //    tenía caja abierta el egreso se perdía sin aviso.
+            registrarEgresosDeCaja(compra, dto, empresaId, usuarioId);
+
+            // 7. Comprobante de egreso que soporta el pago al proveedor.
+            sincronizarComprobanteEgreso(compra, dto, empresaId, usuarioId);
         }
-
-        // 6. Egreso de caja, uno por cada pago que salió del cajón.
-        //
-        //    Antes se registraba un solo egreso por la neta a pagar con solo ver
-        //    que la compra fuera CONTADO: una compra pagada por transferencia
-        //    descontaba de la caja física dinero que nunca salió de ahí. Y como
-        //    el turno se buscaba por usuario con ifPresent, si quien compraba no
-        //    tenía caja abierta el egreso se perdía sin aviso.
-        registrarEgresosDeCaja(compra, dto, empresaId, usuarioId);
-
-        // 7. Comprobante de egreso que soporta el pago al proveedor.
-        sincronizarComprobanteEgreso(compra, dto, empresaId, usuarioId);
 
         // Disparar la generación del asiento contable tras el commit de la compra.
         // Si la contabilización falla, la compra NO se revierte (se registra en ErrorLog).
@@ -518,6 +745,218 @@ public class CompraServiceImpl implements CompraService {
     }
 
     /**
+     * Qué se hace con la plata de la nota crédito.
+     *
+     * <p>Ninguno de los tres caminos es un pago: la NC no le entrega dinero al
+     * proveedor, se lo cobra. Por eso no pasa por {@code registrarPagos} ni por
+     * {@code registrarEgresosDeCaja}, que solo saben sacar plata.
+     */
+    private void aplicarDestinoNotaCredito(CompraEntity compra, CreateCompraDto dto,
+            Integer empresaId, Long usuarioId) {
+        BigDecimal valor = nz(compra.getNetaAPagar()).abs();
+        if (valor.signum() == 0) {
+            return;
+        }
+        String destino = compra.getDestinoNotaCredito();
+        if (NC_CRUCE_CXP.equals(destino)) {
+            cruzarNotaCreditoContraDeuda(compra, valor, empresaId, usuarioId);
+        } else if (NC_DEVOLUCION_DINERO.equals(destino)) {
+            registrarDevolucionDelProveedor(compra, dto, valor, empresaId, usuarioId);
+        }
+        // SALDO_A_FAVOR no mueve nada: el crédito queda vivo con el proveedor y
+        // el asiento lo deja como saldo débito en la cuenta de Proveedores.
+    }
+
+    /** Baja la deuda de la factura que la nota crédito corrige. */
+    private void cruzarNotaCreditoContraDeuda(CompraEntity compra, BigDecimal valor,
+            Integer empresaId, Long usuarioId) {
+        var cuenta = cuentaPagarJPARepository
+                .findFirstByCompraIdAndEmpresaId(compra.getCompraOrigenId(), empresaId)
+                .filter(c -> !"anulada".equalsIgnoreCase(c.getEstado()))
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La compra #" + compra.getCompraOrigenId() + " no tiene una cuenta por "
+                                + "pagar viva: esa factura no quedó debiendo nada. Emita la nota "
+                                + "crédito como devolución de dinero o como saldo a favor."));
+
+        BigDecimal saldo = nz(cuenta.getSaldoPendiente());
+        if (valor.compareTo(saldo) > 0) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La nota crédito (" + valor.stripTrailingZeros().toPlainString()
+                            + ") supera lo que aún se debe de la compra #" + compra.getCompraOrigenId()
+                            + " (" + saldo.stripTrailingZeros().toPlainString() + "). Cruce solo el "
+                            + "saldo y deje el resto como devolución de dinero o saldo a favor.");
+        }
+        cuentaPagarService.aplicarCruce(cuenta.getId(), valor, empresaId,
+                usuarioId != null ? usuarioId.intValue() : null,
+                referenciaCruceNotaCredito(compra));
+    }
+
+    /** La plata que el proveedor devuelve: entra al banco o al cajón. */
+    private void registrarDevolucionDelProveedor(CompraEntity compra, CreateCompraDto dto,
+            BigDecimal valor, Integer empresaId, Long usuarioId) {
+        UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        Integer sucursalId = compra.getSucursal() != null ? compra.getSucursal().getId() : null;
+
+        List<CreateCompraPagoDto> vias = dto.getPagos() != null && !dto.getPagos().isEmpty()
+                ? dto.getPagos()
+                : List.of(devolucionEnEfectivo(valor));
+
+        BigDecimal totalDevuelto = BigDecimal.ZERO;
+        String metodo = null;
+
+        for (CreateCompraPagoDto via : vias) {
+            BigDecimal monto = nz(via.getMonto()).abs();
+            if (monto.signum() == 0) {
+                continue;
+            }
+
+            // El movimiento se guarda en NEGATIVO: es plata que vuelve, no un
+            // pago. Así el asiento lo manda al débito de caja/bancos y cualquier
+            // suma sobre compra_pago lo neta sin conocer el tipo de documento.
+            CompraPagoEntity pago = new CompraPagoEntity();
+            pago.setCompra(compra);
+            pago.setMetodoPago(MediosPago.normalizar(via.getMetodoPago()));
+            pago.setMonto(monto.negate());
+            pago.setBanco(via.getBanco());
+            pago.setFechaPago(LocalDateTime.now());
+            pago.setUsuario(usuario);
+            pago.setActivo(true);
+            pago.setCuentaBancariaId(via.getCuentaBancariaId());
+            pago.setCuentaContableId(via.getCuentaContableId());
+            compraPagoJPARepository.save(pago);
+
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            via.getCuentaBancariaId(), false, monto,
+                            "Nota crédito compra #" + compra.getId() + " - Devolución del proveedor",
+                            Terceros.nombreVisible(compra.getProveedor()),
+                            referenciaDelPago(via, compra),
+                            "COMPRA"));
+
+            if (MediosPago.esEfectivo(via.getMetodoPago()) && via.getCuentaBancariaId() == null) {
+                var origen = origenFondosService.resolver(empresaId,
+                        new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
+                                via.getMetodoPago(), null, null, via.getCuentaContableId(),
+                                sucursalId, "devolución del proveedor por nota crédito"));
+                if (origen.generaMovimientoCaja()) {
+                    movimientoCajaJPARepository.save(MovimientoCajaEntity.builder()
+                            .turnoCaja(origen.turno())
+                            .usuario(usuario)
+                            .tipo("INGRESO")
+                            .concepto("Nota crédito compra #" + compra.getId()
+                                    + " - Devolución del proveedor")
+                            .monto(monto)
+                            // La plata entra hoy al cajón que la recibe, aunque
+                            // la factura corregida sea de días atrás.
+                            .fecha(java.time.LocalDate.now())
+                            .fechaDocumento(compra.getFecha() != null
+                                    ? compra.getFecha().toLocalDate() : null)
+                            .origenTipo(MovimientoCajaEntity.ORIGEN_COMPRA)
+                            .origenId(compra.getId())
+                            .origenInferido(origen.turnoInferido())
+                            .metodoPago(MediosPago.normalizar(via.getMetodoPago()))
+                            .build());
+                }
+            }
+
+            totalDevuelto = totalDevuelto.add(monto);
+            metodo = metodo == null ? MediosPago.normalizar(via.getMetodoPago()) : "MIXTO";
+        }
+
+        if (totalDevuelto.signum() > 0) {
+            comprobanteCajaService.sincronizarDeDocumento(empresaId,
+                    usuarioId != null ? usuarioId.intValue() : null,
+                    "INGRESO",
+                    "Nota crédito compra #" + compra.getId()
+                            + (compra.getNumeroCompra() != null
+                                    ? " (" + compra.getNumeroCompra() + ")" : ""),
+                    totalDevuelto,
+                    metodo,
+                    Terceros.nombreVisible(compra.getProveedor()),
+                    "COMPRA", compra.getId(), null);
+        }
+    }
+
+    /** Vía por defecto cuando el documento no dice por dónde vuelve la plata. */
+    private CreateCompraPagoDto devolucionEnEfectivo(BigDecimal valor) {
+        CreateCompraPagoDto via = new CreateCompraPagoDto();
+        via.setMetodoPago(MediosPago.EFECTIVO);
+        via.setMonto(valor);
+        return via;
+    }
+
+    private String referenciaCruceNotaCredito(CompraEntity compra) {
+        return "Nota crédito compra #" + compra.getId();
+    }
+
+    /**
+     * Deshace lo que la nota crédito hizo con la plata, al anularla.
+     *
+     * <p>Sin esto, anular una NC devolvía la mercancía al inventario pero dejaba
+     * la deuda del proveedor rebajada (o la plata devuelta en la caja) para
+     * siempre: el crédito seguía aplicado aunque el documento ya no existiera.
+     */
+    private void revertirDestinoNotaCredito(CompraEntity compra, Integer empresaId, Long usuarioId) {
+        String destino = compra.getDestinoNotaCredito();
+        if (NC_CRUCE_CXP.equals(destino)) {
+            cuentaPagarJPARepository
+                    .findFirstByCompraIdAndEmpresaId(compra.getCompraOrigenId(), empresaId)
+                    .ifPresent(cuenta -> cuentaPagarService.revertirCruce(cuenta.getId(),
+                            nz(compra.getNetaAPagar()).abs(), empresaId,
+                            referenciaCruceNotaCredito(compra)));
+            return;
+        }
+        if (!NC_DEVOLUCION_DINERO.equals(destino)) {
+            return; // SALDO_A_FAVOR no movió plata; solo se reversa el asiento.
+        }
+
+        UsuarioEntity usuario = usuarioId != null
+                ? usuarioRepository.findById(usuarioId.intValue()).orElse(null) : null;
+        Integer sucursalId = compra.getSucursal() != null ? compra.getSucursal().getId() : null;
+
+        for (CompraPagoEntity pago : compraPagoJPARepository.findByCompraIdAndActivoTrue(compra.getId())) {
+            BigDecimal monto = nz(pago.getMonto()).abs();
+            if (monto.signum() == 0) {
+                continue;
+            }
+            // Lo que había entrado vuelve a salir.
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId,
+                    usuarioId != null ? usuarioId.intValue() : null,
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            pago.getCuentaBancariaId(), true, monto,
+                            "Reverso nota crédito compra #" + compra.getId() + " (anulación)",
+                            Terceros.nombreVisible(compra.getProveedor()),
+                            "COMPRA-" + compra.getId(), "COMPRA"));
+
+            if (MediosPago.esEfectivo(pago.getMetodoPago()) && pago.getCuentaBancariaId() == null) {
+                var origen = origenFondosService.resolver(empresaId,
+                        new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
+                                pago.getMetodoPago(), null, null, pago.getCuentaContableId(),
+                                sucursalId, "reverso de la devolución del proveedor"));
+                if (origen.generaMovimientoCaja()) {
+                    movimientoCajaJPARepository.save(MovimientoCajaEntity.builder()
+                            .turnoCaja(origen.turno())
+                            .usuario(usuario)
+                            .tipo("EGRESO")
+                            .concepto("Reverso nota crédito compra #" + compra.getId() + " (anulación)")
+                            .monto(monto)
+                            .fecha(java.time.LocalDate.now())
+                            .fechaDocumento(compra.getFecha() != null
+                                    ? compra.getFecha().toLocalDate() : null)
+                            .origenTipo(MovimientoCajaEntity.ORIGEN_COMPRA)
+                            .origenId(compra.getId())
+                            .origenInferido(origen.turnoInferido())
+                            .metodoPago(MediosPago.normalizar(pago.getMetodoPago()))
+                            .build());
+                }
+            }
+            pago.setActivo(false);
+            compraPagoJPARepository.save(pago);
+        }
+    }
+
+    /**
      * Referencia del pago para el extracto bancario. Si el front no mandó una
      * (lo habitual en efectivo), se usa el número de factura del proveedor y,
      * en último caso, el consecutivo de la compra: sin referencia el movimiento
@@ -635,6 +1074,13 @@ public class CompraServiceImpl implements CompraService {
                     "Anulación Compra #" + compra.getId());
         }
 
+        // El crédito que la nota otorgó deja de existir con ella: hay que
+        // devolverle la deuda al proveedor (o sacar de nuevo la plata que
+        // había devuelto) antes de dar el documento por anulado.
+        if (esNotaCredito(compra.getTipoDocumento())) {
+            revertirDestinoNotaCredito(compra, empresaId, null);
+        }
+
         compra.setEstado("ANULADA");
         compraJPARepository.save(compra);
 
@@ -652,6 +1098,21 @@ public class CompraServiceImpl implements CompraService {
 
         if (compra.getEstado().equals("ANULADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede editar una compra anulada");
+
+        // Una nota crédito ya cruzó una deuda, devolvió plata o dejó un saldo a
+        // favor. Reeditarla obligaría a deshacer todo eso a medias y con la
+        // factura origen posiblemente ya pagada: es más limpio anularla y
+        // emitir otra, que es además como se maneja en contabilidad.
+        if (esNotaCredito(compra.getTipoDocumento()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Una nota crédito no se edita: anúlela y emita una nueva.");
+
+        // Tampoco se le puede cambiar el tipo a una factura que ya tiene notas
+        // crédito encima — quedarían acreditando un documento que ya no existe.
+        if (esNotaCredito(dto.getTipoDocumento()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Una factura de compra no se puede convertir en nota crédito: "
+                            + "emita la nota crédito como documento aparte.");
 
         SucursalEntity sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId().intValue(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
