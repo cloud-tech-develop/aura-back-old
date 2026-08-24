@@ -286,6 +286,37 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
     }
 
     @Override
+    @Transactional
+    public void revertirCruce(Long cuentaId, BigDecimal monto, Integer empresaId, String referencia) {
+        CuentaPagarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                        "Cuenta por pagar #" + cuentaId + " no encontrada"));
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        // Se borra el abono que dejó el documento, no uno cualquiera: si el
+        // cruce ya no está (lo eliminaron a mano), la deuda tampoco se toca —
+        // devolverle el saldo dos veces la dejaría inflada.
+        List<AbonoPagarEntity> abonos = abonoJpaRepository
+                .findByCuentaPagarIdAndReferencia(cuentaId, referencia);
+        if (abonos.isEmpty()) {
+            return;
+        }
+        BigDecimal revertido = BigDecimal.ZERO;
+        for (AbonoPagarEntity abono : abonos) {
+            revertido = revertido.add(abono.getMonto());
+        }
+        abonoJpaRepository.deleteAll(abonos);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(revertido));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(revertido));
+        cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
+                ? "parcial" : "pendiente");
+        jpaRepository.save(cuenta);
+    }
+
+    @Override
     public List<AbonoPagarDto> listarAbonos(Long cuentaId, Integer empresaId) {
         // Verificar que la cuenta pertenece a la empresa
         jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)

@@ -90,6 +90,25 @@ public class CompraEntity {
     @Column(name = "fletes")
     private BigDecimal fletes;
 
+    // ── Nota crédito de compra ───────────────────────────────────────────
+    /**
+     * Factura de compra que esta nota crédito corrige. Solo aplica cuando
+     * {@link #tipoDocumento} es {@code NOTA_CREDITO}: sin ella no se puede
+     * validar que no se acredite más de lo comprado ni saber contra qué cuenta
+     * por pagar cruzarla.
+     */
+    @Column(name = "compra_origen_id")
+    private Long compraOrigenId;
+
+    /**
+     * Qué pasa con la plata de la nota crédito:
+     * {@code CRUCE_CXP} baja la deuda de la factura origen,
+     * {@code DEVOLUCION_DINERO} la devuelve el proveedor a caja/banco y
+     * {@code SALDO_A_FAVOR} la deja como crédito para compras futuras.
+     */
+    @Column(name = "destino_nota_credito", length = 20)
+    private String destinoNotaCredito;
+
     // ── Destino contable (E2 · pieza 4) ─────────────────────────────────
     /** Centro de costo que se propaga a todas las líneas del asiento. */
     @Column(name = "centro_costo_id")
