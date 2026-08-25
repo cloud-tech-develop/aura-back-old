@@ -1282,13 +1282,20 @@ public class CompraServiceImpl implements CompraService {
                             Terceros.nombreVisible(compra.getProveedor()),
                             "COMPRA-" + compra.getId(), "COMPRA"));
 
-            // Y a la caja, si había salido del cajón.
+            // Y a la caja, pero solo si el pago original SÍ salió del cajón. Una
+            // compra "ya salió de la caja otro día" nunca generó egreso de caja
+            // —su arqueo ya cerró contra el conteo físico—, así que reversarla
+            // metería un ingreso fantasma en el turno de hoy que infla el cierre.
+            // Se resuelve el origen con el mismo flag que usó el egreso original
+            // para que el reverso sea simétrico: si aquello no movió caja, esto
+            // tampoco.
             if (MediosPago.esEfectivo(pago.getMetodoPago()) && pago.getCuentaBancariaId() == null) {
                 Integer sucursalId = compra.getSucursal() != null ? compra.getSucursal().getId() : null;
                 var origen = origenFondosService.resolver(empresaId,
                         new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
                                 pago.getMetodoPago(), null, null, pago.getCuentaContableId(),
-                                sucursalId, "reverso del pago de la compra"));
+                                sucursalId, "reverso del pago de la compra",
+                                Boolean.TRUE.equals(compra.getSalidaCajaOtroDia())));
                 if (origen.generaMovimientoCaja()) {
                     movimientoCajaJPARepository.save(MovimientoCajaEntity.builder()
                             .turnoCaja(origen.turno())
