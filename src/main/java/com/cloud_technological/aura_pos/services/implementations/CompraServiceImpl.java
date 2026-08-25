@@ -671,7 +671,12 @@ public class CompraServiceImpl implements CompraService {
                         new com.cloud_technological.aura_pos.services.OrigenFondosService.Solicitud(
                                 pago.metodoPago(), null, pago.cuentaBancariaId(),
                                 pago.cuentaContableId(), sucursalIdCompra, "pago de la compra",
-                                Boolean.TRUE.equals(dto.getSalidaCajaOtroDia())));
+                                // El flag lo manda la compra, no el dto: al editar,
+                                // el front puede no reenviarlo, y una compra que ya
+                                // salió otro día seguiría sin tocar la caja de hoy.
+                                // En create el flag de la compra ya viene del dto,
+                                // así que ese camino no cambia.
+                                Boolean.TRUE.equals(compra.getSalidaCajaOtroDia())));
 
                 if (!origen.generaMovimientoCaja()) {
                     continue;
