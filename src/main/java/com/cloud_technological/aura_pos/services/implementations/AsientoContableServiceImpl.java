@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoDetalleDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDetalleDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
@@ -30,8 +31,12 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContabl
 import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
+import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
+import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
+import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.utils.AsientoBalanceValidator;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 
 @Service
 public class AsientoContableServiceImpl implements AsientoContableService {
@@ -56,6 +61,21 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @Autowired
     private com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository empresaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository movimientoCajaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository turnoCajaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository usuarioRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.ComprobanteCajaService comprobanteCajaService;
 
     @Override
     public List<AsientoContableTableDto> listar(Integer empresaId, String desde, String hasta,
@@ -88,6 +108,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No hay un período contable ABIERTO. Abra un período antes de registrar asientos."));
+
+        // La cuenta dejó de ser @NotNull en el DTO porque el comprobante manual
+        // deriva la de su contrapartida del origen de fondos. En el asiento
+        // directo no hay nada que derivar: la cuenta la pone el usuario o no
+        // hay línea.
+        if (dto.getDetalles().stream().anyMatch(d -> d.getCuentaId() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cada línea del asiento debe tener una cuenta contable");
+        }
 
         List<AsientoDetalleEntity> detalles = dto.getDetalles().stream()
                 .map(d -> AsientoDetalleEntity.builder()
@@ -145,6 +174,37 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         String tipo = dto.getTipoComprobante().trim().toUpperCase();
 
+        // ── De dónde sale (o entra) la plata ─────────────────────────────
+        //
+        // El CE y el RC mueven dinero real; el CD es una reclasificación entre
+        // cuentas y no toca ningún cajón. Antes ninguno de los tres lo
+        // declaraba: la contrapartida era una cuenta 11xx elegida a mano, y una
+        // cuenta contable no distingue el cajón de la sucursal 2 de la cuenta
+        // del banco. Resultado: el recaudo no caía en el cierre de ninguna caja
+        // y el asiento podía acreditar CAJA por una transferencia.
+        //
+        // Se exige el método de pago en vez de inventar un default: resolver
+        // con metodoPago null caería en el fallback de cuenta y volvería a
+        // pisar en silencio lo que el usuario eligió.
+        boolean mueveDinero = "CE".equals(tipo) || "RC".equals(tipo);
+        OrigenFondosService.OrigenFondos origen = null;
+        if (mueveDinero) {
+            if (isBlank(dto.getMetodoPago())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Indique el método de pago del comprobante " + tipo
+                                + ": de ahí depende en qué caja o cuenta queda registrado el dinero.");
+            }
+            origen = origenFondosService.resolver(empresaId,
+                    new OrigenFondosService.Solicitud(
+                            dto.getMetodoPago(),
+                            dto.getTurnoCajaId(),
+                            dto.getCuentaBancariaId(),
+                            dto.getCuentaContableId(),
+                            dto.getSucursalId(),
+                            "comprobante " + tipo,
+                            Boolean.TRUE.equals(dto.getCajaOtroDia())));
+        }
+
         // Snapshot del beneficiario: si viene el tercero y faltan datos, se completan desde su ficha.
         String benefNombre = dto.getBeneficiarioNombre();
         String benefDireccion = dto.getBeneficiarioDireccion();
@@ -158,16 +218,38 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             if (isBlank(benefTelefono)) benefTelefono = t.getTelefono();
         }
 
-        List<AsientoDetalleEntity> detalles = dto.getDetalles().stream()
-                .map(d -> AsientoDetalleEntity.builder()
-                        .cuentaId(d.getCuentaId())
-                        .descripcion(d.getDescripcion())
-                        .debito(d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO)
-                        .credito(d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO)
-                        .terceroId(d.getTerceroId())
-                        .centroCostoId(d.getCentroCostoId())
-                        .build())
-                .collect(Collectors.toList());
+        // La cuenta de la contrapartida la pone el origen, no el usuario: es lo
+        // que impide que un pago recibido por transferencia quede acreditando
+        // la caja. El resto de líneas conserva la cuenta que se digitó.
+        List<AsientoDetalleEntity> detalles = new java.util.ArrayList<>();
+        BigDecimal montoContrapartida = BigDecimal.ZERO;
+        for (CreateAsientoDetalleDto d : dto.getDetalles()) {
+            boolean esContrapartida = CreateAsientoDetalleDto.ORIGEN_BANCO.equalsIgnoreCase(d.getOrigen());
+            Long cuentaId = esContrapartida && origen != null ? origen.cuentaContableId() : d.getCuentaId();
+            if (cuentaId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cada línea del comprobante debe tener una cuenta contable");
+            }
+            BigDecimal debito = d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO;
+            BigDecimal credito = d.getCredito() != null ? d.getCredito() : BigDecimal.ZERO;
+            if (esContrapartida) {
+                montoContrapartida = montoContrapartida.add(debito).add(credito);
+            }
+            detalles.add(AsientoDetalleEntity.builder()
+                    .cuentaId(cuentaId)
+                    .descripcion(d.getDescripcion())
+                    .debito(debito)
+                    .credito(credito)
+                    .terceroId(d.getTerceroId())
+                    .centroCostoId(d.getCentroCostoId())
+                    .build());
+        }
+        // Comprobante que no marcó su contrapartida (front viejo): el dinero
+        // movido es el total del asiento. Basta para no perder el movimiento de
+        // caja; marcarla es lo que lo vuelve exacto en asientos mixtos.
+        if (montoContrapartida.signum() == 0) {
+            montoContrapartida = totalDebito;
+        }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, tipo);
 
@@ -189,6 +271,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .totalCredito(totalCredito)
                 .estado("CONTABILIZADO")
                 .usuarioId(usuarioId)
+                // Se guarda lo que el comprobante declaró, no lo que se dedujo
+                // después: es lo que permite reconstruir meses más tarde por qué
+                // este CE cayó en una caja y no en otra.
+                .turnoCajaId(origen != null ? origen.turnoId() : null)
+                .metodoPago(origen != null ? MediosPago.normalizar(dto.getMetodoPago()) : null)
+                .cuentaBancariaId(mueveDinero ? dto.getCuentaBancariaId() : null)
+                .cajaOtroDia(origen != null
+                        && origen.tipo() == OrigenFondosService.Tipo.CAJA_OTRO_DIA)
                 .detalles(detalles)
                 .build();
 
@@ -197,22 +287,106 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         AsientoContableEntity saved = repo.save(asiento);
 
         // ── Cruce de cartera (aplicación del pago) en la misma transacción ──
+        //
+        // El origen viaja con el cruce: es lo que ata el abono a un turno y le
+        // pone su método de pago real, y por tanto lo que lo hace aparecer en el
+        // cierre de caja. Antes el abono nacía sin turno y el comprobante movía
+        // efectivo sin dejar rastro en el arqueo de nadie.
+        BigDecimal totalAplicado = BigDecimal.ZERO;
+        String referencia = "Comprobante " + comprobante;
         if (dto.getAplicaciones() != null) {
             for (var ap : dto.getAplicaciones()) {
                 if (ap == null || ap.getCuentaId() == null
                         || ap.getMonto() == null || ap.getMonto().signum() <= 0) continue;
-                String referencia = "Comprobante " + comprobante;
                 if ("CXP".equalsIgnoreCase(ap.getTipo())) {
-                    cuentaPagarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                    cuentaPagarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId,
+                            usuarioId, referencia, origen, dto.getMetodoPago());
                 } else if ("CXC".equalsIgnoreCase(ap.getTipo())) {
-                    cuentaCobrarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId, usuarioId, referencia);
+                    cuentaCobrarService.aplicarCruce(ap.getCuentaId(), ap.getMonto(), empresaId,
+                            usuarioId, referencia, origen, dto.getMetodoPago());
                 }
+                totalAplicado = totalAplicado.add(ap.getMonto());
             }
         }
+
+        registrarMovimientoDeCaja(saved, origen, tipo, montoContrapartida.subtract(totalAplicado),
+                dto, usuarioId);
+        emitirComprobanteDeCaja(saved, origen, tipo, montoContrapartida, dto, usuarioId);
 
         AsientoContableTableDto result = toTableDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
         return result;
+    }
+
+    /**
+     * El efectivo de un comprobante sale (o entra) de una caja y tiene que
+     * verse en su cierre.
+     *
+     * <p>Solo se registra la parte que <b>no</b> quedó ya representada por un
+     * abono de cartera: esos abonos entran al arqueo por su propio turno, así
+     * que sumarlos otra vez aquí duplicaría la plata. Lo que queda es el CE que
+     * paga un servicio suelto o el RC que recibe algo que no es cartera — antes
+     * esos no tocaban caja por ningún lado.
+     *
+     * @param monto la contrapartida menos lo aplicado a cartera
+     */
+    private void registrarMovimientoDeCaja(AsientoContableEntity asiento,
+            OrigenFondosService.OrigenFondos origen, String tipo, BigDecimal monto,
+            CreateComprobanteDto dto, Integer usuarioId) {
+        if (origen == null || !origen.generaMovimientoCaja()
+                || monto == null || monto.signum() <= 0) {
+            return;
+        }
+        MovimientoCajaEntity movimiento = MovimientoCajaEntity.builder()
+                .turnoCaja(origen.turno())
+                .usuario(usuarioId != null ? usuarioRepo.findById(usuarioId).orElse(null) : null)
+                .tipo("CE".equals(tipo) ? "EGRESO" : "INGRESO")
+                .concepto("Comprobante " + asiento.getNumeroComprobante()
+                        + " — " + asiento.getDescripcion())
+                .monto(monto)
+                // La plata se mueve hoy aunque el comprobante tenga otra fecha:
+                // el turno que se afecta es el de hoy, y la fecha del documento
+                // se guarda aparte para que el cierre muestre el desfase en vez
+                // de esconderlo dentro del total.
+                .fecha(java.time.LocalDate.now())
+                .fechaDocumento(dto.getFecha())
+                .origenTipo(MovimientoCajaEntity.ORIGEN_COMPROBANTE)
+                .origenId(asiento.getId())
+                .origenInferido(origen.turnoInferido())
+                .metodoPago(MediosPago.normalizar(dto.getMetodoPago()))
+                .build();
+        movimientoCajaRepo.save(movimiento);
+    }
+
+    /**
+     * Todo dinero que se mueve necesita su soporte imprimible, salga de la caja,
+     * del banco o de una cuenta contable.
+     *
+     * <p>El CE/RC contable era el único movimiento que no lo emitía: aparecía en
+     * el arqueo pero no en la pantalla de Comprobantes — la misma desde la que se
+     * crea. Se emite por el total que se movió, cartera incluida: el soporte
+     * ampara la plata entregada o recibida, no la parte que además cruzó cartera.
+     *
+     * <p>Se le impone el número del asiento a propósito. La serie RC/CE es única
+     * para las dos tablas, así que pedir uno nuevo dejaría el mismo pago con
+     * RC-000045 en contabilidad y RC-000046 en caja.
+     */
+    private void emitirComprobanteDeCaja(AsientoContableEntity asiento,
+            OrigenFondosService.OrigenFondos origen, String tipo, BigDecimal monto,
+            CreateComprobanteDto dto, Integer usuarioId) {
+        if (origen == null || monto == null || monto.signum() <= 0) {
+            return;
+        }
+        comprobanteCajaService.sincronizarDeDocumento(
+                asiento.getEmpresaId(), usuarioId,
+                "CE".equals(tipo) ? "EGRESO" : "INGRESO",
+                asiento.getDescripcion(),
+                monto,
+                MediosPago.normalizar(dto.getMetodoPago()),
+                asiento.getBeneficiarioNombre(),
+                MovimientoCajaEntity.ORIGEN_COMPROBANTE, asiento.getId(),
+                origen.turnoId(),
+                asiento.getNumeroComprobante());
     }
 
     @Override
@@ -241,6 +415,46 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Solo se pueden anular asientos manuales");
         }
+        if ("ANULADO".equals(asiento.getEstado())) {
+            return;
+        }
+
+        // Anular dejaba el asiento en ANULADO y nada más: el abono que rebajó
+        // la cartera y el egreso que salió de la caja seguían vivos. El
+        // comprobante desaparecía de la contabilidad pero la deuda seguía
+        // rebajada y el arqueo seguía descuadrado.
+        //
+        // El turno cerrado es la frontera: su arqueo ya se contó y se firmó, y
+        // reescribirlo destruye la evidencia de lo que el cajero entregó. Se
+        // bloquea la anulación y se remite al ajuste retroactivo, que corrige
+        // encima sin tocar el cierre original.
+        if (asiento.getTurnoCajaId() != null) {
+            TurnoCajaEntity turno = turnoCajaRepo
+                    .findByIdAndCajaSucursalEmpresaId(asiento.getTurnoCajaId(), empresaId)
+                    .orElse(null);
+            if (turno != null && "CERRADA".equals(turno.getEstado())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "El comprobante " + asiento.getNumeroComprobante() + " afectó la caja "
+                                + turno.getCaja().getNombre() + ", cuyo turno ya está cerrado. "
+                                + "Corríjalo con un ajuste retroactivo de caja: reabrir el arqueo "
+                                + "borraría la evidencia de lo que el cajero entregó.");
+            }
+        }
+
+        String referencia = "Comprobante " + asiento.getNumeroComprobante();
+        cuentaCobrarService.revertirCrucesDeDocumento(referencia, empresaId);
+        cuentaPagarService.revertirCrucesDeDocumento(referencia, empresaId);
+
+        movimientoCajaRepo.deleteAll(
+                movimientoCajaRepo.findByOrigenTipoAndOrigenId(
+                        MovimientoCajaEntity.ORIGEN_COMPROBANTE, id));
+
+        // El soporte de caja no se borra: se invalida conservando su número, para
+        // no dejar un hueco en la serie.
+        comprobanteCajaService.anularDeDocumento(empresaId,
+                MovimientoCajaEntity.ORIGEN_COMPROBANTE, id,
+                "Comprobante contable " + asiento.getNumeroComprobante() + " anulado");
+
         asiento.setEstado("ANULADO");
         repo.save(asiento);
     }

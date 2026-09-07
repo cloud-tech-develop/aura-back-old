@@ -35,6 +35,13 @@ public class AbonoCobrarDto {
 
     @Size(max = 255, message = "La referencia no puede superar 255 caracteres")
     private String referencia;
+    /**
+     * El cliente trajo la plata otro día: entró al cajón, el conteo de aquel
+     * día ya la contó y ese turno cerró cuadrado. El recaudo se registra hoy
+     * pero no entra al arqueo de nadie — solo deja el asiento contra Caja.
+     */
+    private Boolean cajaOtroDia = Boolean.FALSE;
+
     private LocalDateTime fechaPago;
     private LocalDateTime createdAt;
 }

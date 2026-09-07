@@ -35,6 +35,7 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class ReconteoServiceImpl implements ReconteoService {
@@ -201,8 +202,8 @@ public class ReconteoServiceImpl implements ReconteoService {
 
             // Kardex
             String tipoMovimiento = diferencia.compareTo(BigDecimal.ZERO) > 0
-                    ? "RECONTEO_AJUSTE_POSITIVO"
-                    : "RECONTEO_AJUSTE_NEGATIVO";
+                    ? TipoMovimientoInventario.RECONTEO_AJUSTE_POSITIVO.codigo()
+                    : TipoMovimientoInventario.RECONTEO_AJUSTE_NEGATIVO.codigo();
 
             registrarMovimiento(
                     reconteo.getSucursal(),

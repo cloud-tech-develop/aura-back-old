@@ -184,6 +184,11 @@ public class CuentaPagarQueryRepository {
                 sql.append(" AND cp.fecha_vencimiento < NOW() AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
             } else if ("activa".equals(estado)) {
                 sql.append(" AND (cp.fecha_vencimiento IS NULL OR cp.fecha_vencimiento >= NOW()) AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
+            } else if ("pendiente".equals(estado)) {
+                // Todo lo que todavía se debe: activa + vencida. Lo pide la
+                // pantalla de pago, donde filtrar por "activa" escondería justo
+                // las facturas vencidas, que son las que más se pagan.
+                sql.append(" AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
             }
         }
 

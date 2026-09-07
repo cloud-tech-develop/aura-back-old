@@ -67,6 +67,7 @@ import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class VentaServiceImpl implements VentaService {
@@ -455,7 +456,7 @@ public class VentaServiceImpl implements VentaService {
 
                     registrarMovimiento(sucursal, hijo, null,
                             cantidadDescontar.negate(), saldoAnt, saldoNuevo,
-                            item.getPrecioUnitario(), "VENTA",
+                            item.getPrecioUnitario(), TipoMovimientoInventario.VENTA.codigo(),
                             "Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
                 }
 
@@ -477,7 +478,7 @@ public class VentaServiceImpl implements VentaService {
 
                 registrarMovimiento(sucursal, producto, detalle.getLote(),
                         cantidadBase.negate(), saldoAnterior, saldoNuevo,
-                        item.getPrecioUnitario(), "VENTA", refMovimiento);
+                        item.getPrecioUnitario(), TipoMovimientoInventario.VENTA.codigo(), refMovimiento);
             }
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());
@@ -745,7 +746,7 @@ public class VentaServiceImpl implements VentaService {
 
                         registrarMovimiento(venta.getSucursal(), hijo, null,
                                 cantidadDevolver, saldoAnt, saldoNuevo,
-                                detalle.getPrecioUnitario(), "ANULACION_VENTA",
+                                detalle.getPrecioUnitario(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
                                 "Anulación Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
                     }
                 } else {
@@ -770,7 +771,7 @@ public class VentaServiceImpl implements VentaService {
 
                     registrarMovimiento(venta.getSucursal(), producto, detalle.getLote(),
                             detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                            detalle.getPrecioUnitario(), "ANULACION_VENTA",
+                            detalle.getPrecioUnitario(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
                             "Anulación Venta #" + venta.getId());
                 }
             }

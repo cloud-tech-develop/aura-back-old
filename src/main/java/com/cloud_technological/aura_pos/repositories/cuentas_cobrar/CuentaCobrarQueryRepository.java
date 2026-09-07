@@ -182,6 +182,11 @@ public class CuentaCobrarQueryRepository {
                 sql.append(" AND cc.fecha_vencimiento < NOW() AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
             } else if ("activa".equals(estado)) {
                 sql.append(" AND (cc.fecha_vencimiento IS NULL OR cc.fecha_vencimiento >= NOW()) AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
+            } else if ("pendiente".equals(estado)) {
+                // Todo lo que todavía se debe: activa + vencida. Lo pide la
+                // pantalla de recaudo, donde filtrar por "activa" escondería
+                // justo las facturas vencidas, que son las que más se cobran.
+                sql.append(" AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
             }
         }
 

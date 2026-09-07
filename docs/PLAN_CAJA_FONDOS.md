@@ -1,10 +1,10 @@
 # Plan · Origen de fondos, caja menor y documentos retroactivos
 
-> **Estado 2026-08-21: PLAN COMPLETO + V151** ("ya salió de la caja, otro día") — las 8 fases, backend (V145–V150, 32 tests en verde),
+> **Estado 2026-08-25: PLAN COMPLETO + V151 + V153** ("ya salió de la caja, otro día") — las 8 fases, backend (V145–V150, 32 tests en verde),
 > front (`aura-frontend`, build limpio) y migraciones espejo en el proyecto Laravel.
 > Motor: **PostgreSQL**. Última migración previa al plan: `V144`.
 >
-> **Antes de usarlo**: correr V145–V151 y los dos SQL de menú
+> **Antes de usarlo**: correr V145–V151 y V153, y los dos SQL de menú
 > (`menu_submodulo_traslados_fondos.sql`, `menu_submodulo_supervision_caja.sql`).
 
 ## 1. El problema
@@ -406,12 +406,48 @@ pero nadie iba a encontrar esa respuesta detrás de esa etiqueta.
 - Al **editar**, `deducirOrigen()` mira el flag antes que las cuentas: la cuenta guardada es
   CAJA y se confundiría con un pago normal, regenerando el movimiento que no debe existir.
 
+### ✅ EXTRA — La misma vía en CxC y CxP · `V153`
+
+El cliente lo señaló después: en cartera pasa exactamente lo mismo, y en **los dos sentidos**.
+
+> El cliente trae el abono en efectivo un día. La plata entra al cajón, el conteo de esa
+> tarde la cuenta y el turno cierra cuadrado contra el cuaderno. Al día siguiente se registra
+> el abono en el sistema.
+
+- **CxC**: si el recaudo se ata al turno de hoy, el sistema espera un efectivo que hoy no
+  entró → el cajero cierra con **faltante**.
+- **CxP**: al revés. El abono al proveedor le resta al esperado de hoy una plata que hoy no
+  salió → el cajero cierra con **sobrante**.
+
+El mecanismo del arqueo es distinto al de compra y gasto, y ahí estaba la trampa: **un abono
+no pasa por `movimiento_caja`**. Entra al cierre por su propio `turno_caja_id` combinado con
+`metodo_pago LIKE '%EFECTIVO%'` (`AbonoCobrarJPARepository.sumMontoByTurnoCajaId`). Así que
+"no generar movimiento de caja" no bastaba: la vía "otro día" tiene que **guardar el abono sin
+turno**.
+
+- El flag de la `Solicitud` pasó de `salidaDeCajaOtroDia` a **`cajaOtroDia`**: en CxC el
+  dinero *entra*, y el nombre viejo describía mal justo el caso nuevo.
+- `OrigenFondosServiceImpl` ahora devuelve **`turno == null`** en `CAJA_OTRO_DIA`, aunque el
+  documento lo haya declarado. Se prefirió eso a que cada llamador se acordara de descartarlo:
+  compra y gasto solo usan el turno detrás de `generaMovimientoCaja()`, así que no cambian.
+- Columna `caja_otro_dia` en `abonos_cobrar` y `abonos_pagar` (V153), otra vez **solo para
+  auditar** — sin ella, un abono sin turno es indistinguible de uno viejo anterior a los turnos.
+- Sexto hallazgo en supervisión: `INGRESO_CAJA_OTRO_DIA` para el recaudo de cartera; el abono
+  a proveedor reusa `SALIDA_CAJA_OTRO_DIA`, que sigue siendo literal.
+- El asiento no cambia: `AbonoCobroGenerador`/`AbonoPagoGenerador` resuelven la cuenta por el
+  medio de pago, así que sigue afectando `1105`.
+
+**Pendiente conocido**: el freno de fecha retroactiva (fase 6) sigue sin cubrir los abonos.
+Si alguien registra un abono en efectivo con `fechaPago` vieja y **no** marca "otro día", cae
+en la caja de hoy sin pedir autorización ni motivo — el mismo hueco que el V149 cerró para
+compra y gasto. Requiere `motivo_retroactivo`/`autorizado_por` en las dos tablas de abonos.
+
 ---
 
 ## 4. Para poner en marcha lo hecho
 
-1. **Correr V145–V151.** Ya están replicadas de forma idempotente en el proyecto Laravel
-   (`2026_07_03_000145` … `000149`). Con `ddl-auto=validate`, la app no levanta hasta que estén
+1. **Correr V145–V151 y V153.** Ya están replicadas de forma idempotente en el proyecto
+   Laravel (`2026_07_03_000145` … `000151`, `000153`). Con `ddl-auto=validate`, la app no levanta hasta que estén
    aplicadas. Prod (`aura-db` remota) no se toca.
 2. **Empresas existentes**: la semilla de `es_medio_pago` del `V146` marca su disponible
    actual. La cuenta `110505 Caja Menor` solo se siembra en empresas nuevas — para las

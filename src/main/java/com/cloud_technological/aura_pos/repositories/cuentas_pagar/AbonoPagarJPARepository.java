@@ -16,6 +16,13 @@ public interface AbonoPagarJPARepository extends JpaRepository<AbonoPagarEntity,
 
     /** Los abonos que dejó un documento concreto; los busca su reversa. */
     List<AbonoPagarEntity> findByCuentaPagarIdAndReferencia(Long cuentaPagarId, String referencia);
+
+    /**
+     * Todos los abonos que dejó un documento, sin saber de antemano a qué
+     * cuentas se aplicó. Lo usa la anulación de un comprobante: un mismo CE/RC
+     * puede cruzar la cartera de varias facturas del mismo proveedor.
+     */
+    List<AbonoPagarEntity> findByReferencia(String referencia);
     List<AbonoPagarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
     // Solo el efectivo sale del cajón; un pago por banco no baja el arqueo.

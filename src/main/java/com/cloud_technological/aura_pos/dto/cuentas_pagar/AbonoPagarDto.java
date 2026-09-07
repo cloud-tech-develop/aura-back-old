@@ -38,6 +38,14 @@ public class AbonoPagarDto {
     private String banco;
     /** Cuenta bancaria DE DONDE sale el dinero del abono (origen). Null si es efectivo. */
     private Long cuentaBancariaId;
+    /**
+     * Al proveedor se le pagó otro día: la plata salió del cajón entonces, el
+     * conteo de aquel día ya lo reflejaba y ese turno cerró cuadrado. El abono
+     * se registra hoy pero no baja el arqueo de nadie — solo deja el asiento
+     * contra Caja.
+     */
+    private Boolean cajaOtroDia = Boolean.FALSE;
+
     private LocalDateTime fechaPago;
     private LocalDateTime createdAt;
 }

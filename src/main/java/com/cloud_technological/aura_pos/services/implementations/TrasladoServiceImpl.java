@@ -39,6 +39,7 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 
 @Service
@@ -180,7 +181,7 @@ public class TrasladoServiceImpl implements TrasladoService{
             // Kardex salida
             registrarMovimiento(origen, producto, loteOrigen,
                     item.getCantidad().negate(), saldoAnteriorOrigen, saldoNuevoOrigen,
-                    item.getCostoUnitario(), "TRASLADO_SALIDA",
+                    item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_SALIDA.codigo(),
                     "Traslado #" + traslado.getId() + " → " + destino.getNombre());
 
             // 2.5 Sumar stock destino
@@ -194,7 +195,7 @@ public class TrasladoServiceImpl implements TrasladoService{
             // Kardex entrada
             registrarMovimiento(destino, producto, loteOrigen,
                     item.getCantidad(), saldoAnteriorDestino, saldoNuevoDestino,
-                    item.getCostoUnitario(), "TRASLADO_ENTRADA",
+                    item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_ENTRADA.codigo(),
                     "Traslado #" + traslado.getId() + " ← " + origen.getNombre());
         }
 
@@ -232,7 +233,7 @@ public class TrasladoServiceImpl implements TrasladoService{
             // Kardex devolución origen
             registrarMovimiento(origen, producto, detalle.getLote(),
                     detalle.getCantidad(), saldoAnteriorOrigen, saldoNuevoOrigen,
-                    detalle.getCostoUnitario(), "ANULACION_TRASLADO",
+                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
                     "Anulación Traslado #" + traslado.getId());
 
             // Restar stock del destino
@@ -256,7 +257,7 @@ public class TrasladoServiceImpl implements TrasladoService{
             // Kardex devolución destino
             registrarMovimiento(destino, producto, detalle.getLote(),
                     detalle.getCantidad().negate(), saldoAnteriorDestino, saldoNuevoDestino,
-                    detalle.getCostoUnitario(), "ANULACION_TRASLADO",
+                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
                     "Anulación Traslado #" + traslado.getId());
 
             // Revertir lotes si aplica

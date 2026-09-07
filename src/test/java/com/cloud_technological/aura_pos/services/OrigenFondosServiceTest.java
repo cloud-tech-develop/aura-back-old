@@ -256,6 +256,25 @@ class OrigenFondosServiceTest {
     }
 
     @Test
+    void cajaDeOtroDiaDescartaElTurnoAunqueElDocumentoLoDeclare() {
+        // Un abono de cartera entra al arqueo por su propio turno_caja_id, no
+        // por movimiento_caja. Si el origen devolviera el turno declarado, el
+        // recaudo "de otro día" le sumaría al cierre de hoy un efectivo que hoy
+        // no entró — y el cajero cerraría con faltante.
+        when(turnoRepository.findByIdAndCajaSucursalEmpresaId(7L, EMPRESA))
+                .thenReturn(Optional.of(turno(7L, "ABIERTA")));
+        when(resolucionCuentaPago.resolver(EMPRESA, "EFECTIVO", null)).thenReturn(1105L);
+
+        OrigenFondos origen = service.resolver(EMPRESA, new Solicitud(
+                "EFECTIVO", 7L, null, null, SUCURSAL, "abono a la cuenta por cobrar", true));
+
+        assertEquals(Tipo.CAJA_OTRO_DIA, origen.tipo());
+        assertNull(origen.turno());
+        assertNull(origen.turnoId());
+        assertFalse(origen.generaMovimientoCaja());
+    }
+
+    @Test
     void efectivoSinSucursalNiTurnoPideDatosEnVezDeAdivinar() {
         Solicitud sinSucursal = new Solicitud("EFECTIVO", null, null, null, null, "abono");
 

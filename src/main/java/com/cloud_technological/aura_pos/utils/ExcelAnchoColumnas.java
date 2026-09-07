@@ -53,14 +53,22 @@ public final class ExcelAnchoColumnas {
     }
 
     /**
-     * El texto que se ve en la celda. Los números se miden por su valor crudo:
-     * no se puede aplicar el formato sin un DataFormatter, y para calcular un
-     * ancho la diferencia no importa.
+     * El texto que se ve en la celda.
+     *
+     * <p>Los números se miden <b>con separador de miles</b>: desde que los
+     * reportes usan el formato {@code #,##0}, un valor de siete dígitos ocupa
+     * nueve caracteres en pantalla. Midiéndolo crudo la columna queda corta y
+     * Excel dibuja {@code #######} en vez de la cifra — el clásico "el reporte
+     * salió con gatos".
+     *
+     * <p>Se agrupa con la configuración regional por defecto, que es la misma
+     * que va a usar Excel para dibujarlo. Los decimales se ignoran: en las
+     * columnas de cantidad son pocos y la holgura los cubre.
      */
     private static String textoDe(Cell celda) {
         return switch (celda.getCellType()) {
             case STRING -> celda.getStringCellValue();
-            case NUMERIC -> String.valueOf((long) celda.getNumericCellValue());
+            case NUMERIC -> String.format("%,d", (long) celda.getNumericCellValue());
             case BOOLEAN -> String.valueOf(celda.getBooleanCellValue());
             case FORMULA -> celda.getCellFormula();
             default -> "";

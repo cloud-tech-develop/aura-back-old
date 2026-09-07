@@ -42,6 +42,7 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 /**
  * Entrega de producto sin cobrar. Saca inventario y kardex como una merma,
@@ -204,7 +205,7 @@ public class ObsequioServiceImpl implements ObsequioService {
 
             registrarMovimiento(sucursal, producto, detalle.getLote(),
                     item.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, "OBSEQUIO", "Obsequio #" + obsequio.getId());
+                    costoUnitario, TipoMovimientoInventario.OBSEQUIO.codigo(), "Obsequio #" + obsequio.getId());
 
             costoTotal = costoTotal.add(item.getCantidad().multiply(costoUnitario));
             baseTotal = baseTotal.add(item.getCantidad().multiply(baseUnitaria));
@@ -263,7 +264,7 @@ public class ObsequioServiceImpl implements ObsequioService {
 
             registrarMovimiento(obsequio.getSucursal(), detalle.getProducto(), detalle.getLote(),
                     detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                    detalle.getCostoUnitario(), "ANULACION_OBSEQUIO",
+                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_OBSEQUIO.codigo(),
                     "Anulación Obsequio #" + obsequio.getId());
         }
 

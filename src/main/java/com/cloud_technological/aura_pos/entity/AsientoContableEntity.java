@@ -81,6 +81,29 @@ public class AsientoContableEntity {
     @Column(name = "fecha_vencimiento")
     private LocalDate fechaVencimiento;
 
+    // ── Origen de fondos del comprobante (CE/RC) ─────────────────────────
+    //
+    // Se guarda lo que el comprobante declaró, no lo que se dedujo después: es
+    // lo que permite auditar por qué un CE cayó en la caja 3 y no en la 1, y
+    // reconstruir el arqueo si alguien pregunta meses más tarde.
+
+    /** Turno de caja afectado; null si la plata no pasó por un cajón. */
+    @Column(name = "turno_caja_id")
+    private Long turnoCajaId;
+
+    /** EFECTIVO | TRANSFERENCIA | TARJETA… con el que se movió la plata. */
+    @Column(name = "metodo_pago", length = 30)
+    private String metodoPago;
+
+    /** Cuenta bancaria de la empresa, cuando el movimiento fue por banco. */
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
+    /** El dinero se movió del cajón otro día: no entra a ningún arqueo vivo. */
+    @Column(name = "caja_otro_dia", nullable = false)
+    @Builder.Default
+    private Boolean cajaOtroDia = Boolean.FALSE;
+
     @Column(name = "usuario_id")
     private Integer usuarioId;
 
