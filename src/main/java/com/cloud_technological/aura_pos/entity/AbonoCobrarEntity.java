@@ -58,6 +58,15 @@ public class AbonoCobrarEntity {
     @Column(name = "cuenta_contable_id")
     private Long cuentaContableId;
 
+    /**
+     * La plata se movió del cajón otro día y ese arqueo ya cerró cuadrado
+     * (V152). El abono no se ata a ningún turno: solo deja el asiento. Se
+     * guarda para poder auditarlo desde el panel de supervisión.
+     */
+    @Column(name = "caja_otro_dia", nullable = false)
+    @Builder.Default
+    private Boolean cajaOtroDia = Boolean.FALSE;
+
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 

@@ -56,14 +56,22 @@ public class OrigenFondosServiceImpl implements OrigenFondosService {
             }
         }
 
-        // (0) "Ya salió de la caja, otro día". Va primero porque es una
+        // (0) "Ya se movió de la caja, otro día". Va primero porque es una
         // afirmación sobre un hecho pasado, no una elección entre cuentas: la
-        // plata ya no está y el arqueo de aquel día ya cuadró contra el conteo
-        // físico. Contablemente acredita CAJA; operativamente no mueve nada.
-        if (solicitud.salidaDeCajaOtroDia()) {
+        // plata ya salió (o ya entró) y el arqueo de aquel día ya cuadró contra
+        // el conteo físico. Contablemente afecta CAJA; operativamente no mueve
+        // nada.
+        //
+        // El turno se descarta a propósito, aunque el documento lo haya
+        // declarado. En compra y gasto bastaba con no emitir el movimiento de
+        // caja, pero un abono de cartera se cuenta en el arqueo por su propio
+        // turno_caja_id: dejarlo puesto le metería a ese turno un ingreso o un
+        // egreso que su conteo físico ya reflejaba. Devolverlo en null vuelve
+        // la regla estructural en vez de dejarla en manos de cada llamador.
+        if (solicitud.cajaOtroDia()) {
             return new OrigenFondos(Tipo.CAJA_OTRO_DIA,
                     resolucionCuentaPago.resolver(empresaId, MediosPago.EFECTIVO, null),
-                    turno);
+                    null);
         }
 
         // (1) Cuenta contable elegida a mano: el caso del administrador que

@@ -182,6 +182,22 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         // De dónde sale la plata. Si es efectivo tiene que salir de una caja
         // abierta y quedar en su cierre, aunque quien pague sea el administrador
         // y no el cajero; si sale de un banco, no toca el arqueo.
+        //
+        // Si al proveedor se le pagó del cajón otro día, el origen resuelve
+        // CAJA_OTRO_DIA y devuelve turno null: el abono deja su asiento pero no
+        // le baja el esperado a la caja de hoy, de la que no salió nada, ni a la
+        // de aquel día, que ya cerró cuadrada contra el conteo físico.
+        boolean cajaOtroDia = Boolean.TRUE.equals(dto.getCajaOtroDia());
+        // Las dos afirmaciones se contradicen y el daño no sería visible: el
+        // origen resolvería CAJA_OTRO_DIA —el asiento acreditaría Caja— pero el
+        // extracto de abajo igual le bajaría el saldo al banco. Mejor pedir que
+        // se decida que dejar el pago contado dos veces.
+        if (cajaOtroDia && dto.getCuentaBancariaId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El abono se declaró como salido de la caja otro día, pero también "
+                            + "eligió una cuenta bancaria. Si salió del banco, desmarque "
+                            + "\"ya salió de la caja otro día\".");
+        }
         OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
                 new OrigenFondosService.Solicitud(
                         dto.getMetodoPago(),
@@ -189,7 +205,8 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                         dto.getCuentaBancariaId(),
                         dto.getCuentaContableId(),
                         dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
-                        "abono a la cuenta por pagar"));
+                        "abono a la cuenta por pagar",
+                        cajaOtroDia));
 
         // Crear abono
         AbonoPagarEntity abono = AbonoPagarEntity.builder()
@@ -202,6 +219,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                 .referencia(dto.getReferencia())
                 .banco(dto.getBanco())
                 .cuentaBancariaId(dto.getCuentaBancariaId())
+                .cajaOtroDia(cajaOtroDia)
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
 
@@ -251,7 +269,8 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
 
     @Override
     @Transactional
-    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia) {
+    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId,
+            String referencia, OrigenFondosService.OrigenFondos origen, String metodoPago) {
         CuentaPagarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por pagar #" + cuentaId + " no encontrada"));
         if ("pagada".equals(cuenta.getEstado()))
@@ -263,12 +282,24 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                     "El monto aplicado (" + monto + ") supera el saldo pendiente de la cuenta #" + cuentaId);
 
         UsuarioEntity usuario = usuarioId != null ? usuarioRepository.findById(usuarioId).orElse(null) : null;
+
+        // El turno y el método reales son los que meten el pago en el cierre de
+        // caja: construirResumen busca los abonos del turno y solo resta del
+        // efectivo esperado los que MediosPago reconoce como efectivo. Antes se
+        // guardaba turno null y metodoPago "COMPROBANTE" — un valor que no es
+        // un medio de pago — así que el abono no aparecía en ningún arqueo.
+        // Se conserva el literal viejo cuando el llamador no declara nada (la
+        // nota crédito de compra, que no mueve caja).
         AbonoPagarEntity abono = AbonoPagarEntity.builder()
                 .cuentaPagar(cuenta)
                 .usuario(usuario)
+                .turnoCaja(origen != null ? origen.turno() : null)
                 .monto(monto)
-                .metodoPago("COMPROBANTE")
+                .metodoPago(metodoPago != null ? MediosPago.normalizar(metodoPago) : "COMPROBANTE")
                 .referencia(referencia)
+                .cuentaContableId(origen != null ? origen.cuentaContableId() : null)
+                .cajaOtroDia(origen != null
+                        && origen.tipo() == OrigenFondosService.Tipo.CAJA_OTRO_DIA)
                 .fechaPago(LocalDateTime.now())
                 .build();
         abonoJpaRepository.save(abono);
@@ -314,6 +345,27 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
                 ? "parcial" : "pendiente");
         jpaRepository.save(cuenta);
+    }
+
+    @Override
+    @Transactional
+    public void revertirCrucesDeDocumento(String referencia, Integer empresaId) {
+        if (referencia == null || referencia.isBlank()) {
+            return;
+        }
+        // La referencia lleva el consecutivo del comprobante, que es por
+        // empresa: dos empresas pueden tener su propio CE-000001. Por eso se
+        // filtra por empresa antes de tocar nada.
+        List<Long> cuentas = abonoJpaRepository.findByReferencia(referencia).stream()
+                .map(a -> a.getCuentaPagar() != null ? a.getCuentaPagar().getId() : null)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .filter(id -> jpaRepository.findByIdAndEmpresaId(id, empresaId).isPresent())
+                .toList();
+
+        for (Long cuentaId : cuentas) {
+            revertirCruce(cuentaId, null, empresaId, referencia);
+        }
     }
 
     @Override
@@ -456,6 +508,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
         dto.setReferencia(entity.getReferencia());
         dto.setBanco(entity.getBanco());
         dto.setCuentaBancariaId(entity.getCuentaBancariaId());
+        dto.setCajaOtroDia(entity.getCajaOtroDia());
         dto.setFechaPago(entity.getFechaPago());
         dto.setCreatedAt(entity.getCreatedAt());
         

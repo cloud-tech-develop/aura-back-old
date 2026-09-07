@@ -23,10 +23,30 @@ public interface ComprobanteCajaService {
      *
      * @return null si el documento no mueve dinero (monto nulo o cero)
      */
+    default ComprobanteCajaEntity sincronizarDeDocumento(Integer empresaId, Integer usuarioId,
+            String tipo, String concepto, BigDecimal monto,
+            String metodoPago, String entregadoA,
+            String origen, Long origenId, Long turnoCajaId) {
+        return sincronizarDeDocumento(empresaId, usuarioId, tipo, concepto, monto,
+                metodoPago, entregadoA, origen, origenId, turnoCajaId, null);
+    }
+
+    /**
+     * Igual que la anterior, pero el documento impone su propio número.
+     *
+     * <p>Lo necesita el comprobante contable manual (CE/RC), que ya nació con un
+     * consecutivo de la serie — y esa serie es la misma para las dos tablas. Si
+     * el soporte de caja pidiera número nuevo, el mismo movimiento quedaría con
+     * RC-000045 en contabilidad y RC-000046 en caja: dos documentos para un solo
+     * pago, que es justo lo que este método existe para evitar.
+     *
+     * @param numeroComprobante el del documento; null para tomar el siguiente
+     *                          de la serie, como hacen compra, gasto y abono
+     */
     ComprobanteCajaEntity sincronizarDeDocumento(Integer empresaId, Integer usuarioId,
             String tipo, String concepto, BigDecimal monto,
             String metodoPago, String entregadoA,
-            String origen, Long origenId, Long turnoCajaId);
+            String origen, Long origenId, Long turnoCajaId, String numeroComprobante);
 
     /**
      * Invalida el comprobante de un documento cuyo pago dejó de existir, sin

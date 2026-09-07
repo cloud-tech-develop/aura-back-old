@@ -187,6 +187,12 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         // Dónde entra la plata. Antes el turno salía de lo que mandara el front
         // y si no venía nada el abono quedaba sin turno: el recaudo en efectivo
         // del administrador no aparecía en el cierre de ninguna caja.
+        //
+        // Si el cliente trajo la plata otro día, el origen resuelve
+        // CAJA_OTRO_DIA y devuelve turno null: el recaudo deja su asiento pero
+        // no entra al arqueo de hoy, que no vio entrar ese efectivo, ni al de
+        // aquel día, que ya cerró cuadrado contra el conteo físico.
+        boolean cajaOtroDia = Boolean.TRUE.equals(dto.getCajaOtroDia());
         OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
                 new OrigenFondosService.Solicitud(
                         dto.getMetodoPago(),
@@ -194,7 +200,8 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                         null,
                         dto.getCuentaContableId(),
                         dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
-                        "abono a la cuenta por cobrar"));
+                        "abono a la cuenta por cobrar",
+                        cajaOtroDia));
 
         // Crear abono
         AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
@@ -205,6 +212,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                 .monto(dto.getMonto())
                 .metodoPago(MediosPago.normalizar(dto.getMetodoPago()))
                 .referencia(dto.getReferencia())
+                .cajaOtroDia(cajaOtroDia)
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
 
@@ -242,7 +250,8 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
     @Override
     @Transactional
-    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia) {
+    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId,
+            String referencia, OrigenFondosService.OrigenFondos origen, String metodoPago) {
         CuentaCobrarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por cobrar #" + cuentaId + " no encontrada"));
         if ("pagada".equals(cuenta.getEstado()))
@@ -254,12 +263,24 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                     "El monto aplicado (" + monto + ") supera el saldo pendiente de la cuenta #" + cuentaId);
 
         UsuarioEntity usuario = usuarioId != null ? usuarioRepository.findById(usuarioId).orElse(null) : null;
+
+        // El turno y el método reales son los que meten el recaudo en el cierre
+        // de caja: construirResumen busca los abonos del turno y solo suma al
+        // efectivo esperado los que MediosPago reconoce como efectivo. Antes se
+        // guardaba turno null y metodoPago "COMPROBANTE" — un valor que no es
+        // un medio de pago — así que el abono no aparecía en ningún arqueo.
+        // Se conserva el literal viejo cuando el llamador no declara nada (la
+        // nota crédito de compra, que no mueve caja).
         AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
                 .cuentaCobrar(cuenta)
                 .usuario(usuario)
+                .turnoCaja(origen != null ? origen.turno() : null)
                 .monto(monto)
-                .metodoPago("COMPROBANTE")
+                .metodoPago(metodoPago != null ? MediosPago.normalizar(metodoPago) : "COMPROBANTE")
                 .referencia(referencia)
+                .cuentaContableId(origen != null ? origen.cuentaContableId() : null)
+                .cajaOtroDia(origen != null
+                        && origen.tipo() == OrigenFondosService.Tipo.CAJA_OTRO_DIA)
                 .fechaPago(LocalDateTime.now())
                 .build();
         abonoJpaRepository.save(abono);
@@ -274,6 +295,55 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         }
         jpaRepository.save(cuenta);
         // Sin evento contable: el comprobante ya generó el asiento.
+    }
+
+    @Override
+    @Transactional
+    public void revertirCruce(Long cuentaId, BigDecimal monto, Integer empresaId, String referencia) {
+        CuentaCobrarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                        "Cuenta por cobrar #" + cuentaId + " no encontrada"));
+
+        // Se borran los abonos que dejó ese documento, no unos cualesquiera: si
+        // el cruce ya no está (lo eliminaron a mano), la cuenta no se toca —
+        // devolverle el saldo dos veces la dejaría inflada.
+        List<AbonoCobrarEntity> abonos = abonoJpaRepository
+                .findByCuentaCobrarIdAndReferencia(cuentaId, referencia);
+        if (abonos.isEmpty()) {
+            return;
+        }
+        BigDecimal revertido = BigDecimal.ZERO;
+        for (AbonoCobrarEntity abono : abonos) {
+            revertido = revertido.add(abono.getMonto());
+        }
+        abonoJpaRepository.deleteAll(abonos);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(revertido));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(revertido));
+        cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
+                ? "parcial" : "pendiente");
+        jpaRepository.save(cuenta);
+    }
+
+    @Override
+    @Transactional
+    public void revertirCrucesDeDocumento(String referencia, Integer empresaId) {
+        if (referencia == null || referencia.isBlank()) {
+            return;
+        }
+        // La referencia lleva el consecutivo del comprobante, que es por
+        // empresa: dos empresas pueden tener su propio CE-000001. Por eso se
+        // filtra por empresa antes de tocar nada.
+        List<Long> cuentas = abonoJpaRepository.findByReferencia(referencia).stream()
+                .map(a -> a.getCuentaCobrar() != null ? a.getCuentaCobrar().getId() : null)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .filter(id -> jpaRepository.findByIdAndEmpresaId(id, empresaId).isPresent())
+                .toList();
+
+        for (Long cuentaId : cuentas) {
+            revertirCruce(cuentaId, null, empresaId, referencia);
+        }
     }
 
     @Override
@@ -431,6 +501,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         dto.setMonto(entity.getMonto());
         dto.setMetodoPago(entity.getMetodoPago());
         dto.setReferencia(entity.getReferencia());
+        dto.setCajaOtroDia(entity.getCajaOtroDia());
         dto.setFechaPago(entity.getFechaPago());
         dto.setCreatedAt(entity.getCreatedAt());
         

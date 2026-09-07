@@ -51,6 +51,7 @@ import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.DevolucionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class DevolucionServiceImpl implements DevolucionService {
@@ -479,7 +480,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             inventarioRepository.save(inv);
 
             registrarMovimiento(inv.getSucursal(), producto, cantidad, saldoAnterior, saldoNuevo,
-                    costoUnitario, "DEVOLUCION", "Devolución de Venta #" + ventaId);
+                    costoUnitario, TipoMovimientoInventario.DEVOLUCION.codigo(), "Devolución de Venta #" + ventaId);
         }
     }
 
@@ -496,7 +497,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             inventarioRepository.save(inv);
 
             registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, "ANULACION_DEVOLUCION", "Anulación Devolución #" + devolucionId);
+                    costoUnitario, TipoMovimientoInventario.ANULACION_DEVOLUCION.codigo(), "Anulación Devolución #" + devolucionId);
         }
     }
 
@@ -760,7 +761,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             inventarioRepository.save(inv);
 
             registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, "DEVOLUCION_CAMBIO", "Cambio en Devolución de Venta #" + ventaId);
+                    costoUnitario, TipoMovimientoInventario.DEVOLUCION_CAMBIO.codigo(), "Cambio en Devolución de Venta #" + ventaId);
         }
     }
 

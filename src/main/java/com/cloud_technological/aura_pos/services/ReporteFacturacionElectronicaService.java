@@ -107,6 +107,7 @@ public class ReporteFacturacionElectronicaService {
             for (int i = 0; i < facturas.size(); i++) {
                 FacturaEntity f = facturas.get(i);
                 XSSFCellStyle st = (i % 2 == 0) ? e.data : e.dataAlt;
+                XSSFCellStyle val = e.filaValor(i);
                 Row r = ws.createRow(fila++);
 
                 BigDecimal ivaTotal = nz(f.getIvaValor5()).add(nz(f.getIvaValor19()));
@@ -120,14 +121,14 @@ public class ReporteFacturacionElectronicaService {
                 texto(r, c++, nombreCliente(f.getVenta()), st);
                 texto(r, c++, identificacion(f.getVenta()), st);
                 texto(r, c++, f.getMetodoPago(), st);
-                numero(r, c++, nz(f.getIvaBase0()), st);
-                numero(r, c++, nz(f.getIvaBase5()), st);
-                numero(r, c++, nz(f.getIvaValor5()), st);
-                numero(r, c++, nz(f.getIvaBase19()), st);
-                numero(r, c++, nz(f.getIvaValor19()), st);
-                numero(r, c++, descuento, st);
-                numero(r, c++, ivaTotal, st);
-                numero(r, c++, total, st);
+                numero(r, c++, nz(f.getIvaBase0()), val);
+                numero(r, c++, nz(f.getIvaBase5()), val);
+                numero(r, c++, nz(f.getIvaValor5()), val);
+                numero(r, c++, nz(f.getIvaBase19()), val);
+                numero(r, c++, nz(f.getIvaValor19()), val);
+                numero(r, c++, descuento, val);
+                numero(r, c++, ivaTotal, val);
+                numero(r, c++, total, val);
                 texto(r, c++, f.getCufe(), st);
                 texto(r, c++, f.getEstadoDian(), st);
                 texto(r, c, f.getTipoAmbiente(), st);
@@ -143,9 +144,9 @@ public class ReporteFacturacionElectronicaService {
                 Row rt = ws.createRow(fila);
                 texto(rt, 0, "TOTALES (" + facturas.size() + ")", e.total);
                 for (int i = 1; i <= 9; i++) texto(rt, i, "", e.total);
-                numero(rt, 10, totDescuento, e.total);
-                numero(rt, 11, totIva, e.total);
-                numero(rt, 12, totTotal, e.total);
+                numero(rt, 10, totDescuento, e.valorTotal);
+                numero(rt, 11, totIva, e.valorTotal);
+                numero(rt, 12, totTotal, e.valorTotal);
                 for (int i = 13; i < COLS_FACTURAS.length; i++) texto(rt, i, "", e.total);
             }
 
@@ -204,6 +205,7 @@ public class ReporteFacturacionElectronicaService {
             for (int i = 0; i < notas.size(); i++) {
                 NotaElectronicaEntity n = notas.get(i);
                 XSSFCellStyle st = (i % 2 == 0) ? e.data : e.dataAlt;
+                XSSFCellStyle val = e.filaValor(i);
                 Row r = ws.createRow(fila++);
 
                 int c = 0;
@@ -213,9 +215,9 @@ public class ReporteFacturacionElectronicaService {
                 texto(r, c++, n.getBillId() != null ? String.valueOf(n.getBillId()) : "", st);
                 texto(r, c++, n.getReferenceCode(), st);
                 texto(r, c++, n.getCude(), st);
-                numero(r, c++, nz(n.getBaseGravable()), st);
-                numero(r, c++, nz(n.getIva()), st);
-                numero(r, c++, nz(n.getTotal()), st);
+                numero(r, c++, nz(n.getBaseGravable()), val);
+                numero(r, c++, nz(n.getIva()), val);
+                numero(r, c++, nz(n.getTotal()), val);
                 texto(r, c, n.getEstado(), st);
 
                 totBase = totBase.add(nz(n.getBaseGravable()));
@@ -229,9 +231,9 @@ public class ReporteFacturacionElectronicaService {
                 Row rt = ws.createRow(fila);
                 texto(rt, 0, "TOTALES (" + notas.size() + ")", e.total);
                 for (int i = 1; i <= 5; i++) texto(rt, i, "", e.total);
-                numero(rt, 6, totBase, e.total);
-                numero(rt, 7, totIva, e.total);
-                numero(rt, 8, totTotal, e.total);
+                numero(rt, 6, totBase, e.valorTotal);
+                numero(rt, 7, totIva, e.valorTotal);
+                numero(rt, 8, totTotal, e.valorTotal);
                 texto(rt, 9, "", e.total);
             }
 
@@ -386,6 +388,9 @@ public class ReporteFacturacionElectronicaService {
         final XSSFCellStyle data;
         final XSSFCellStyle dataAlt;
         final XSSFCellStyle total;
+        final XSSFCellStyle valor;
+        final XSSFCellStyle valorAlt;
+        final XSSFCellStyle valorTotal;
 
         Estilos(XSSFWorkbook wb) {
             this.titulo = titulo(wb);
@@ -394,6 +399,27 @@ public class ReporteFacturacionElectronicaService {
             this.data = data(wb, BLANCO);
             this.dataAlt = data(wb, GRIS_ZEBRA);
             this.total = total(wb);
+
+            // Separador de miles: 1.000.000 en vez de 1000000. Se usa el
+            // patrón #,##0 y no puntos literales porque Excel dibuja el
+            // separador según la región de quien abre el archivo — y escribirlo
+            // a mano produciría texto que no se puede sumar.
+            short f = wb.createDataFormat().getFormat("#,##0");
+            this.valor = conFormato(data(wb, BLANCO), f);
+            this.valorAlt = conFormato(data(wb, GRIS_ZEBRA), f);
+            this.valorTotal = conFormato(total(wb), f);
+        }
+
+        /** Los números van a la derecha: así se comparan las magnitudes. */
+        private static XSSFCellStyle conFormato(XSSFCellStyle s, short formato) {
+            s.setDataFormat(formato);
+            s.setAlignment(HorizontalAlignment.RIGHT);
+            return s;
+        }
+
+        /** El estilo numérico de la fila i, alternando el fondo. */
+        XSSFCellStyle filaValor(int i) {
+            return (i % 2 == 0) ? valor : valorAlt;
         }
 
         private static XSSFCellStyle header(XSSFWorkbook wb) {
