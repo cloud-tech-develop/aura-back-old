@@ -14,7 +14,7 @@ public interface LectorVenta {
     VentaContable cargar(Long ventaId, Integer empresaId);
 
     /**
-     * @param documento etiqueta del documento fiscal (" — PREF-123") o vacía
+     * @param documento número visible del documento ("PREF-123" o "123"); nunca el id de la fila
      * @param total     total a pagar (incluye impuestos, neto de descuentos)
      * @param impuestos IVA de la venta
      * @param saldoPendiente lo no pagado que va a cartera

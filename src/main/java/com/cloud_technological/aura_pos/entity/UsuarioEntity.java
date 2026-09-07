@@ -62,6 +62,7 @@ public class UsuarioEntity {
 
     private String rol; // ADMIN, CAJERO (Según tu SQL es varchar, no tabla foránea por ahora)
 
+    @lombok.Builder.Default
     private Boolean activo = true;
 
     @Column(name = "created_at", updatable = false)

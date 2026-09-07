@@ -140,12 +140,15 @@ public class TerceroEntity {
     // se puede ser de renta y no de ICA.
 
     @Column(name = "es_autoretenedor_ica", nullable = false)
+    @lombok.Builder.Default
     private Boolean esAutoretenedorIca = Boolean.FALSE;
 
     @Column(name = "es_autoretenedor_fuente", nullable = false)
+    @lombok.Builder.Default
     private Boolean esAutoretenedorFuente = Boolean.FALSE;
 
     @Column(name = "declarante", nullable = false)
+    @lombok.Builder.Default
     private Boolean declarante = Boolean.FALSE;
 
     // ── Bancario (V97) ──────────────────────────────────────────────

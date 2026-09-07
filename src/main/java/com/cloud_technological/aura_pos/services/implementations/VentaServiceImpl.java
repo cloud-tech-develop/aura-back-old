@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.CreateCuentaCobrarDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDetalleDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDto;
@@ -457,7 +458,7 @@ public class VentaServiceImpl implements VentaService {
                     registrarMovimiento(sucursal, hijo, null,
                             cantidadDescontar.negate(), saldoAnt, saldoNuevo,
                             item.getPrecioUnitario(), TipoMovimientoInventario.VENTA.codigo(),
-                            "Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                            "Venta " + Documentos.numeroVenta(venta) + " [componente de " + producto.getNombre() + "]");
                 }
 
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
@@ -472,9 +473,10 @@ public class VentaServiceImpl implements VentaService {
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
 
+                String numeroVenta = Documentos.numeroVenta(venta);
                 String refMovimiento = presentacion != null
-                        ? "Venta #" + venta.getId() + " [presentación: " + presentacion.getNombre() + "]"
-                        : "Venta #" + venta.getId();
+                        ? "Venta " + numeroVenta + " [presentación: " + presentacion.getNombre() + "]"
+                        : "Venta " + numeroVenta;
 
                 registrarMovimiento(sucursal, producto, detalle.getLote(),
                         cantidadBase.negate(), saldoAnterior, saldoNuevo,
@@ -542,7 +544,7 @@ public class VentaServiceImpl implements VentaService {
             tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
                     new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
                             pago.getCuentaBancariaId(), false, montoEfectivo,
-                            "Venta #" + venta.getId() + " - Recaudo",
+                            "Venta " + Documentos.numeroVenta(venta) + " - Recaudo",
                             com.cloud_technological.aura_pos.utils.Terceros.nombreVisible(venta.getCliente()),
                             pago.getReferencia() != null && !pago.getReferencia().isBlank()
                                     ? pago.getReferencia().trim()
@@ -616,9 +618,10 @@ public class VentaServiceImpl implements VentaService {
             cuentaCobrarDto.setFechaEmision(venta.getFechaEmision());
             cuentaCobrarDto.setFechaVencimiento(dto.getFechaVencimiento() != null
                     ? dto.getFechaVencimiento() : venta.getFechaEmision().plusDays(30));
+            String numeroVenta = Documentos.numeroVenta(venta);
             cuentaCobrarDto.setObservaciones(esCredito
-                    ? "Venta #" + venta.getId() + " - Venta a crédito"
-                    : "Venta #" + venta.getId() + " - Pago parcial");
+                    ? "Venta " + numeroVenta + " - Venta a crédito"
+                    : "Venta " + numeroVenta + " - Pago parcial");
 
             cuentaCobrarService.crear(cuentaCobrarDto, empresaId, usuarioId);
         }
@@ -747,7 +750,7 @@ public class VentaServiceImpl implements VentaService {
                         registrarMovimiento(venta.getSucursal(), hijo, null,
                                 cantidadDevolver, saldoAnt, saldoNuevo,
                                 detalle.getPrecioUnitario(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
-                                "Anulación Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                                "Anulación Venta " + Documentos.numeroVenta(venta) + " [componente de " + producto.getNombre() + "]");
                     }
                 } else {
                     // Producto simple — lógica actual sin cambios
@@ -772,7 +775,7 @@ public class VentaServiceImpl implements VentaService {
                     registrarMovimiento(venta.getSucursal(), producto, detalle.getLote(),
                             detalle.getCantidad(), saldoAnterior, saldoNuevo,
                             detalle.getPrecioUnitario(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
-                            "Anulación Venta #" + venta.getId());
+                            "Anulación Venta " + Documentos.numeroVenta(venta));
                 }
             }
             // Devolver seriales a DISPONIBLE

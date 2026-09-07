@@ -37,5 +37,6 @@ public class UsuarioSucursalEntity {
     @Column(name = "es_default")
     private Boolean esDefault;
 
+    @lombok.Builder.Default
     private Boolean activo = true;
 }

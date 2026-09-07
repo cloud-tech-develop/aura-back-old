@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.contabilidad.application.port.LectorVenta;
 import com.cloud_technological.aura_pos.contabilidad.domain.ReglasAsiento;
 import com.cloud_technological.aura_pos.entity.VentaEntity;
@@ -34,10 +35,9 @@ public class LectorVentaJpa implements LectorVenta {
                         "Venta #" + ventaId + " no encontrada para contabilizar"));
 
         LocalDate fecha = venta.getFechaEmision().toLocalDate();
-        String documento = venta.getConsecutivo() != null
-                ? " — " + (venta.getPrefijo() != null ? venta.getPrefijo() + "-" : "")
-                        + venta.getConsecutivo()
-                : "";
+        // El número que ve el contador es el consecutivo del POS, no el id de la
+        // fila: ese es global de la base y no significa nada para la empresa.
+        String documento = Documentos.numeroVenta(venta);
         Long clienteId = venta.getCliente() != null ? venta.getCliente().getId() : null;
 
         // Base gravable por línea (subtotal − impuesto); la diferencia por
