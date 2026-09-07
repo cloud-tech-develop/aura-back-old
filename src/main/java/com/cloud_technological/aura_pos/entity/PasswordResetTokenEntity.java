@@ -41,6 +41,7 @@ public class PasswordResetTokenEntity {
     private LocalDateTime expiresAt;
 
     @Column(nullable = false)
+    @lombok.Builder.Default
     private Boolean usado = false;
 
     @Column(name = "created_at", updatable = false)

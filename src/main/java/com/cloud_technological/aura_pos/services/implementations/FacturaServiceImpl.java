@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.facturacion.FacturaDto;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.FacturaEntity;
@@ -119,7 +120,7 @@ public class FacturaServiceImpl implements FacturaService {
         factura.setConsecutivo(consecutivo);
         factura.setValor(venta.getTotalPagar());
         factura.setDescuento(venta.getDescuentoTotal() != null ? venta.getDescuentoTotal() : BigDecimal.ZERO);
-        factura.setDescripcion("Factura generada automáticamente desde venta #" + venta.getId());
+        factura.setDescripcion("Factura generada automáticamente desde venta " + Documentos.numeroVenta(venta));
         factura.setCufe(cufe);
         factura.setFechaHoraEmision(fechaEmision);
         factura.setEstadoDian("PENDIENTE");

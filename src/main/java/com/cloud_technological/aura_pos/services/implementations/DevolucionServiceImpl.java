@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionAgregadoDto;
 import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionDetalleDto;
 import com.cloud_technological.aura_pos.dto.devolucion.CreateDevolucionDto;
@@ -207,7 +208,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             if (Boolean.TRUE.equals(devolucion.getReintegraInventario())) {
                 reintegrarStock(venta.getSucursal().getId().longValue(), ventaDetalle.getProducto(),
                         detalleDto.getCantidad(), ventaDetalle.getPrecioUnitario(),
-                        dto.getVentaId());
+                        Documentos.numeroVenta(venta));
             }
 
             // 6.b Actualizar el venta_detalle: reducir cantidad y montos proporcionalmente
@@ -270,7 +271,8 @@ public class DevolucionServiceImpl implements DevolucionService {
                 ventaDetalles.add(nuevo);
 
                 // Salida de inventario por el producto que se lleva el cliente
-                descontarStock(venta.getSucursal().getId().longValue(), prod, cant, costoUnit, dto.getVentaId());
+                descontarStock(venta.getSucursal().getId().longValue(), prod, cant, costoUnit,
+                        Documentos.numeroVenta(venta));
 
                 totalAgregado = totalAgregado.add(subtotal);
                 ivaAgregado = ivaAgregado.add(iva);
@@ -468,7 +470,7 @@ public class DevolucionServiceImpl implements DevolucionService {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private void reintegrarStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
-            BigDecimal costoUnitario, Long ventaId) {
+            BigDecimal costoUnitario, String numeroVenta) {
         Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
                 producto.getId());
         if (optInv.isPresent()) {
@@ -480,7 +482,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             inventarioRepository.save(inv);
 
             registrarMovimiento(inv.getSucursal(), producto, cantidad, saldoAnterior, saldoNuevo,
-                    costoUnitario, TipoMovimientoInventario.DEVOLUCION.codigo(), "Devolución de Venta #" + ventaId);
+                    costoUnitario, TipoMovimientoInventario.DEVOLUCION.codigo(), "Devolución de Venta " + numeroVenta);
         }
     }
 
@@ -749,7 +751,7 @@ public class DevolucionServiceImpl implements DevolucionService {
 
     /** Descuenta inventario por un producto agregado (cambio) que se lleva el cliente. */
     private void descontarStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
-            BigDecimal costoUnitario, Long ventaId) {
+            BigDecimal costoUnitario, String numeroVenta) {
         Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
                 producto.getId());
         if (optInv.isPresent()) {
@@ -761,7 +763,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             inventarioRepository.save(inv);
 
             registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, TipoMovimientoInventario.DEVOLUCION_CAMBIO.codigo(), "Cambio en Devolución de Venta #" + ventaId);
+                    costoUnitario, TipoMovimientoInventario.DEVOLUCION_CAMBIO.codigo(), "Cambio en Devolución de Venta " + numeroVenta);
         }
     }
 

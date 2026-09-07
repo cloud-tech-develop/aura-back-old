@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoDetalleDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.SaldoCuentaDto;
@@ -199,12 +200,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_VENTA);
-        String docVenta = venta.getConsecutivo() != null
-                ? " — " + (venta.getPrefijo() != null ? venta.getPrefijo() + "-" : "") + venta.getConsecutivo()
-                : "";
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
                 venta.getFechaEmision().toLocalDate(), comprobante,
-                "Venta #" + ventaId + docVenta,
+                "Venta " + Documentos.numeroVenta(venta),
                 "VENTA", ventaId, periodo.getId(), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
@@ -603,10 +601,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         java.time.LocalDate fecha = dev.getVenta() != null && dev.getVenta().getFechaEmision() != null
                 ? dev.getVenta().getFechaEmision().toLocalDate()
                 : (dev.getCreatedAt() != null ? dev.getCreatedAt().toLocalDate() : java.time.LocalDate.now());
-        Long ventaId = dev.getVenta() != null ? dev.getVenta().getId() : null;
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_DEVOLUCION);
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId, fecha, comprobante,
-                "Devolución #" + devolucionId + (ventaId != null ? " — venta #" + ventaId : ""),
+                "Devolución #" + devolucionId
+                        + (dev.getVenta() != null ? " — venta " + Documentos.numeroVenta(dev.getVenta()) : ""),
                 "DEVOLUCION", devolucionId, periodo.getId(), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
