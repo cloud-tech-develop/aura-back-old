@@ -54,6 +54,7 @@ public class EmpresaEntity {
     @Column(columnDefinition = "jsonb")
     private Object configuracion;
 
+    @lombok.Builder.Default
     private Boolean activa = true;
 
     /**
@@ -72,14 +73,17 @@ public class EmpresaEntity {
 
     /** Días hacia atrás que se aceptan sin explicación. */
     @Column(name = "dias_gracia_documento_retroactivo", nullable = false)
+    @lombok.Builder.Default
     private Integer diasGraciaDocumentoRetroactivo = 3;
 
     /** Pasada la ventana, la vía CAJA queda cerrada salvo autorización. */
     @Column(name = "bloquear_caja_retroactiva", nullable = false)
+    @lombok.Builder.Default
     private Boolean bloquearCajaRetroactiva = Boolean.TRUE;
 
     /** Rol que puede saltarse la ventana, comparado contra el rol del token. */
     @Column(name = "rol_autoriza_retroactivo", nullable = false, length = 40)
+    @lombok.Builder.Default
     private String rolAutorizaRetroactivo = "ADMIN";
 
     @Column(name = "factus_client_id", length = 255)
