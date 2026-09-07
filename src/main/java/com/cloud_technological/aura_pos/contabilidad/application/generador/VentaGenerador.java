@@ -51,7 +51,7 @@ public class VentaGenerador implements GeneradorAsiento {
         Long cc = venta.centroCostoId();
         AsientoBuilder b = Asiento.builder(ctx.origen(), venta.fecha())
                 .prefijo(PREFIJO)
-                .descripcion("Venta #" + ctx.origenId() + venta.documento());
+                .descripcion("Venta " + venta.documento());
 
         // Recaudo de contado: cada pago no-crédito entra a bancos o caja.
         for (LectorVenta.PagoVenta pago : venta.pagos()) {

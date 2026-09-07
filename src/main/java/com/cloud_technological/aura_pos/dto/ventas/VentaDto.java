@@ -22,6 +22,8 @@ public class VentaDto {
     private String tipoDocumento;
     private String prefijo;
     private Long consecutivo;
+    /** Numero visible del documento: prefijo-consecutivo, o solo el consecutivo si no hay prefijo. */
+    private String numeroVenta;
     private LocalDateTime fechaEmision;
     private BigDecimal subtotal;
     private BigDecimal descuentoTotal;

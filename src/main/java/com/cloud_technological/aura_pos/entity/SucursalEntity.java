@@ -49,5 +49,6 @@ public class SucursalEntity {
     @Column(name = "centro_costo_id")
     private Long centroCostoId;
 
+    @lombok.Builder.Default
     private Boolean activa = true;
 }
