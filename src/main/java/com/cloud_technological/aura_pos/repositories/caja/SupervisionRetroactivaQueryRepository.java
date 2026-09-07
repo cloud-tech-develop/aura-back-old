@@ -15,12 +15,13 @@ import com.cloud_technological.aura_pos.dto.caja.MovimientoRetroactivoDto;
  * Lo que entró a una caja sin ser del turno.
  *
  * <p>Consultas unidas porque responden la misma pregunta desde tablas
- * distintas: documentos viejos autorizados a mano, salidas declaradas de otro
- * día, pagos cuyo documento es de otra fecha, cajas que el sistema dedujo sin
- * que nadie las eligiera, y correcciones sobre arqueos ya cerrados.
+ * distintas: documentos viejos autorizados a mano, movimientos declarados de
+ * otro día — compras, gastos y abonos de cartera, en los dos sentidos —, pagos
+ * cuyo documento es de otra fecha, cajas que el sistema dedujo sin que nadie
+ * las eligiera, y correcciones sobre arqueos ya cerrados.
  *
- * <p>Las salidas de otro día no descuadran ningún arqueo, así que no pasan por
- * el freno ni piden autorización. Aparecen aquí precisamente por eso: es el
+ * <p>Los movimientos de otro día no descuadran ningún arqueo, así que no pasan
+ * por el freno ni piden autorización. Aparecen aquí precisamente por eso: es el
  * único sitio donde quedan visibles.
  *
  * <p>Se mapea con {@link BeanPropertyRowMapper}: los alias en snake_case caen
@@ -82,6 +83,117 @@ public class SupervisionRetroactivaQueryRepository {
          WHERE g.empresa_id = :empresaId
            AND (g.autorizado_por IS NOT NULL OR g.salida_caja_otro_dia)
            AND g.fecha BETWEEN :desde AND :hasta
+
+        UNION ALL
+
+        -- (1b) Abonos de cartera declarados de otro día. No pasan por
+        --     movimiento_caja: un abono entra al arqueo por su turno_caja_id, y
+        --     estos se guardan sin turno justamente para no entrar. Aquí es
+        --     donde se ven. `fecha_documento` es cuándo se movió la plata de
+        --     verdad y `fecha` cuándo se digitó.
+        SELECT 'INGRESO_CAJA_OTRO_DIA',
+               ac.id,
+               ac.created_at::date,
+               ac.fecha_pago::date,
+               (ac.created_at::date - ac.fecha_pago::date),
+               'Recaudo cartera — abono #' || ac.id,
+               ac.monto,
+               'INGRESO',
+               NULL::bigint,
+               NULL::varchar,
+               ur.username,
+               NULL::varchar,
+               NULL::varchar
+          FROM abonos_cobrar ac
+          JOIN cuentas_cobrar cc ON cc.id = ac.cuenta_cobrar_id
+          LEFT JOIN usuario ur ON ur.id = ac.usuario_id
+         WHERE cc.empresa_id = :empresaId
+           AND ac.caja_otro_dia
+           AND ac.deleted_at IS NULL
+           AND ac.fecha_pago::date BETWEEN :desde AND :hasta
+
+        UNION ALL
+
+        SELECT 'SALIDA_CAJA_OTRO_DIA',
+               ap.id,
+               ap.created_at::date,
+               ap.fecha_pago::date,
+               (ap.created_at::date - ap.fecha_pago::date),
+               'Pago a proveedor — abono #' || ap.id,
+               ap.monto,
+               'EGRESO',
+               NULL::bigint,
+               NULL::varchar,
+               ur.username,
+               NULL::varchar,
+               NULL::varchar
+          FROM abonos_pagar ap
+          JOIN cuentas_pagar cp ON cp.id = ap.cuenta_pagar_id
+          LEFT JOIN usuario ur ON ur.id = ap.usuario_id
+         WHERE cp.empresa_id = :empresaId
+           AND ap.caja_otro_dia
+           AND ap.deleted_at IS NULL
+           AND ap.fecha_pago::date BETWEEN :desde AND :hasta
+
+        UNION ALL
+
+        -- (1c) Cruces de comprobante que nunca cayeron en un arqueo. Hasta V154
+        --     el comprobante manual (CE/RC) no preguntaba de dónde salía la
+        --     plata: el cruce guardaba el abono sin turno y con metodo_pago
+        --     'COMPROBANTE', un valor que MediosPago no reconoce como efectivo.
+        --     El resultado es plata que entró o salió sin aparecer en el cierre
+        --     de nadie.
+        --
+        --     Los arqueos de aquellos días ya están cerrados y no se reescriben
+        --     — el conteo que firmó el cajero es la evidencia. Se listan aquí
+        --     para que el administrador los vea y decida qué hacer con cada uno.
+        SELECT 'COMPROBANTE_SIN_ARQUEO',
+               ac.id,
+               ac.fecha_pago::date,
+               NULL::date,
+               0,
+               'Cruce de comprobante sin caja — ' || COALESCE(ac.referencia, 'abono #' || ac.id),
+               ac.monto,
+               'INGRESO',
+               NULL::bigint,
+               NULL::varchar,
+               ur.username,
+               NULL::varchar,
+               NULL::varchar
+          FROM abonos_cobrar ac
+          JOIN cuentas_cobrar cc ON cc.id = ac.cuenta_cobrar_id
+          LEFT JOIN usuario ur ON ur.id = ac.usuario_id
+         WHERE cc.empresa_id = :empresaId
+           AND ac.turno_caja_id IS NULL
+           AND NOT ac.caja_otro_dia
+           AND UPPER(COALESCE(ac.metodo_pago, '')) = 'COMPROBANTE'
+           AND ac.deleted_at IS NULL
+           AND ac.fecha_pago::date BETWEEN :desde AND :hasta
+
+        UNION ALL
+
+        SELECT 'COMPROBANTE_SIN_ARQUEO',
+               ap.id,
+               ap.fecha_pago::date,
+               NULL::date,
+               0,
+               'Cruce de comprobante sin caja — ' || COALESCE(ap.referencia, 'abono #' || ap.id),
+               ap.monto,
+               'EGRESO',
+               NULL::bigint,
+               NULL::varchar,
+               ur.username,
+               NULL::varchar,
+               NULL::varchar
+          FROM abonos_pagar ap
+          JOIN cuentas_pagar cp ON cp.id = ap.cuenta_pagar_id
+          LEFT JOIN usuario ur ON ur.id = ap.usuario_id
+         WHERE cp.empresa_id = :empresaId
+           AND ap.turno_caja_id IS NULL
+           AND NOT ap.caja_otro_dia
+           AND UPPER(COALESCE(ap.metodo_pago, '')) = 'COMPROBANTE'
+           AND ap.deleted_at IS NULL
+           AND ap.fecha_pago::date BETWEEN :desde AND :hasta
 
         UNION ALL
 

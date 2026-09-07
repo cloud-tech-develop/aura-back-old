@@ -38,10 +38,23 @@ public class ComprobanteCajaServiceImpl implements ComprobanteCajaService {
             String tipo, String concepto, BigDecimal monto,
             String metodoPago, String entregadoA,
             String origen, Long origenId, Long turnoCajaId) {
+        return generar(empresaId, usuarioId, tipo, concepto, monto, metodoPago,
+                entregadoA, origen, origenId, turnoCajaId, null);
+    }
+
+    private ComprobanteCajaEntity generar(Integer empresaId, Integer usuarioId,
+            String tipo, String concepto, BigDecimal monto,
+            String metodoPago, String entregadoA,
+            String origen, Long origenId, Long turnoCajaId, String numeroImpuesto) {
 
         // Numeración unificada con los comprobantes contables: RC ingreso, CE egreso.
-        String prefix = "INGRESO".equals(tipo) ? "RC" : "CE";
-        String numero = queryRepo.siguienteNumeroComprobante(empresaId, prefix);
+        // Si el documento ya trae número (el comprobante contable manual), se
+        // respeta: pedir uno nuevo partiría el mismo pago en dos documentos.
+        String numero = numeroImpuesto;
+        if (numero == null) {
+            String prefix = "INGRESO".equals(tipo) ? "RC" : "CE";
+            numero = queryRepo.siguienteNumeroComprobante(empresaId, prefix);
+        }
 
         ComprobanteCajaEntity comprobante = ComprobanteCajaEntity.builder()
                 .empresaId(empresaId)
@@ -64,7 +77,7 @@ public class ComprobanteCajaServiceImpl implements ComprobanteCajaService {
     public ComprobanteCajaEntity sincronizarDeDocumento(Integer empresaId, Integer usuarioId,
             String tipo, String concepto, BigDecimal monto,
             String metodoPago, String entregadoA,
-            String origen, Long origenId, Long turnoCajaId) {
+            String origen, Long origenId, Long turnoCajaId, String numeroComprobante) {
 
         if (monto == null || monto.signum() <= 0) {
             return null;
@@ -75,7 +88,7 @@ public class ComprobanteCajaServiceImpl implements ComprobanteCajaService {
 
         if (existente == null) {
             return generar(empresaId, usuarioId, tipo, concepto, monto,
-                    metodoPago, entregadoA, origen, origenId, turnoCajaId);
+                    metodoPago, entregadoA, origen, origenId, turnoCajaId, numeroComprobante);
         }
         // Si estaba anulado y el documento vuelve a mover plata (se corrigió de
         // crédito a contado), revive con su mismo número.

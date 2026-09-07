@@ -41,6 +41,7 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 
 @Service
@@ -176,7 +177,7 @@ public class MermaServiceImpl implements MermaService {
             // 2.5 Kardex
             registrarMovimiento(sucursal, producto, detalle.getLote(),
                     item.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    item.getCostoUnitario(), "MERMA", "Merma #" + merma.getId());
+                    item.getCostoUnitario(), TipoMovimientoInventario.MERMA.codigo(), "Merma #" + merma.getId());
 
             costoTotal = costoTotal.add(item.getCantidad().multiply(item.getCostoUnitario()));
         }
@@ -225,7 +226,7 @@ public class MermaServiceImpl implements MermaService {
 
             registrarMovimiento(merma.getSucursal(), detalle.getProducto(), detalle.getLote(),
                     detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                    detalle.getCostoUnitario(), "ANULACION_MERMA", "Anulación Merma #" + merma.getId());
+                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_MERMA.codigo(), "Anulación Merma #" + merma.getId());
         }
 
         merma.setEstado("ANULADA");

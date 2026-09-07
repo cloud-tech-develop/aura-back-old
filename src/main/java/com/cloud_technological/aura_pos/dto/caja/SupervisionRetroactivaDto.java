@@ -37,10 +37,26 @@ public class SupervisionRetroactivaDto {
     private BigDecimal montoAjustes = BigDecimal.ZERO;
 
     /**
-     * Documentos declarados como "ya salió de la caja otro día". No descuadran
-     * ningún arqueo — por eso no pasan por el freno — y este es el único sitio
-     * donde quedan visibles.
+     * Salidas declaradas como "ya salió de la caja otro día": compras, gastos y
+     * abonos a proveedor. No descuadran ningún arqueo — por eso no pasan por el
+     * freno — y este es el único sitio donde quedan visibles.
      */
     private Integer cantidadSalidaOtroDia = 0;
     private BigDecimal montoSalidaOtroDia = BigDecimal.ZERO;
+
+    /**
+     * El mismo caso al revés: recaudos de cartera que el cliente trajo otro día.
+     * La plata ya estaba en el cajón cuando aquel turno se contó y cerró.
+     */
+    private Integer cantidadIngresoOtroDia = 0;
+    private BigDecimal montoIngresoOtroDia = BigDecimal.ZERO;
+
+    /**
+     * Cruces de comprobante anteriores a V154, cuando el CE/RC no declaraba de
+     * dónde salía la plata y el abono nacía sin turno. Nunca entraron a ningún
+     * arqueo. No se corrigen solos: los cierres de aquellos días ya están
+     * firmados. Este es el inventario de lo que quedó fuera.
+     */
+    private Integer cantidadComprobanteSinArqueo = 0;
+    private BigDecimal montoComprobanteSinArqueo = BigDecimal.ZERO;
 }

@@ -55,6 +55,7 @@ import com.cloud_technological.aura_pos.utils.Terceros;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class CompraServiceImpl implements CompraService {
@@ -504,7 +505,7 @@ public class CompraServiceImpl implements CompraService {
             // 2.5 Kardex
             registrarMovimiento(sucursal, producto, null, cantidad,
                     saldoAnterior, saldoNuevo, item.getCostoUnitario(),
-                    esNC ? "NOTA_CREDITO_COMPRA" : "COMPRA",
+                    esNC ? TipoMovimientoInventario.NOTA_CREDITO_COMPRA.codigo() : TipoMovimientoInventario.COMPRA.codigo(),
                     (esNC ? "Nota crédito compra #" : "Compra #") + compra.getId());
         }
 
@@ -1075,7 +1076,7 @@ public class CompraServiceImpl implements CompraService {
             // Kardex anulación
             registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),
                     detalle.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    detalle.getCostoUnitario(), "ANULACION_COMPRA",
+                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_COMPRA.codigo(),
                     "Anulación Compra #" + compra.getId());
         }
 
@@ -1142,7 +1143,7 @@ public class CompraServiceImpl implements CompraService {
                 inventarioJPARepository.save(inventario);
                 registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),
                         detalle.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                        detalle.getCostoUnitario(), "EDICION_COMPRA_REVERSION",
+                        detalle.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA_REVERSION.codigo(),
                         "Edición Compra #" + compra.getId());
             }
             if (detalle.getLote() != null) {
@@ -1211,7 +1212,7 @@ public class CompraServiceImpl implements CompraService {
             inventarioJPARepository.save(inventario);
 
             registrarMovimiento(sucursal, producto, null, item.getCantidad(),
-                    saldoAnterior, saldoNuevo, item.getCostoUnitario(), "EDICION_COMPRA",
+                    saldoAnterior, saldoNuevo, item.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA.codigo(),
                     "Edición Compra #" + compra.getId());
         }
 

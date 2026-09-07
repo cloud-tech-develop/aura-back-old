@@ -48,6 +48,7 @@ public class GastoServiceImpl implements GastoService {
     @Autowired private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
     @Autowired private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
     @Autowired private com.cloud_technological.aura_pos.services.ComprobanteCajaService comprobanteCajaService;
+    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago resolucionCuentaPago;
 
     @Override
     public GastoDto obtener(Long id, Integer empresaId) {
@@ -298,6 +299,47 @@ public class GastoServiceImpl implements GastoService {
         gasto.setNumeroDocSoporte(dto.getNumeroDocSoporte());
     }
 
+    /**
+     * Reconstruye la pregunta "¿de dónde sale la plata?" a partir de lo que
+     * quedó guardado.
+     *
+     * <p>El orden es el mismo de {@code OrigenFondosServiceImpl.resolver}, y
+     * tiene que seguir siéndolo: si los dos divergen, el formulario reabre el
+     * gasto con un origen que el sistema nunca usó.
+     *
+     * <p>El caso que obliga a que esto viva en el backend es CAJA contra
+     * CUENTA. Los dos guardan {@code cuenta_pago_id}: el primero con la cuenta
+     * de efectivo que resolvió el sistema, el segundo con la que eligió quien
+     * registró el gasto. Distinguirlos exige saber cuál es la cuenta de
+     * efectivo de la empresa, y eso solo lo sabe el resolutor.
+     *
+     * <p>Queda un empate que no se puede deshacer: si alguien eligió a mano
+     * justamente la cuenta de CAJA, se lee como CAJA. Es la lectura correcta
+     * para el asiento — la misma cuenta se acredita en los dos casos.
+     */
+    private String origenFondosDe(GastoEntity g) {
+        if (MediosPago.CREDITO.equalsIgnoreCase(g.getFormaPago())) {
+            return "CREDITO";
+        }
+        // Antes que las cuentas: es una afirmación sobre un hecho pasado, y la
+        // cuenta que quedó guardada es la de CAJA, que se confundiría con un
+        // pago de caja normal.
+        if (Boolean.TRUE.equals(g.getSalidaCajaOtroDia())) {
+            return "CAJA_OTRO_DIA";
+        }
+        if (g.getCuentaBancariaId() != null) {
+            return "BANCO";
+        }
+        if (g.getCuentaPagoId() == null) {
+            return "CAJA";
+        }
+        Integer empresaId = g.getEmpresa() != null ? g.getEmpresa().getId() : null;
+        Long cuentaCaja = empresaId != null
+                ? resolucionCuentaPago.resolver(empresaId, MediosPago.EFECTIVO, null)
+                : null;
+        return g.getCuentaPagoId().equals(cuentaCaja) ? "CAJA" : "CUENTA";
+    }
+
     private BigDecimal nvl(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }
@@ -323,6 +365,7 @@ public class GastoServiceImpl implements GastoService {
         dto.setCuentaBancariaId(g.getCuentaBancariaId());
         dto.setCuentaPagoId(g.getCuentaPagoId());
         dto.setSalidaCajaOtroDia(g.getSalidaCajaOtroDia());
+        dto.setOrigenFondos(origenFondosDe(g));
         // Campos tributarios
         dto.setTerceroId(g.getTerceroId());
         dto.setCuentaContableId(g.getCuentaContableId());

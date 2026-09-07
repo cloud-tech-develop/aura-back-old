@@ -35,6 +35,8 @@ public class MovimientoCajaEntity {
     public static final String ORIGEN_DEVOLUCION = "DEVOLUCION";
     public static final String ORIGEN_OBLIGACION = "OBLIGACION";
     public static final String ORIGEN_TRASLADO_FONDOS = "TRASLADO_FONDOS";
+    /** Comprobante contable manual (CE/RC) elaborado desde contabilidad. */
+    public static final String ORIGEN_COMPROBANTE = "COMPROBANTE";
     /** Movimiento registrado a mano por el cajero, sin documento detrás. */
     public static final String ORIGEN_MANUAL = "MANUAL";
 

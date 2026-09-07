@@ -17,8 +17,29 @@ public interface CuentaPagarService {
             String fechaDesde, String fechaHasta, Long proveedorId, String estado);
     CuentaPagarDto obtenerPorId(Long id, Integer empresaId);
 
-    /** Aplica un cruce (abono) desde un comprobante, sin generar contabilidad propia. */
-    void aplicarCruce(Long cuentaId, java.math.BigDecimal monto, Integer empresaId, Integer usuarioId, String referencia);
+    /** Aplica un cruce (abono) desde un documento que no mueve caja (nota crédito, ajuste). */
+    default void aplicarCruce(Long cuentaId, java.math.BigDecimal monto, Integer empresaId,
+            Integer usuarioId, String referencia) {
+        aplicarCruce(cuentaId, monto, empresaId, usuarioId, referencia, null, null);
+    }
+
+    /**
+     * Aplica un cruce (abono) desde un comprobante, sin generar contabilidad
+     * propia — el comprobante ya emitió su asiento.
+     *
+     * <p>El {@code origen} es lo que mete el pago en el cierre de caja: el abono
+     * entra al arqueo por su {@code turno_caja_id} y por su método de pago. Sin
+     * él, el abono nacía huérfano y el comprobante sacaba efectivo sin aparecer
+     * en el cierre de nadie.
+     *
+     * @param origen      de dónde salió la plata; null cuando el documento no
+     *                    mueve caja (nota crédito de compra, por ejemplo)
+     * @param metodoPago  el declarado por el comprobante; si es null se guarda
+     *                    el literal histórico {@code COMPROBANTE}
+     */
+    void aplicarCruce(Long cuentaId, java.math.BigDecimal monto, Integer empresaId,
+            Integer usuarioId, String referencia,
+            OrigenFondosService.OrigenFondos origen, String metodoPago);
 
     /**
      * Deshace el cruce que dejó un documento y le devuelve el saldo a la cuenta.
@@ -30,6 +51,13 @@ public interface CuentaPagarService {
      * quedarse rebajada por eso.
      */
     void revertirCruce(Long cuentaId, java.math.BigDecimal monto, Integer empresaId, String referencia);
+
+    /**
+     * Deshace todos los cruces de un documento sin saber de antemano a qué
+     * cuentas tocó. Un mismo comprobante puede abonar varias facturas del mismo
+     * proveedor, y al anularlo hay que devolverles el saldo a todas.
+     */
+    void revertirCrucesDeDocumento(String referencia, Integer empresaId);
     CuentaPagarDto crear(CreateCuentaPagarDto dto, Integer empresaId, Long usuarioId);
     CuentaPagarDto actualizar(Long id, CreateCuentaPagarDto dto, Integer empresaId);
     

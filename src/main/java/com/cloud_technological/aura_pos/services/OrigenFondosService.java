@@ -26,11 +26,15 @@ public interface OrigenFondosService {
         /** Cuenta contable directa o la parametrizada en la forma de pago. */
         CUENTA_CONTABLE,
         /**
-         * La plata ya salió del cajón otro día y ese arqueo ya se cerró.
+         * La plata ya se movió del cajón otro día y ese arqueo ya se cerró.
          *
-         * <p>Contablemente acredita CAJA, igual que un pago en efectivo, pero
-         * NO genera movimiento de caja: la caja de hoy no lo vio salir, y la de
-         * aquel día ya cuadró contra el conteo físico, que sí lo contemplaba.
+         * <p>Vale en los dos sentidos: el gasto que se pagó ayer del cajón y el
+         * abono que el cliente trajo ayer en efectivo. En ambos el conteo
+         * físico de aquel día ya lo contemplaba y el turno cerró cuadrado.
+         *
+         * <p>Contablemente afecta CAJA, igual que cualquier movimiento en
+         * efectivo, pero NO toca ningún arqueo: la caja de hoy no vio moverse
+         * esa plata, y la de aquel día ya cuadró contra el conteo.
          */
         CAJA_OTRO_DIA
     }
@@ -51,7 +55,7 @@ public interface OrigenFondosService {
             Long cuentaContableId,
             Integer sucursalId,
             String documento,
-            boolean salidaDeCajaOtroDia) {
+            boolean cajaOtroDia) {
 
         /** El caso normal: la vía se deduce de los identificadores. */
         public Solicitud(String metodoPago, Long turnoCajaId, Long cuentaBancariaId,
@@ -64,7 +68,8 @@ public interface OrigenFondosService {
     /**
      * @param turno         turno donde cae el movimiento; puede venir informado
      *                      aunque el tipo no sea CAJA (trazabilidad de quién lo
-     *                      registró).
+     *                      registró). En CAJA_OTRO_DIA siempre es null: ese
+     *                      dinero no pertenece a ningún arqueo vivo.
      * @param turnoInferido true si el turno no lo eligió nadie sino que lo
      *                      dedujo el sistema por ser el único abierto en la
      *                      sucursal. El movimiento queda marcado para poder

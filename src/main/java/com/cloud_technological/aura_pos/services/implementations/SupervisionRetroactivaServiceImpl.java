@@ -22,6 +22,8 @@ public class SupervisionRetroactivaServiceImpl implements SupervisionRetroactiva
     static final String CAJA_INFERIDA = "CAJA_INFERIDA";
     static final String AJUSTE = "AJUSTE_CIERRE";
     static final String SALIDA_OTRO_DIA = "SALIDA_CAJA_OTRO_DIA";
+    static final String INGRESO_OTRO_DIA = "INGRESO_CAJA_OTRO_DIA";
+    static final String COMPROBANTE_SIN_ARQUEO = "COMPROBANTE_SIN_ARQUEO";
 
     private final SupervisionRetroactivaQueryRepository repository;
 
@@ -45,6 +47,10 @@ public class SupervisionRetroactivaServiceImpl implements SupervisionRetroactiva
         resumen.setMontoAjustes(sumar(movimientos, AJUSTE));
         resumen.setCantidadSalidaOtroDia(contar(movimientos, SALIDA_OTRO_DIA));
         resumen.setMontoSalidaOtroDia(sumar(movimientos, SALIDA_OTRO_DIA));
+        resumen.setCantidadIngresoOtroDia(contar(movimientos, INGRESO_OTRO_DIA));
+        resumen.setMontoIngresoOtroDia(sumar(movimientos, INGRESO_OTRO_DIA));
+        resumen.setCantidadComprobanteSinArqueo(contar(movimientos, COMPROBANTE_SIN_ARQUEO));
+        resumen.setMontoComprobanteSinArqueo(sumar(movimientos, COMPROBANTE_SIN_ARQUEO));
 
         return resumen;
     }

@@ -1,6 +1,8 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import javax.validation.Valid;
 
@@ -55,7 +57,19 @@ public class CuentasCobrarController {
             @RequestParam(required = false) String estado) {
         Integer empresaId = securityUtils.getEmpresaId();
         PageImpl<CuentaCobrarTableDto> result;
-        
+
+        // Los filtros llegaban solo por query string, pero el front manda el
+        // pageable como cuerpo del POST: ahí Spring no puebla un @RequestParam,
+        // así que `clienteId` se ignoraba en silencio y la cartera del
+        // comprobante mostraba la de todos los clientes. Se aceptan por las dos
+        // vías — igual que en cuentas por pagar — y el query param manda, para
+        // no romper a quien ya lo usa así.
+        Map<String, Object> params = paramsDe(pageable);
+        if (fechaDesde == null) fechaDesde = texto(params.get("fechaDesde"));
+        if (fechaHasta == null) fechaHasta = texto(params.get("fechaHasta"));
+        if (estado == null)     estado     = texto(params.get("estado"));
+        if (clienteId == null)  clienteId  = numero(params.get("clienteId"));
+
         if (fechaDesde != null || fechaHasta != null || clienteId != null || estado != null) {
             result = cuentaCobrarService.listarConFiltros(pageable, empresaId, fechaDesde, fechaHasta, clienteId, estado);
         } else {
@@ -143,6 +157,35 @@ public class CuentasCobrarController {
         Integer empresaId = securityUtils.getEmpresaId();
         byte[] pdf = cuentaPdfService.generarReciboCajaCobrar(abonoId, empresaId);
         return respuestaPdf(pdf, "recibo_caja_" + abonoId + ".pdf");
+    }
+
+    /** Los filtros que viajan dentro del cuerpo; vacío si no vino ninguno. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> paramsDe(PageableDto<Object> pageable) {
+        if (pageable == null || !(pageable.getParams() instanceof Map)) {
+            return Collections.emptyMap();
+        }
+        return (Map<String, Object>) pageable.getParams();
+    }
+
+    private static String texto(Object valor) {
+        if (valor == null) return null;
+        String s = valor.toString().trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static Long numero(Object valor) {
+        if (valor == null) return null;
+        if (valor instanceof Number n) return n.longValue();
+        String s = valor.toString().trim();
+        if (s.isEmpty()) return null;
+        try {
+            return Long.valueOf(s);
+        } catch (NumberFormatException e) {
+            // Un id ilegible es un filtro que el usuario cree que se aplicó: si
+            // se ignora, vuelve a ver la cartera de todos los terceros.
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El filtro de cliente no es un id válido");
+        }
     }
 
     private ResponseEntity<byte[]> respuestaPdf(byte[] bytes, String filename) {
