@@ -44,6 +44,9 @@ public class CreateUsuarioDto {
     private String telefono;
     private String email;
 
+    /** Marca fiscal del tercero que se crea junto al usuario. Nunca null en BD. */
+    private Boolean granContribuyente = Boolean.FALSE;
+
     // Sucursales asignadas: al menos la default
     @NotNull
     private List<SucursalAsignacion> sucursales;
