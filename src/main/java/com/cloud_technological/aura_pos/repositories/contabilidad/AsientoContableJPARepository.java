@@ -39,8 +39,13 @@ public interface AsientoContableJPARepository extends JpaRepository<AsientoConta
     boolean existsByEmpresaIdAndPeriodoContableIdAndEstado(
             Integer empresaId, Long periodoContableId, String estado);
 
-    /** Red de seguridad: no debería existir ninguno (el validador lo impide). */
+    /**
+     * Red de seguridad: no debería existir ninguno (el validador lo impide).
+     * La nota contable en borrador sí puede estar descuadrada: es trabajo en
+     * curso y el cuadre se exige al contabilizarla.
+     */
     @org.springframework.data.jpa.repository.Query(
-            "select a from AsientoContableEntity a where a.empresaId = ?1 and a.totalDebito <> a.totalCredito")
+            "select a from AsientoContableEntity a where a.empresaId = ?1 and a.totalDebito <> a.totalCredito"
+            + " and not (a.estado = 'BORRADOR' and a.tipoOrigen = 'MANUAL')")
     java.util.List<AsientoContableEntity> findDescuadrados(Integer empresaId);
 }

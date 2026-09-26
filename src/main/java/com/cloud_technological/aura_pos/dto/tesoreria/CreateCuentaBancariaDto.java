@@ -14,6 +14,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreateCuentaBancariaDto {
 
+    /** Opcional: vacío = el sistema asigna el siguiente CB-###. */
+    @javax.validation.constraints.Size(max = 20, message = "El código admite máximo 20 caracteres")
+    @javax.validation.constraints.Pattern(regexp = "^$|^[A-Za-z0-9_-]+$",
+            message = "El código solo admite letras, números, guion y guion bajo")
+    private String codigo;
+
     @NotBlank
     private String nombre;
 

@@ -33,12 +33,14 @@ public enum TipoMovimientoInventario {
     ANULACION_VENTA("Anulación de venta", Grupo.ENTRADA, Familia.ANULACIONES),
     ANULACION_MERMA("Anulación de merma", Grupo.ENTRADA, Familia.ANULACIONES),
     ANULACION_OBSEQUIO("Anulación de obsequio", Grupo.ENTRADA, Familia.ANULACIONES),
+    ANULACION_CONSUMO_INTERNO("Anulación de consumo interno", Grupo.ENTRADA, Familia.ANULACIONES),
     RECONTEO_AJUSTE_POSITIVO("Reconteo — sobrante", Grupo.ENTRADA, Familia.RECONTEOS),
 
     // ── Salidas ─────────────────────────────────────────────────────────
     VENTA("Venta", Grupo.SALIDA, Familia.VENTAS),
     MERMA("Merma", Grupo.SALIDA, Familia.MERMAS),
     OBSEQUIO("Obsequio", Grupo.SALIDA, Familia.OBSEQUIOS),
+    CONSUMO_INTERNO("Consumo interno", Grupo.SALIDA, Familia.CONSUMOS_INTERNOS),
     TRASLADO_SALIDA("Traslado — salida", Grupo.SALIDA, Familia.TRASLADOS),
     DEVOLUCION_CAMBIO("Cambio en devolución", Grupo.SALIDA, Familia.DEVOLUCIONES),
     NOTA_CREDITO_COMPRA("Nota crédito a proveedor", Grupo.SALIDA, Familia.COMPRAS),
@@ -56,7 +58,7 @@ public enum TipoMovimientoInventario {
 
     /** De qué operación viene. Es el desglose por columnas del reporte. */
     public enum Familia {
-        COMPRAS, VENTAS, DEVOLUCIONES, MERMAS, OBSEQUIOS,
+        COMPRAS, VENTAS, DEVOLUCIONES, MERMAS, OBSEQUIOS, CONSUMOS_INTERNOS,
         TRASLADOS, ANULACIONES, RECONTEOS
     }
 

@@ -29,6 +29,7 @@ import com.cloud_technological.aura_pos.entity.InventarioEntity;
 import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
 import com.cloud_technological.aura_pos.entity.MovimientoInventarioEntity;
 import com.cloud_technological.aura_pos.entity.ProductoEntity;
+import com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity;
 import com.cloud_technological.aura_pos.entity.TesoreriaMovimientoEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
@@ -41,6 +42,7 @@ import com.cloud_technological.aura_pos.repositories.devolucion.DevolucionQueryR
 import com.cloud_technological.aura_pos.repositories.inventario.InventarioJPARepository;
 import com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.movimiento_inventario.MovimientoInventarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.tesoreria.TesoreriaMovimientoJPARepository;
@@ -51,11 +53,32 @@ import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.DevolucionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.PresentacionConversion;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class DevolucionServiceImpl implements DevolucionService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.SerialStockService serialStock;
+
+    /** Reintegro pendiente: el rastro de lotes necesita el id del detalle, que se guarda al final. */
+    private record ReintegroLote(DevolucionDetalleEntity detalle, VentaDetalleEntity ventaDetalle,
+            BigDecimal cantidadBase, String numeroVenta) {
+    }
+
+    /** Seriales que devuelve el cliente, con o sin reintegro al inventario. */
+    private record DevolucionSerial(DevolucionDetalleEntity detalle, VentaDetalleEntity ventaDetalle,
+            BigDecimal cantidadBase, java.util.List<Long> serialIds) {
+    }
 
     @Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -83,6 +106,9 @@ public class DevolucionServiceImpl implements DevolucionService {
 
     @Autowired
     private ProductoJPARepository productoRepository;
+
+    @Autowired
+    private ProductoPresentacionJPARepository presentacionRepository;
 
     @Autowired
     private UsuarioJPARepository usuarioRepository;
@@ -142,6 +168,8 @@ public class DevolucionServiceImpl implements DevolucionService {
         DevolucionEntity devolucion = new DevolucionEntity();
         devolucion.setEmpresa(venta.getEmpresa());
         devolucion.setSucursal(venta.getSucursal());
+        // La mercancia vuelve a la bodega de la que salio la venta.
+        devolucion.setBodega(bodegaDeVenta(venta, empresaId));
         devolucion.setVenta(venta);
         devolucion.setCliente(venta.getCliente());
         devolucion.setUsuario(usuario);
@@ -161,6 +189,8 @@ public class DevolucionServiceImpl implements DevolucionService {
 
         // 5. Procesar detalles
         List<DevolucionDetalleEntity> detalles = new ArrayList<>();
+        List<ReintegroLote> reintegros = new ArrayList<>();
+        List<DevolucionSerial> devolucionSeriales = new ArrayList<>();
         BigDecimal totalDevolucion = BigDecimal.ZERO;
 
         for (CreateDevolucionDetalleDto detalleDto : dto.getDetalles()) {
@@ -193,7 +223,11 @@ public class DevolucionServiceImpl implements DevolucionService {
             DevolucionDetalleEntity detalle = new DevolucionDetalleEntity();
             detalle.setDevolucion(devolucion);
             detalle.setProducto(ventaDetalle.getProducto());
-            detalle.setProductoPresentacionId(detalleDto.getProductoPresentacionId());
+            // La cantidad se validó contra la línea vendida, así que su presentación
+            // es la que convierte a unidades base (también al anular la devolución).
+            detalle.setProductoPresentacionId(ventaDetalle.getProductoPresentacion() != null
+                    ? ventaDetalle.getProductoPresentacion().getId()
+                    : detalleDto.getProductoPresentacionId());
             detalle.setLoteId(detalleDto.getLoteId() != null ? detalleDto.getLoteId()
                     : (ventaDetalle.getLote() != null ? ventaDetalle.getLote().getId() : null));
             detalle.setCantidad(detalleDto.getCantidad());
@@ -205,10 +239,13 @@ public class DevolucionServiceImpl implements DevolucionService {
             totalDevolucion = totalDevolucion.add(subtotalLinea);
 
             // 6. Reintegrar inventario
+            devolucionSeriales.add(new DevolucionSerial(detalle, ventaDetalle,
+                    PresentacionConversion.aBase(detalleDto.getCantidad(), ventaDetalle.getProductoPresentacion()),
+                    detalleDto.getSerialIds()));
             if (Boolean.TRUE.equals(devolucion.getReintegraInventario())) {
-                reintegrarStock(venta.getSucursal().getId().longValue(), ventaDetalle.getProducto(),
-                        detalleDto.getCantidad(), ventaDetalle.getPrecioUnitario(),
-                        Documentos.numeroVenta(venta));
+                reintegros.add(new ReintegroLote(detalle, ventaDetalle,
+                        PresentacionConversion.aBase(detalleDto.getCantidad(), ventaDetalle.getProductoPresentacion()),
+                        Documentos.numeroVenta(venta)));
             }
 
             // 6.b Actualizar el venta_detalle: reducir cantidad y montos proporcionalmente
@@ -250,6 +287,9 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
                                 "Producto agregado " + ag.getProductoId() + " no encontrado"));
 
+                if (serialStock.manejaSerial(prod))
+                    throw new GlobalException(HttpStatus.BAD_REQUEST,
+                            "'" + prod.getNombre() + "' maneja serial: véndelo desde el POS para elegir el serial");
                 BigDecimal cant = ag.getCantidad();
                 BigDecimal precio = ag.getPrecioUnitario() != null ? ag.getPrecioUnitario() : BigDecimal.ZERO;
                 BigDecimal iva = (ag.getImpuestoValor() != null ? ag.getImpuestoValor() : BigDecimal.ZERO)
@@ -271,8 +311,8 @@ public class DevolucionServiceImpl implements DevolucionService {
                 ventaDetalles.add(nuevo);
 
                 // Salida de inventario por el producto que se lleva el cliente
-                descontarStock(venta.getSucursal().getId().longValue(), prod, cant, costoUnit,
-                        Documentos.numeroVenta(venta));
+                descontarStock(bodegaDeVenta(venta, empresaId), prod, cant, costoUnit,
+                        Documentos.numeroVenta(venta), nuevo.getId(), empresaId);
 
                 totalAgregado = totalAgregado.add(subtotal);
                 ivaAgregado = ivaAgregado.add(iva);
@@ -353,6 +393,20 @@ public class DevolucionServiceImpl implements DevolucionService {
             d.setDevolucion(saved);
         }
         devolucionDetalleRepository.saveAll(detalles);
+
+        // Seriales: vuelven a DISPONIBLE si la mercancía se reintegra; si no, EN_GARANTIA.
+        for (DevolucionSerial ds : devolucionSeriales) {
+            serialStock.devolucion(ds.detalle().getId(), ds.ventaDetalle(), ds.ventaDetalle().getProducto(),
+                    ds.cantidadBase(), ds.serialIds(), Boolean.TRUE.equals(devolucion.getReintegraInventario()),
+                    empresaId);
+        }
+
+        // Reintegro al inventario, ya con el id de cada detalle para el rastro de lotes.
+        for (ReintegroLote r : reintegros) {
+            reintegrarStock(bodegaDeVenta(venta, empresaId), r.ventaDetalle().getProducto(),
+                    r.cantidadBase(), r.ventaDetalle().getProducto().getCosto(), r.numeroVenta(),
+                    r.detalle().getId(), r.ventaDetalle().getId(), empresaId);
+        }
         saved.setDetalles(detalles);
 
         // 11. Movimientos de caja y tesorería.
@@ -388,9 +442,18 @@ public class DevolucionServiceImpl implements DevolucionService {
             List<DevolucionDetalleEntity> detalles = devolucionDetalleRepository
                     .findByDevolucionId(devolucion.getId());
             for (DevolucionDetalleEntity detalle : detalles) {
-                revertirStock(devolucion.getSucursal().getId().longValue(), detalle.getProducto(),
-                        detalle.getCantidad(), detalle.getPrecioUnitario(), devolucion.getId());
+                ProductoPresentacionEntity presentacion = detalle.getProductoPresentacionId() != null
+                        ? presentacionRepository.findById(detalle.getProductoPresentacionId()).orElse(null)
+                        : null;
+                revertirStock(bodegaDeDevolucion(devolucion, empresaId), detalle.getProducto(),
+                        PresentacionConversion.aBase(detalle.getCantidad(), presentacion),
+                        detalle.getProducto().getCosto(), devolucion.getId(), detalle.getId());
             }
+        }
+
+        // Seriales devueltos: vuelven a VENDIDO si nadie los movió después.
+        for (DevolucionDetalleEntity detalle : devolucionDetalleRepository.findByDevolucionId(devolucion.getId())) {
+            serialStock.revertirSalida(com.cloud_technological.aura_pos.services.SerialStockService.ORIGEN_DEVOLUCION, detalle.getId(), "anular la devolución");
         }
 
         // Revertir movimientos de caja y tesorería
@@ -469,10 +532,24 @@ public class DevolucionServiceImpl implements DevolucionService {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private void reintegrarStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
-            BigDecimal costoUnitario, String numeroVenta) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
-                producto.getId());
+    /** Bodega de la venta; las ventas anteriores a V172 quedaron en la principal. */
+    private com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDeVenta(VentaEntity venta, Integer empresaId) {
+        return bodegaService.resolver(
+                venta.getBodega() != null ? venta.getBodega().getId() : null,
+                venta.getSucursal() != null ? venta.getSucursal().getId() : null, empresaId);
+    }
+
+    private com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDeDevolucion(DevolucionEntity dev, Integer empresaId) {
+        return bodegaService.resolver(
+                dev.getBodega() != null ? dev.getBodega().getId() : null,
+                dev.getSucursal() != null ? dev.getSucursal().getId() : null, empresaId);
+    }
+
+    private void reintegrarStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
+            BigDecimal costoUnitario, String numeroVenta, Long devolucionDetalleId, Long ventaDetalleId,
+            Integer empresaId) {
+        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+                bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();
             BigDecimal saldoAnterior = inv.getStockActual();
@@ -481,15 +558,20 @@ public class DevolucionServiceImpl implements DevolucionService {
             inv.setUpdatedAt(LocalDateTime.now());
             inventarioRepository.save(inv);
 
-            registrarMovimiento(inv.getSucursal(), producto, cantidad, saldoAnterior, saldoNuevo,
-                    costoUnitario, TipoMovimientoInventario.DEVOLUCION.codigo(), "Devolución de Venta " + numeroVenta);
+            // Vuelve a los lotes de donde salió la venta.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.entradaDevolucion(devolucionDetalleId,
+                    ventaDetalleId, producto, inv.getBodega(), empresaId, cantidad, costoUnitario);
+            loteStock.kardex(lotes, cantidad, saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(inv.getBodega(), producto, lote, cant, ant, nuevo,
+                            costoUnitario, TipoMovimientoInventario.DEVOLUCION.codigo(),
+                            "Devolución de Venta " + numeroVenta));
         }
     }
 
-    private void revertirStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
-            BigDecimal costoUnitario, Long devolucionId) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
-                producto.getId());
+    private void revertirStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
+            BigDecimal costoUnitario, Long devolucionId, Long devolucionDetalleId) {
+        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+                bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();
             BigDecimal saldoAnterior = inv.getStockActual();
@@ -498,8 +580,12 @@ public class DevolucionServiceImpl implements DevolucionService {
             inv.setUpdatedAt(LocalDateTime.now());
             inventarioRepository.save(inv);
 
-            registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, TipoMovimientoInventario.ANULACION_DEVOLUCION.codigo(), "Anulación Devolución #" + devolucionId);
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.revertirDocumento(com.cloud_technological.aura_pos.services.LoteStockService.DEVOLUCION,
+                    devolucionDetalleId, false, "anular la devolución");
+            loteStock.kardex(lotes, cantidad.negate(), saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(inv.getBodega(), producto, lote, cant, ant, nuevo,
+                            costoUnitario, TipoMovimientoInventario.ANULACION_DEVOLUCION.codigo(),
+                            "Anulación Devolución #" + devolucionId));
         }
     }
 
@@ -539,12 +625,15 @@ public class DevolucionServiceImpl implements DevolucionService {
         return v != null ? v : BigDecimal.ZERO;
     }
 
-    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.SucursalEntity sucursal,
-            ProductoEntity producto, BigDecimal cantidad, BigDecimal saldoAnterior,
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega,
+            ProductoEntity producto, com.cloud_technological.aura_pos.entity.LoteEntity lote,
+            BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costoHistorico, String tipo, String referencia) {
         MovimientoInventarioEntity mov = new MovimientoInventarioEntity();
-        mov.setSucursal(sucursal);
+        mov.setBodega(bodega);
+        mov.setSucursal(bodega.getSucursal());
         mov.setProducto(producto);
+        mov.setLote(lote);
         mov.setCantidad(cantidad);
         mov.setSaldoAnterior(saldoAnterior);
         mov.setSaldoNuevo(saldoNuevo);
@@ -750,10 +839,10 @@ public class DevolucionServiceImpl implements DevolucionService {
     }
 
     /** Descuenta inventario por un producto agregado (cambio) que se lleva el cliente. */
-    private void descontarStock(Long sucursalId, ProductoEntity producto, BigDecimal cantidad,
-            BigDecimal costoUnitario, String numeroVenta) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findBySucursalIdAndProductoId(sucursalId,
-                producto.getId());
+    private void descontarStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
+            BigDecimal costoUnitario, String numeroVenta, Long ventaDetalleId, Integer empresaId) {
+        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+                bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();
             BigDecimal saldoAnterior = inv.getStockActual();
@@ -762,8 +851,14 @@ public class DevolucionServiceImpl implements DevolucionService {
             inv.setUpdatedAt(LocalDateTime.now());
             inventarioRepository.save(inv);
 
-            registrarMovimiento(inv.getSucursal(), producto, cantidad.negate(), saldoAnterior, saldoNuevo,
-                    costoUnitario, TipoMovimientoInventario.DEVOLUCION_CAMBIO.codigo(), "Cambio en Devolución de Venta " + numeroVenta);
+            // Lo que se lleva el cliente sale como una venta: del lote que vence primero.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.DEVOLUCION_CAMBIO,
+                    ventaDetalleId, producto, inv.getBodega(), empresaId, cantidad, null,
+                    !loteStock.bloqueaVencidos(empresaId), Boolean.TRUE.equals(producto.getPermitirStockNegativo()));
+            loteStock.kardex(lotes, cantidad.negate(), saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(inv.getBodega(), producto, lote, cant, ant, nuevo,
+                            costoUnitario, TipoMovimientoInventario.DEVOLUCION_CAMBIO.codigo(),
+                            "Cambio en Devolución de Venta " + numeroVenta));
         }
     }
 

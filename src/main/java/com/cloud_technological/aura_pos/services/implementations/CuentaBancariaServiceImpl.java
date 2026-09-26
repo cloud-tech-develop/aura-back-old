@@ -47,6 +47,7 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
         validarCuentaContable(empresaId, dto.getCuentaContableId());
         CuentaBancariaEntity entity = CuentaBancariaEntity.builder()
                 .empresaId(empresaId)
+                .codigo(resolverCodigo(empresaId, dto.getCodigo(), null))
                 .nombre(dto.getNombre().trim())
                 .tipo(dto.getTipo())
                 .banco(dto.getBanco())
@@ -68,6 +69,7 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cuenta no encontrada"));
 
         validarCuentaContable(empresaId, dto.getCuentaContableId());
+        entity.setCodigo(resolverCodigo(empresaId, dto.getCodigo(), entity));
         entity.setNombre(dto.getNombre().trim());
         entity.setTipo(dto.getTipo());
         entity.setBanco(dto.getBanco());
@@ -89,6 +91,39 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
         }
 
         return toDto(repo.save(entity));
+    }
+
+    @Override
+    public CuentaBancariaDto obtener(Long id, Integer empresaId) {
+        return repo.findByIdAndEmpresaId(id, empresaId)
+                .map(this::toDto)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cuenta no encontrada"));
+    }
+
+    @Override
+    public String siguienteCodigo(Integer empresaId) {
+        Integer max = repo.maxConsecutivoCodigo(empresaId);
+        return String.format("CB-%03d", (max != null ? max : 0) + 1);
+    }
+
+    /**
+     * Código digitado (en mayúsculas, único en la empresa) o, si viene vacío,
+     * el siguiente de la serie CB-###. Al editar, vacío conserva el actual.
+     */
+    private String resolverCodigo(Integer empresaId, String digitado, CuentaBancariaEntity actual) {
+        String codigo = digitado != null ? digitado.trim().toUpperCase() : "";
+        if (codigo.isEmpty()) {
+            if (actual != null && actual.getCodigo() != null) return actual.getCodigo();
+            return siguienteCodigo(empresaId);
+        }
+        boolean repetido = actual == null
+                ? repo.existsByEmpresaIdAndCodigoIgnoreCase(empresaId, codigo)
+                : repo.existsByEmpresaIdAndCodigoIgnoreCaseAndIdNot(empresaId, codigo, actual.getId());
+        if (repetido) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe una cuenta con el código " + codigo + ".");
+        }
+        return codigo;
     }
 
     @Override
@@ -168,6 +203,7 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService {
         }
         return CuentaBancariaDto.builder()
                 .id(e.getId())
+                .codigo(e.getCodigo())
                 .nombre(e.getNombre())
                 .tipo(e.getTipo())
                 .banco(e.getBanco())

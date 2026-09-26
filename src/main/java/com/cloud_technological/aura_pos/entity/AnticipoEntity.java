@@ -44,6 +44,14 @@ public class AnticipoEntity {
     @Column(name = "cuenta_bancaria_id")
     private Long cuentaBancariaId;
 
+    /** Cuenta donde entró la plata, ya resuelta por el origen de fondos (V167). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    /** Recibo de caja cuyo sobrante originó el anticipo (V167). */
+    @Column(name = "recibo_caja_id")
+    private Long reciboCajaId;
+
     @Column(nullable = false)
     private LocalDate fecha;
 

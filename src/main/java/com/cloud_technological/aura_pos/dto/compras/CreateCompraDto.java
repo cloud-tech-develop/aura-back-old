@@ -16,6 +16,9 @@ public class CreateCompraDto {
     private Long proveedorId;
     @NotNull(message = "La sucursal es obligatoria")
     private Long sucursalId;
+
+    /** Bodega de la que sale o a la que entra. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
     private String numeroCompra;
     private LocalDateTime fecha;
     private LocalDateTime fechaVencimiento;

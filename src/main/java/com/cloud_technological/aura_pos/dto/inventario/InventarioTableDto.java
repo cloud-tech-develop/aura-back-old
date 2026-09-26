@@ -11,6 +11,8 @@ public class InventarioTableDto {
     private Long id;
     private Long sucursalId;
     private String sucursalNombre;
+    private Long bodegaId;
+    private String bodegaNombre;
     private Long productoId;
     private String productoNombre;
     private String productoSku;

@@ -32,6 +32,12 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class InventarioServiceImpl implements InventarioService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
     
     private final InventarioQueryRepository inventarioRepository;
     private final InventarioJPARepository inventarioJPARepository;
@@ -75,22 +81,32 @@ public class InventarioServiceImpl implements InventarioService {
     @Override
     @Transactional
     public InventarioDto crear(CreateInventarioDto dto, Integer empresaId) {
-        // Validar que no exista ya ese producto en esa sucursal
-        if (inventarioJPARepository.findBySucursalIdAndProductoId(dto.getSucursalId(), dto.getProductoId()).isPresent())
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "Este producto ya tiene inventario en esta sucursal");
-
         ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Producto no encontrado"));
 
         SucursalEntity sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId().intValue(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
 
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+
+        // Un saldo por producto y bodega, no por sucursal (V172).
+        if (inventarioJPARepository.findByBodegaIdAndProductoId(bodega.getId(), dto.getProductoId()).isPresent())
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Este producto ya tiene inventario en la bodega " + bodega.getNombre());
+
         InventarioEntity entity = inventarioMapper.toEntity(dto);
         entity.setProducto(producto);
         entity.setSucursal(sucursal);
+        entity.setBodega(bodega);
         entity.setUpdatedAt(LocalDateTime.now());
+        InventarioEntity guardado = inventarioJPARepository.save(entity);
 
-        return inventarioMapper.toDto(inventarioJPARepository.save(entity));
+        // Stock inicial de un producto con lotes: entra a SIN-LOTE para que cuadre.
+        loteStock.entradaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.AJUSTE_INVENTARIO, guardado.getId(), producto, bodega,
+                empresaId, guardado.getStockActual(), null, producto.getCosto());
+
+        return inventarioMapper.toDto(guardado);
     }
 
     @Override
@@ -99,9 +115,26 @@ public class InventarioServiceImpl implements InventarioService {
         InventarioEntity entity = inventarioJPARepository.findByIdAndSucursalEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Inventario no encontrado"));
 
+        java.math.BigDecimal stockAntes = entity.getStockActual() != null
+                ? entity.getStockActual() : java.math.BigDecimal.ZERO;
         inventarioMapper.updateEntityFromDto(dto, entity);
         entity.setUpdatedAt(LocalDateTime.now());
-        return inventarioMapper.toDto(inventarioJPARepository.save(entity));
+        InventarioEntity guardado = inventarioJPARepository.save(entity);
+
+        // Cambiar el stock a mano en un producto con lotes: el faltante sale del
+        // que vence primero y el sobrante entra a SIN-LOTE, para que siga cuadrando.
+        java.math.BigDecimal diferencia = (guardado.getStockActual() != null
+                ? guardado.getStockActual() : java.math.BigDecimal.ZERO).subtract(stockAntes);
+        if (dto.getStockActual() == null) {
+            // No cambió el stock: nada que mover en los lotes.
+        } else if (diferencia.signum() < 0) {
+            loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.AJUSTE_INVENTARIO, guardado.getId(), guardado.getProducto(),
+                    guardado.getBodega(), empresaId, diferencia.abs(), null, true, true);
+        } else if (diferencia.signum() > 0) {
+            loteStock.entradaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.AJUSTE_INVENTARIO, guardado.getId(), guardado.getProducto(),
+                    guardado.getBodega(), empresaId, diferencia, null, guardado.getProducto().getCosto());
+        }
+        return inventarioMapper.toDto(guardado);
     }
 
     @Override

@@ -54,6 +54,13 @@ public class ProductoEntity {
     @Column(name = "tipo_producto")
     private String tipoProducto;
 
+    /**
+     * VENTA | INSUMO | AMBOS. Eje distinto de {@link #tipoProducto}: la harina
+     * es PESABLE e INSUMO. Un INSUMO nunca se muestra en el POS. Ver V158.
+     */
+    @Column(name = "uso_producto")
+    private String usoProducto = "VENTA";
+
     @Column(name = "maneja_inventario")
     private Boolean manejaInventario;
 
@@ -62,6 +69,10 @@ public class ProductoEntity {
 
     @Column(name = "maneja_serial")
     private Boolean manejaSerial;
+
+    /** Meses de garantía al cliente; al vender queda en serial.garantia_cliente_hasta. */
+    @Column(name = "meses_garantia")
+    private Integer mesesGarantia;
 
     @Column(name = "permitir_stock_negativo")
     private Boolean permitirStockNegativo = false;
@@ -112,6 +123,10 @@ public class ProductoEntity {
     private Boolean activo;
     @Column(name = "visible_en_pos")
     private Boolean visibleEnPos = true;
+
+    /** false = el POS solo ofrece sus presentaciones (V162). */
+    @Column(name = "vende_por_unidad")
+    private Boolean vendePorUnidad = true;
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

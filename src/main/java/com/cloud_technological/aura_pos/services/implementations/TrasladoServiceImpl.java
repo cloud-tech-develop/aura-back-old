@@ -43,19 +43,31 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 
 @Service
-public class TrasladoServiceImpl implements TrasladoService{
+public class TrasladoServiceImpl implements TrasladoService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
     private final TrasladoQueryRepository trasladoRepository;
     private final TrasladoJPARepository trasladoJPARepository;
     private final TrasladoDetalleJPARepository detalleJPARepository;
     private final ProductoJPARepository productoJPARepository;
     private final InventarioJPARepository inventarioJPARepository;
     private final LoteJPARepository loteJPARepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.SerialStockService serialStock;
     private final SucursalJPARepository sucursalJPARepository;
     private final EmpresaJPARepository empresaRepository;
     private final UsuarioJPARepository usuarioJPARepository;
     private final MovimientoInventarioJPARepository movimientoJPARepository;
     private final TrasladoMapper trasladoMapper;
     private final TrasladoDetalleMapper detalleMapper;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CambioUnidadProductoService cambioUnidadProducto;
 
     @Autowired
     public TrasladoServiceImpl(TrasladoQueryRepository trasladoRepository,
@@ -117,11 +129,24 @@ public class TrasladoServiceImpl implements TrasladoService{
         UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Usuario no encontrado"));
 
+        // El traslado es entre bodegas. Dos bodegas de la misma sucursal es
+        // un caso valido: pasar de la bodega de atras a la vitrina.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodegaOrigen =
+                bodegaService.resolver(dto.getBodegaOrigenId(), origen.getId(), empresaId);
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDestino =
+                bodegaService.resolver(dto.getBodegaDestinoId(), destino.getId(), empresaId);
+
+        if (bodegaOrigen.getId().equals(bodegaDestino.getId()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El origen y el destino son la misma bodega");
+
         // 1. Crear cabecera
         TrasladoEntity traslado = trasladoMapper.toEntity(dto);
         traslado.setEmpresa(empresa);
         traslado.setSucursalOrigen(origen);
         traslado.setSucursalDestino(destino);
+        traslado.setBodegaOrigen(bodegaOrigen);
+        traslado.setBodegaDestino(bodegaDestino);
         traslado.setUsuario(usuario);
         traslado.setFecha(LocalDateTime.now());
         traslado.setEstado("COMPLETADO");
@@ -136,9 +161,10 @@ public class TrasladoServiceImpl implements TrasladoService{
 
             // 2.1 Validar stock en origen
             InventarioEntity invOrigen = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(origen.getId()), producto.getId())
+                    .findByBodegaIdAndProductoId(bodegaOrigen.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "El producto " + producto.getNombre() + " no tiene inventario en la sucursal origen"));
+                            "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
+                            + bodegaOrigen.getNombre()));
 
             if (invOrigen.getStockActual().compareTo(item.getCantidad()) < 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
@@ -150,26 +176,23 @@ public class TrasladoServiceImpl implements TrasladoService{
             detalle.setTraslado(traslado);
             detalle.setProducto(producto);
 
-            // 2.3 Manejar lote si aplica
-            LoteEntity loteOrigen = null;
-            if (item.getLoteId() != null) {
-                loteOrigen = loteJPARepository.findById(item.getLoteId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Lote no encontrado"));
-
-                if (loteOrigen.getStockActual().compareTo(item.getCantidad()) < 0)
-                    throw new GlobalException(HttpStatus.BAD_REQUEST,
-                            "Stock insuficiente en lote: " + loteOrigen.getCodigoLote());
-
-                // Restar del lote origen
-                loteOrigen.setStockActual(loteOrigen.getStockActual().subtract(item.getCantidad()));
-                loteJPARepository.save(loteOrigen);
-
-                // Crear o actualizar lote en destino con mismo código
-                LoteEntity loteDestino = resolverLoteDestino(producto, destino, loteOrigen, item.getCantidad());
-                detalle.setLote(loteOrigen);
-            }
-
             detalleJPARepository.save(detalle);
+
+            // 2.3 Lotes: sale del elegido o del que vence primero (un traslado
+            //     sí mueve vencidos) y entra al destino con el mismo código,
+            //     vencimiento y costo.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesSalida = loteStock.salidaDocumento(
+                    com.cloud_technological.aura_pos.services.LoteStockService.TRASLADO_SALIDA, detalle.getId(), producto, bodegaOrigen, empresaId,
+                    item.getCantidad(), item.getLoteId(), true, false);
+            if (lotesSalida.size() == 1) {
+                detalle.setLote(lotesSalida.get(0).lote());
+                detalleJPARepository.save(detalle);
+            }
+            // Seriales: pasan a la bodega destino y siguen DISPONIBLES.
+            serialStock.traslado(detalle.getId(), producto, bodegaOrigen, bodegaDestino, empresaId, item.getCantidad(),
+                    item.getSerialIds());
+            final String refSalida = "Traslado #" + traslado.getId() + " → " + bodegaDestino.getNombre();
+            final String refEntrada = "Traslado #" + traslado.getId() + " ← " + bodegaOrigen.getNombre();
 
             // 2.4 Restar stock origen
             BigDecimal saldoAnteriorOrigen = invOrigen.getStockActual();
@@ -179,24 +202,27 @@ public class TrasladoServiceImpl implements TrasladoService{
             inventarioJPARepository.save(invOrigen);
 
             // Kardex salida
-            registrarMovimiento(origen, producto, loteOrigen,
-                    item.getCantidad().negate(), saldoAnteriorOrigen, saldoNuevoOrigen,
-                    item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_SALIDA.codigo(),
-                    "Traslado #" + traslado.getId() + " → " + destino.getNombre());
+            loteStock.kardex(lotesSalida, item.getCantidad().negate(), saldoAnteriorOrigen,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaOrigen, producto, lote, cant, ant, nuevo,
+                            item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_SALIDA.codigo(), refSalida));
 
             // 2.5 Sumar stock destino
-            InventarioEntity invDestino = resolverInventarioDestino(destino, producto);
+            InventarioEntity invDestino = resolverInventarioDestino(bodegaDestino, producto);
             BigDecimal saldoAnteriorDestino = invDestino.getStockActual();
             BigDecimal saldoNuevoDestino = saldoAnteriorDestino.add(item.getCantidad());
             invDestino.setStockActual(saldoNuevoDestino);
             invDestino.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(invDestino);
 
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesEntrada = loteStock.manejaLotes(producto)
+                    ? loteStock.entradaEspejo(com.cloud_technological.aura_pos.services.LoteStockService.TRASLADO_ENTRADA, detalle.getId(), producto,
+                            bodegaDestino, empresaId, lotesSalida)
+                    : List.of();
+
             // Kardex entrada
-            registrarMovimiento(destino, producto, loteOrigen,
-                    item.getCantidad(), saldoAnteriorDestino, saldoNuevoDestino,
-                    item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_ENTRADA.codigo(),
-                    "Traslado #" + traslado.getId() + " ← " + origen.getNombre());
+            loteStock.kardex(lotesEntrada, item.getCantidad(), saldoAnteriorDestino,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaDestino, producto, lote, cant, ant, nuevo,
+                            item.getCostoUnitario(), TipoMovimientoInventario.TRASLADO_ENTRADA.codigo(), refEntrada));
         }
 
         return obtenerPorId(traslado.getId(), empresaId);
@@ -212,15 +238,23 @@ public class TrasladoServiceImpl implements TrasladoService{
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El traslado ya está anulado");
 
         List<TrasladoDetalleEntity> detalles = detalleJPARepository.findByTrasladoId(id);
+        cambioUnidadProducto.validarDocumentoPrevio("TRASLADO", id,
+                detalles.stream().map(d -> d.getProducto().getId()).toList(), "anular el traslado");
+
+        // Las bodegas del documento: la mercancia vuelve por donde vino.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodegaOrigen = bodegaService.resolver(
+                traslado.getBodegaOrigen() != null ? traslado.getBodegaOrigen().getId() : null,
+                traslado.getSucursalOrigen().getId(), empresaId);
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDestino = bodegaService.resolver(
+                traslado.getBodegaDestino() != null ? traslado.getBodegaDestino().getId() : null,
+                traslado.getSucursalDestino().getId(), empresaId);
 
         for (TrasladoDetalleEntity detalle : detalles) {
             ProductoEntity producto = detalle.getProducto();
-            SucursalEntity origen = traslado.getSucursalOrigen();
-            SucursalEntity destino = traslado.getSucursalDestino();
 
             // Devolver stock al origen
             InventarioEntity invOrigen = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(origen.getId()), producto.getId())
+                    .findByBodegaIdAndProductoId(bodegaOrigen.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario origen no encontrado para: " + producto.getNombre()));
 
@@ -230,15 +264,23 @@ public class TrasladoServiceImpl implements TrasladoService{
             invOrigen.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(invOrigen);
 
+            serialStock.revertirTraslado(detalle.getId(), bodegaOrigen, bodegaDestino);
+
+            // Lotes: vuelve al origen lo que salió y sale del destino lo que entró.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesOrigen = loteStock.revertirDocumento(
+                    com.cloud_technological.aura_pos.services.LoteStockService.TRASLADO_SALIDA, detalle.getId(), true, "anular el traslado");
+            final String refAnulacion = "Anulación Traslado #" + traslado.getId();
+
             // Kardex devolución origen
-            registrarMovimiento(origen, producto, detalle.getLote(),
-                    detalle.getCantidad(), saldoAnteriorOrigen, saldoNuevoOrigen,
-                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
-                    "Anulación Traslado #" + traslado.getId());
+            loteStock.kardex(lotesOrigen, detalle.getCantidad(), saldoAnteriorOrigen,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaOrigen, producto,
+                            lote != null ? lote : detalle.getLote(), cant, ant, nuevo,
+                            detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
+                            refAnulacion));
 
             // Restar stock del destino
             InventarioEntity invDestino = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(destino.getId()), producto.getId())
+                    .findByBodegaIdAndProductoId(bodegaDestino.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario destino no encontrado para: " + producto.getNombre()));
 
@@ -248,20 +290,23 @@ public class TrasladoServiceImpl implements TrasladoService{
             if (saldoNuevoDestino.compareTo(BigDecimal.ZERO) < 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "No se puede anular, el producto " + producto.getNombre()
-                        + " ya fue consumido en la sucursal destino");
+                        + " ya salio de la bodega destino");
 
             invDestino.setStockActual(saldoNuevoDestino);
             invDestino.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(invDestino);
 
-            // Kardex devolución destino
-            registrarMovimiento(destino, producto, detalle.getLote(),
-                    detalle.getCantidad().negate(), saldoAnteriorDestino, saldoNuevoDestino,
-                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
-                    "Anulación Traslado #" + traslado.getId());
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesDestino = loteStock.revertirDocumento(
+                    com.cloud_technological.aura_pos.services.LoteStockService.TRASLADO_ENTRADA, detalle.getId(), false, "anular el traslado");
 
-            // Revertir lotes si aplica
-            if (detalle.getLote() != null) {
+            // Kardex devolución destino
+            loteStock.kardex(lotesDestino, detalle.getCantidad().negate(), saldoAnteriorDestino,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaDestino, producto, lote, cant, ant, nuevo,
+                            detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_TRASLADO.codigo(),
+                            refAnulacion));
+
+            // Traslados anteriores a F3: el lote elegido solo se había descontado en origen.
+            if (lotesOrigen.isEmpty() && detalle.getLote() != null) {
                 LoteEntity lote = detalle.getLote();
                 lote.setStockActual(lote.getStockActual().add(detalle.getCantidad()));
                 loteJPARepository.save(lote);
@@ -274,34 +319,13 @@ public class TrasladoServiceImpl implements TrasladoService{
 
     // ─── Métodos privados ────────────────────────────────────────────────────
 
-    private LoteEntity resolverLoteDestino(ProductoEntity producto, SucursalEntity destino,
-            LoteEntity loteOrigen, BigDecimal cantidad) {
-        return loteJPARepository
-                .findByProductoIdAndSucursalIdAndCodigoLote(
-                        producto.getId(), Long.valueOf(destino.getId()), loteOrigen.getCodigoLote())
-                .map(loteExistente -> {
-                    loteExistente.setStockActual(loteExistente.getStockActual().add(cantidad));
-                    return loteJPARepository.save(loteExistente);
-                })
-                .orElseGet(() -> {
-                    LoteEntity nuevoLote = new LoteEntity();
-                    nuevoLote.setProducto(producto);
-                    nuevoLote.setSucursal(destino);
-                    nuevoLote.setCodigoLote(loteOrigen.getCodigoLote());
-                    nuevoLote.setFechaVencimiento(loteOrigen.getFechaVencimiento());
-                    nuevoLote.setStockActual(cantidad);
-                    nuevoLote.setCostoUnitario(loteOrigen.getCostoUnitario());
-                    nuevoLote.setActivo(true);
-                    return loteJPARepository.save(nuevoLote);
-                });
-    }
-
-    private InventarioEntity resolverInventarioDestino(SucursalEntity destino, ProductoEntity producto) {
+    private InventarioEntity resolverInventarioDestino(com.cloud_technological.aura_pos.entity.BodegaEntity destino, ProductoEntity producto) {
         return inventarioJPARepository
-                .findBySucursalIdAndProductoId(Long.valueOf(destino.getId()), producto.getId())
+                .findByBodegaIdAndProductoId(destino.getId(), producto.getId())
                 .orElseGet(() -> {
                     InventarioEntity nuevo = new InventarioEntity();
-                    nuevo.setSucursal(destino);
+                    nuevo.setBodega(destino);
+                    nuevo.setSucursal(destino.getSucursal());
                     nuevo.setProducto(producto);
                     nuevo.setStockActual(BigDecimal.ZERO);
                     nuevo.setStockMinimo(BigDecimal.ZERO);
@@ -310,11 +334,12 @@ public class TrasladoServiceImpl implements TrasladoService{
                 });
     }
 
-    private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
         MovimientoInventarioEntity movimiento = new MovimientoInventarioEntity();
-        movimiento.setSucursal(sucursal);
+        movimiento.setBodega(bodega);
+        movimiento.setSucursal(bodega.getSucursal());
         movimiento.setProducto(producto);
         movimiento.setLote(lote);
         movimiento.setTipoMovimiento(tipo);

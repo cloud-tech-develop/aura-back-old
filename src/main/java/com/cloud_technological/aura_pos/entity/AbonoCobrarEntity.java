@@ -70,6 +70,10 @@ public class AbonoCobrarEntity {
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 
+    /** Recibo de caja multi-factura al que pertenece (V167); null si fue un abono suelto. */
+    @Column(name = "recibo_caja_id")
+    private Long reciboCajaId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

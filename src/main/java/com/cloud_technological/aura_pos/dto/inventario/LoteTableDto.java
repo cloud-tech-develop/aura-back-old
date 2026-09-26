@@ -19,5 +19,12 @@ public class LoteTableDto {
     private BigDecimal stockActual;
     private BigDecimal costoUnitario;
     private Boolean activo;
+    private LocalDate fechaFabricacion;
+    /** Negativo = ya venció. Null si el lote no tiene vencimiento. */
+    private Integer diasParaVencer;
+    private String unidadAbreviatura;
+    private Long compraId;
+    private String compraNumero;
+    private String proveedorNombre;
     private long totalRows;
 }

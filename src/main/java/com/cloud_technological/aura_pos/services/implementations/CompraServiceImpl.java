@@ -59,6 +59,10 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class CompraServiceImpl implements CompraService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
     private final CompraQueryRepository compraRepository;
     private final CompraJPARepository compraJPARepository;
     private final CompraPagoJPARepository compraPagoJPARepository;
@@ -91,6 +95,21 @@ public class CompraServiceImpl implements CompraService {
 
     @Autowired
     private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaRepo;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CambioUnidadProductoService cambioUnidadProducto;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.SerialStockService serialStock;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.inventario.CompraDetalleLoteJPARepository compraDetalleLoteRepository;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository presentacionJPARepository;
 
     // ── Nota crédito de compra ───────────────────────────────────
     //
@@ -212,6 +231,53 @@ public class CompraServiceImpl implements CompraService {
                                 + " sin acreditar.");
             }
         }
+    }
+
+    /** Línea escrita en una presentación, tal como la escribió el usuario (4 Pacas a $52.500). */
+    private record LineaPresentacion(
+            com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity presentacion,
+            BigDecimal cantidad, BigDecimal costo) {
+    }
+
+    /**
+     * Pasa a unidad base las líneas escritas en una presentación. Todo lo que
+     * sigue —inventario, kardex, costo del producto, anular, editar, nota
+     * crédito— trabaja en unidad base; lo escrito se guarda aparte en el detalle.
+     * El costo por unidad se redondea a 2 decimales, por eso el subtotal se
+     * calcula con lo escrito y no con cantidad × costo unitario.
+     */
+    private java.util.Map<CreateCompraDetalleDto, LineaPresentacion> normalizarPresentaciones(
+            CreateCompraDto dto, Integer empresaId) {
+        java.util.Map<CreateCompraDetalleDto, LineaPresentacion> lineas = new java.util.IdentityHashMap<>();
+        if (dto.getDetalles() == null) return lineas;
+        for (CreateCompraDetalleDto item : dto.getDetalles()) {
+            if (item.getProductoPresentacionId() == null) continue;
+            var presentacion = presentacionJPARepository
+                    .findByIdAndProductoEmpresaId(item.getProductoPresentacionId(), empresaId)
+                    .filter(p -> p.getProducto().getId().equals(item.getProductoId()))
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            "La presentación no pertenece a " + nombreProducto(item.getProductoId())));
+            BigDecimal cantidad = nz(item.getCantidad()).abs();
+            BigDecimal costo = nz(item.getCostoUnitario());
+            BigDecimal cantidadBase = com.cloud_technological.aura_pos.utils.PresentacionConversion
+                    .aBase(cantidad, presentacion);
+            if (cantidadBase.signum() <= 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La cantidad de " + nombreProducto(item.getProductoId()) + " debe ser mayor que cero");
+            lineas.put(item, new LineaPresentacion(presentacion, cantidad, costo));
+            item.setCantidad(cantidadBase);
+            // Los lotes se escriben en la misma presentación que la línea (4 bultos).
+            if (item.getLotes() != null) {
+                for (var lote : item.getLotes()) {
+                    if (lote.getCantidad() != null)
+                        lote.setCantidad(com.cloud_technological.aura_pos.utils.PresentacionConversion
+                                .aBase(lote.getCantidad().abs(), presentacion));
+                }
+            }
+            item.setCostoUnitario(cantidad.multiply(costo)
+                    .divide(cantidadBase, 2, java.math.RoundingMode.HALF_UP));
+        }
+        return lineas;
     }
 
     private String nombreProducto(Long productoId) {
@@ -380,6 +446,10 @@ public class CompraServiceImpl implements CompraService {
         TerceroEntity proveedor = terceroJPARepository.findByIdAndEmpresaId(dto.getProveedorId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
 
+        // Líneas escritas en presentación (4 Pacas) → unidad base, antes de
+        // validar la nota crédito, que compara cantidades por producto.
+        final var lineasPresentacion = normalizarPresentaciones(dto, empresaId);
+
         // 0. Una nota crédito anula mercancía de una factura concreta: se valida
         //    contra ella ANTES de tocar inventario, y a partir de aquí el
         //    documento entero va con signo negativo.
@@ -396,6 +466,10 @@ public class CompraServiceImpl implements CompraService {
         CompraEntity compra = compraMapper.toEntity(dto);
         compra.setEmpresa(empresa);
         compra.setSucursal(sucursal);
+        // Bodega que recibe la mercancia. Sin ella, la principal.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+        compra.setBodega(bodega);
         compra.setProveedor(proveedor);
         compra.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDateTime.now());
         compra.setEstado("RECIBIDA");
@@ -453,7 +527,10 @@ public class CompraServiceImpl implements CompraService {
             BigDecimal cantidad = nz(item.getCantidad()).abs().multiply(signo);
             BigDecimal impuestoLinea = nz(item.getImpuestoValor()).abs().multiply(signo);
             BigDecimal descPct = item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO;
-            BigDecimal brutoLinea = cantidad.multiply(item.getCostoUnitario());
+            LineaPresentacion enPresentacion = lineasPresentacion.get(item);
+            BigDecimal brutoLinea = enPresentacion != null
+                    ? enPresentacion.cantidad().multiply(enPresentacion.costo()).multiply(signo)
+                    : cantidad.multiply(item.getCostoUnitario());
             BigDecimal descValor = brutoLinea.multiply(descPct).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal netoLinea = brutoLinea.subtract(descValor);
 
@@ -465,6 +542,11 @@ public class CompraServiceImpl implements CompraService {
             detalle.setDescuentoPct(descPct);
             detalle.setDescuentoValor(descValor);
             detalle.setSubtotalLinea(netoLinea);
+            if (enPresentacion != null) {
+                detalle.setProductoPresentacion(enPresentacion.presentacion());
+                detalle.setCantidadPresentacion(enPresentacion.cantidad().multiply(signo));
+                detalle.setCostoPresentacion(enPresentacion.costo());
+            }
 
             subtotalBruto = subtotalBruto.add(brutoLinea);
             descuentoTotal = descuentoTotal.add(descValor);
@@ -486,7 +568,7 @@ public class CompraServiceImpl implements CompraService {
             }
 
             // 2.4 Actualizar inventario
-            InventarioEntity inventario = resolverInventario(sucursal, producto);
+            InventarioEntity inventario = resolverInventario(bodega, producto);
             BigDecimal saldoAnterior = inventario.getStockActual();
             BigDecimal saldoNuevo = saldoAnterior.add(cantidad);
             if (esNC && saldoNuevo.signum() < 0) {
@@ -502,9 +584,22 @@ public class CompraServiceImpl implements CompraService {
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            // 2.5 Kardex
-            registrarMovimiento(sucursal, producto, null, cantidad,
-                    saldoAnterior, saldoNuevo, item.getCostoUnitario(),
+            // 2.5 Lotes: la compra los crea, la nota crédito los descuenta.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes =
+                    moverLotesLinea(producto, bodega, empresaId, item, detalle, esNC, cantidad.abs());
+
+            // 2.5b Seriales: la compra los crea; la nota crédito los devuelve al proveedor.
+            if (esNC) {
+                serialStock.salida(com.cloud_technological.aura_pos.services.SerialStockService.ORIGEN_NOTA_CREDITO_COMPRA, detalle.getId(), producto,
+                        bodega, empresaId, cantidad.abs(), item.getSerialIds(), com.cloud_technological.aura_pos.services.SerialStockService.DEVUELTO_PROVEEDOR);
+            } else {
+                serialStock.entradaCompra(producto, bodega, empresaId, detalle.getId(), item.getSeriales(),
+                        cantidad.abs(), item.getCostoUnitario());
+            }
+
+            // 2.6 Kardex (un movimiento por lote)
+            registrarKardexPorLotes(bodega, producto, lotes, cantidad,
+                    saldoAnterior, item.getCostoUnitario(),
                     esNC ? TipoMovimientoInventario.NOTA_CREDITO_COMPRA.codigo() : TipoMovimientoInventario.COMPRA.codigo(),
                     (esNC ? "Nota crédito compra #" : "Compra #") + compra.getId());
         }
@@ -1043,15 +1138,17 @@ public class CompraServiceImpl implements CompraService {
         if (compra.getEstado().equals("ANULADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La compra ya está anulada");
 
+        List<CompraDetalleEntity> detalles = detalleJPARepository.findByCompraId(id);
+        cambioUnidadProducto.validarDocumentoPrevio("COMPRA", id,
+                detalles.stream().map(d -> d.getProducto().getId()).toList(), "anular la compra");
+
         // El soporte del pago no puede seguir vigente si la compra no existe.
         comprobanteCajaService.anularDeDocumento(empresaId, "COMPRA", id,
                 "Compra anulada");
 
-        List<CompraDetalleEntity> detalles = detalleJPARepository.findByCompraId(id);
-
         for (CompraDetalleEntity detalle : detalles) {
             InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(compra.getSucursal().getId()), detalle.getProducto().getId())
+                    .findByBodegaIdAndProductoId(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + detalle.getProducto().getNombre()));
 
@@ -1066,18 +1163,37 @@ public class CompraServiceImpl implements CompraService {
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            // Revertir lote
-            if (detalle.getLote() != null) {
+            // Seriales: la compra borra los que creó (si alguno ya salió, se
+            // bloquea); la nota crédito los devuelve a DISPONIBLE.
+            if (esNotaCredito(compra.getTipoDocumento())) {
+                serialStock.revertirSalida(com.cloud_technological.aura_pos.services.SerialStockService.ORIGEN_NOTA_CREDITO_COMPRA, detalle.getId(),
+                        "anular la nota crédito");
+            } else {
+                serialStock.revertirEntradaCompra(detalle.getId(), "anular la compra");
+            }
+
+            // Revertir lotes: la compra saca lo que metió (si ya salió, se
+            // bloquea); la nota crédito devuelve lo que había sacado.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes =
+                    revertirLotesLinea(detalle, esNotaCredito(compra.getTipoDocumento()), "anular la compra");
+            if (lotes.isEmpty() && detalle.getLote() != null) {
                 LoteEntity lote = detalle.getLote();
                 lote.setStockActual(lote.getStockActual().subtract(detalle.getCantidad()));
                 loteJPARepository.save(lote);
             }
 
             // Kardex anulación
-            registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),
-                    detalle.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_COMPRA.codigo(),
-                    "Anulación Compra #" + compra.getId());
+            if (lotes.isEmpty()) {
+                registrarMovimiento(bodegaDeCompra(compra, empresaId), detalle.getProducto(), detalle.getLote(),
+                        detalle.getCantidad().negate(), saldoAnterior, saldoNuevo,
+                        detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_COMPRA.codigo(),
+                        "Anulación Compra #" + compra.getId());
+            } else {
+                registrarKardexPorLotes(bodegaDeCompra(compra, empresaId), detalle.getProducto(), lotes,
+                        detalle.getCantidad().negate(), saldoAnterior, detalle.getCostoUnitario(),
+                        TipoMovimientoInventario.ANULACION_COMPRA.codigo(),
+                        "Anulación Compra #" + compra.getId());
+            }
         }
 
         // El crédito que la nota otorgó deja de existir con ella: hay que
@@ -1105,6 +1221,10 @@ public class CompraServiceImpl implements CompraService {
         if (compra.getEstado().equals("ANULADA"))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede editar una compra anulada");
 
+        cambioUnidadProducto.validarDocumentoPrevio("COMPRA", id,
+                detalleJPARepository.findByCompraId(id).stream().map(d -> d.getProducto().getId()).toList(),
+                "editar la compra");
+
         // Una nota crédito ya cruzó una deuda, devolvió plata o dejó un saldo a
         // favor. Reeditarla obligaría a deshacer todo eso a medias y con la
         // factura origen posiblemente ya pagada: es más limpio anularla y
@@ -1126,13 +1246,33 @@ public class CompraServiceImpl implements CompraService {
         TerceroEntity proveedor = terceroJPARepository.findByIdAndEmpresaId(dto.getProveedorId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
 
+        final var lineasPresentacion = normalizarPresentaciones(dto, empresaId);
+
         // 1. Revertir inventario de los detalles existentes
         List<CompraDetalleEntity> detallesAnteriores = detalleJPARepository.findByCompraId(id);
         for (CompraDetalleEntity detalle : detallesAnteriores) {
+            // Los lotes que creó la línea salen antes de borrarla; si de alguno
+            // ya se vendió, la edición se bloquea.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesAnteriores =
+                    revertirLotesLinea(detalle, false, "editar la compra");
+            compraDetalleLoteRepository.deleteAll(
+                    compraDetalleLoteRepository.findByCompraDetalleIdOrderByIdAsc(detalle.getId()));
+            serialStock.revertirEntradaCompra(detalle.getId(), "editar la compra");
+
             InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(compra.getSucursal().getId()), detalle.getProducto().getId())
+                    .findByBodegaIdAndProductoId(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
                     .orElse(null);
-            if (inventario != null) {
+            if (inventario != null && !lotesAnteriores.isEmpty()) {
+                BigDecimal saldoAnterior = inventario.getStockActual();
+                BigDecimal saldoNuevo = saldoAnterior.subtract(detalle.getCantidad());
+                inventario.setStockActual(saldoNuevo);
+                inventario.setUpdatedAt(LocalDateTime.now());
+                inventarioJPARepository.save(inventario);
+                registrarKardexPorLotes(bodegaDeCompra(compra, empresaId), detalle.getProducto(), lotesAnteriores,
+                        detalle.getCantidad().negate(), saldoAnterior, detalle.getCostoUnitario(),
+                        TipoMovimientoInventario.EDICION_COMPRA_REVERSION.codigo(),
+                        "Edición Compra #" + compra.getId());
+            } else if (inventario != null) {
                 BigDecimal saldoAnterior = inventario.getStockActual();
                 BigDecimal saldoNuevo = saldoAnterior.subtract(detalle.getCantidad());
                 // El kardex debe ser secuencial: el stock puede quedar negativo de forma
@@ -1141,7 +1281,7 @@ public class CompraServiceImpl implements CompraService {
                 inventario.setStockActual(saldoNuevo);
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
-                registrarMovimiento(compra.getSucursal(), detalle.getProducto(), detalle.getLote(),
+                registrarMovimiento(bodegaDeCompra(compra, empresaId), detalle.getProducto(), detalle.getLote(),
                         detalle.getCantidad().negate(), saldoAnterior, saldoNuevo,
                         detalle.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA_REVERSION.codigo(),
                         "Edición Compra #" + compra.getId());
@@ -1159,6 +1299,10 @@ public class CompraServiceImpl implements CompraService {
         // 3. Actualizar cabecera
         compra.setProveedor(proveedor);
         compra.setSucursal(sucursal);
+        // Bodega que recibe la mercancia. Sin ella, la principal.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+        compra.setBodega(bodega);
         compra.setNumeroCompra(dto.getNumeroCompra());
         if (dto.getFecha() != null) compra.setFecha(dto.getFecha());
         compra.setObservaciones(dto.getObservaciones());
@@ -1181,7 +1325,10 @@ public class CompraServiceImpl implements CompraService {
                             "Producto no encontrado: " + item.getProductoId()));
 
             BigDecimal descPct = item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO;
-            BigDecimal brutoLinea = item.getCantidad().multiply(item.getCostoUnitario());
+            LineaPresentacion enPresentacion = lineasPresentacion.get(item);
+            BigDecimal brutoLinea = enPresentacion != null
+                    ? enPresentacion.cantidad().multiply(enPresentacion.costo())
+                    : item.getCantidad().multiply(item.getCostoUnitario());
             BigDecimal descValor = brutoLinea.multiply(descPct).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal netoLinea = brutoLinea.subtract(descValor);
 
@@ -1191,6 +1338,11 @@ public class CompraServiceImpl implements CompraService {
             detalle.setDescuentoPct(descPct);
             detalle.setDescuentoValor(descValor);
             detalle.setSubtotalLinea(netoLinea);
+            if (enPresentacion != null) {
+                detalle.setProductoPresentacion(enPresentacion.presentacion());
+                detalle.setCantidadPresentacion(enPresentacion.cantidad());
+                detalle.setCostoPresentacion(enPresentacion.costo());
+            }
 
             subtotalBruto = subtotalBruto.add(brutoLinea);
             descuentoTotal = descuentoTotal.add(descValor);
@@ -1204,15 +1356,20 @@ public class CompraServiceImpl implements CompraService {
 
             actualizarPreciosProducto(producto, item);
 
-            InventarioEntity inventario = resolverInventario(sucursal, producto);
+            InventarioEntity inventario = resolverInventario(bodega, producto);
             BigDecimal saldoAnterior = inventario.getStockActual();
             BigDecimal saldoNuevo = saldoAnterior.add(item.getCantidad());
             inventario.setStockActual(saldoNuevo);
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            registrarMovimiento(sucursal, producto, null, item.getCantidad(),
-                    saldoAnterior, saldoNuevo, item.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA.codigo(),
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes =
+                    moverLotesLinea(producto, bodega, empresaId, item, detalle, false, item.getCantidad().abs());
+            serialStock.entradaCompra(producto, bodega, empresaId, detalle.getId(), item.getSeriales(),
+                    item.getCantidad().abs(), item.getCostoUnitario());
+
+            registrarKardexPorLotes(bodega, producto, lotes, item.getCantidad(),
+                    saldoAnterior, item.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA.codigo(),
                     "Edición Compra #" + compra.getId());
         }
 
@@ -1407,12 +1564,123 @@ public class CompraServiceImpl implements CompraService {
     //             });
     // }
 
-    private InventarioEntity resolverInventario(SucursalEntity sucursal, ProductoEntity producto) {
+    /**
+     * Mueve los lotes de una línea y deja el rastro en compra_detalle_lote.
+     *
+     * <p>Compra: crea o suma a los lotes escritos, que tienen que sumar la
+     * cantidad de la línea; sin lotes, todo entra a SIN-LOTE (así el stock del
+     * producto siempre está en algún lote). Nota crédito: sale de los lotes
+     * elegidos o, si no eligieron, del que vence primero (vencidos incluidos:
+     * devolverle al proveedor lo vencido es lo normal).
+     */
+    private List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> moverLotesLinea(
+            ProductoEntity producto, com.cloud_technological.aura_pos.entity.BodegaEntity bodega, Integer empresaId,
+            CreateCompraDetalleDto item, CompraDetalleEntity detalle, boolean salida, BigDecimal cantidadBase) {
+        var lotesDto = item.getLotes() != null ? item.getLotes()
+                : java.util.List.<com.cloud_technological.aura_pos.dto.compras.CreateCompraDetalleLoteDto>of();
+        if (!Boolean.TRUE.equals(producto.getManejaLotes())) {
+            if (!lotesDto.isEmpty())
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "'" + producto.getNombre() + "' no maneja lotes: quita los lotes de la línea");
+            return List.of();
+        }
+
+        List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> asignaciones;
+        if (salida) {
+            var elegidos = lotesDto.stream()
+                    .filter(l -> l.getLoteId() != null && l.getCantidad() != null)
+                    .map(l -> new com.cloud_technological.aura_pos.services.LoteStockService.Elegido(
+                            l.getLoteId(), l.getCantidad().abs()))
+                    .toList();
+            asignaciones = loteStock.salir(producto, bodega, empresaId, cantidadBase, elegidos, true);
+        } else if (lotesDto.isEmpty()) {
+            var lote = loteStock.entrar(producto, bodega, empresaId,
+                    new com.cloud_technological.aura_pos.services.LoteStockService.Entrada(
+                            com.cloud_technological.aura_pos.services.LoteStockService.SIN_LOTE,
+                            null, null, cantidadBase),
+                    item.getCostoUnitario(), detalle.getId());
+            asignaciones = List.of(
+                    new com.cloud_technological.aura_pos.services.LoteStockService.Asignacion(lote, cantidadBase));
+        } else {
+            BigDecimal suma = lotesDto.stream().map(l -> nz(l.getCantidad()).abs())
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (suma.subtract(cantidadBase).abs().compareTo(new BigDecimal("0.0001")) > 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Los lotes de " + producto.getNombre() + " suman "
+                                + suma.stripTrailingZeros().toPlainString() + " y la línea tiene "
+                                + cantidadBase.stripTrailingZeros().toPlainString());
+            asignaciones = new java.util.ArrayList<>();
+            for (var l : lotesDto) {
+                BigDecimal cant = nz(l.getCantidad()).abs();
+                if (cant.signum() <= 0) continue;
+                var lote = loteStock.entrar(producto, bodega, empresaId,
+                        new com.cloud_technological.aura_pos.services.LoteStockService.Entrada(
+                                l.getCodigoLote(), l.getFechaVencimiento(), l.getFechaFabricacion(), cant),
+                        item.getCostoUnitario(), detalle.getId());
+                asignaciones.add(new com.cloud_technological.aura_pos.services.LoteStockService.Asignacion(lote, cant));
+            }
+        }
+
+        for (var a : asignaciones) {
+            var fila = new com.cloud_technological.aura_pos.entity.CompraDetalleLoteEntity();
+            fila.setCompraDetalleId(detalle.getId());
+            fila.setLote(a.lote());
+            fila.setCantidadBase(a.cantidadBase());
+            compraDetalleLoteRepository.save(fila);
+        }
+        return asignaciones;
+    }
+
+    /** Deshace los lotes de una línea: la compra retira lo que metió, la nota crédito devuelve lo que sacó. */
+    private List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> revertirLotesLinea(
+            CompraDetalleEntity detalle, boolean eraSalida, String accion) {
+        var asignaciones = compraDetalleLoteRepository.findByCompraDetalleIdOrderByIdAsc(detalle.getId()).stream()
+                .map(f -> new com.cloud_technological.aura_pos.services.LoteStockService.Asignacion(
+                        f.getLote(), f.getCantidadBase()))
+                .toList();
+        if (eraSalida) {
+            loteStock.devolver(asignaciones);
+        } else {
+            for (var a : asignaciones) loteStock.retirarEntrada(a.lote(), a.cantidadBase(), accion);
+        }
+        return asignaciones;
+    }
+
+    /**
+     * Un movimiento de kardex por lote, con los saldos encadenados. Sin lotes,
+     * un solo movimiento como siempre. {@code cantidad} trae el signo.
+     */
+    private void registrarKardexPorLotes(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto,
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes,
+            BigDecimal cantidad, BigDecimal saldoAnterior, BigDecimal costo, String tipo, String referencia) {
+        if (lotes.isEmpty()) {
+            registrarMovimiento(bodega, producto, null, cantidad, saldoAnterior,
+                    saldoAnterior.add(cantidad), costo, tipo, referencia);
+            return;
+        }
+        BigDecimal saldo = saldoAnterior;
+        boolean resta = cantidad.signum() < 0;
+        for (var a : lotes) {
+            BigDecimal mov = resta ? a.cantidadBase().negate() : a.cantidadBase();
+            registrarMovimiento(bodega, producto, a.lote(), mov, saldo, saldo.add(mov), costo, tipo, referencia);
+            saldo = saldo.add(mov);
+        }
+    }
+
+    /** La bodega del documento; las compras anteriores a V172 quedaron en la principal. */
+    private com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDeCompra(CompraEntity compra, Integer empresaId) {
+        return bodegaService.resolver(
+                compra.getBodega() != null ? compra.getBodega().getId() : null,
+                compra.getSucursal() != null ? compra.getSucursal().getId() : null, empresaId);
+    }
+
+    private InventarioEntity resolverInventario(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto) {
         return inventarioJPARepository
-                .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
+                .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
                 .orElseGet(() -> {
                     InventarioEntity nuevo = new InventarioEntity();
-                    nuevo.setSucursal(sucursal);
+                    nuevo.setBodega(bodega);
+                    nuevo.setSucursal(bodega.getSucursal());
                     nuevo.setProducto(producto);
                     nuevo.setStockActual(BigDecimal.ZERO);
                     nuevo.setStockMinimo(BigDecimal.ZERO);
@@ -1421,11 +1689,12 @@ public class CompraServiceImpl implements CompraService {
                 });
     }
 
-    private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
         MovimientoInventarioEntity movimiento = new MovimientoInventarioEntity();
-        movimiento.setSucursal(sucursal);
+        movimiento.setBodega(bodega);
+        movimiento.setSucursal(bodega.getSucursal());
         movimiento.setProducto(producto);
         movimiento.setLote(lote);
         movimiento.setTipoMovimiento(tipo);

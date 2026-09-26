@@ -15,6 +15,10 @@ public class CreateTrasladoDto {
     private Long sucursalOrigenId;
     @NotNull(message = "La sucursal destino es obligatoria")
     private Long sucursalDestinoId;
+
+    /** Bodegas del traslado. Sin ellas, la principal de cada sucursal. */
+    private Long bodegaOrigenId;
+    private Long bodegaDestinoId;
     private String observacion;
     @NotEmpty(message = "Debe agregar al menos un producto")
     private List<CreateTrasladoDetalleDto> detalles;

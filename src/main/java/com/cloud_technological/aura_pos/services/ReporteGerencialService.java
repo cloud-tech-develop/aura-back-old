@@ -461,6 +461,7 @@ public class ReporteGerencialService {
             case "DEVOLUCIONES" -> "Devoluciones";
             case "MERMAS" -> "Mermas";
             case "OBSEQUIOS" -> "Obsequios";
+            case "CONSUMOS_INTERNOS" -> "Consumo interno";
             case "TRASLADOS" -> "Traslados";
             case "ANULACIONES" -> "Anulaciones";
             case "RECONTEOS" -> "Ajustes de reconteo";

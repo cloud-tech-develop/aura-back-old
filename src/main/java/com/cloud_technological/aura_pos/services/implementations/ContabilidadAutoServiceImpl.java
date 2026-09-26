@@ -50,7 +50,6 @@ import com.cloud_technological.aura_pos.repositories.merma.MermaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.obligaciones.ObligacionFinancieraJPARepository;
 import com.cloud_technological.aura_pos.repositories.obligaciones.CuotaAmortizacionJPARepository;
-import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableJPARepository;
 import com.cloud_technological.aura_pos.repositories.venta_detalle.VentaDetalleJPARepository;
 import com.cloud_technological.aura_pos.repositories.venta_pago.VentaPagoJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
@@ -66,7 +65,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private CompraJPARepository compraRepo;
     @Autowired private AsientoContableJPARepository asientoRepo;
     @Autowired private AsientoContableQueryRepository queryRepo;
-    @Autowired private PeriodoContableJPARepository periodoRepo;
+    @Autowired private PeriodoContableResolver periodoResolver;
     @Autowired private VentaPagoJPARepository ventaPagoRepo;
     @Autowired private VentaDetalleJPARepository ventaDetalleRepo;
     @Autowired private CompraPagoJPARepository compraPagoRepo;
@@ -94,6 +93,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaProducto resolucionCuentaProducto;
     @Autowired private com.cloud_technological.aura_pos.repositories.detalle_compras.CompraDetalleJPARepository compraDetalleRepo;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionImpuesto resolucionImpuesto;
+    @Autowired private com.cloud_technological.aura_pos.repositories.merma_detalle.MermaDetalleJPARepository mermaDetalleRepo;
+    @Autowired private com.cloud_technological.aura_pos.repositories.inventario_consumo.InventarioConsumoComponenteJPARepository consumoComponenteRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.asistencia.AsistenciaNovedadNominaJPARepository novedadNominaRepo;
 
     // ────────────────────────────────────────────────────────────────────────
@@ -134,14 +135,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     "Ya existe un asiento contable para la venta #" + ventaId);
         }
 
-        // Validar período contable abierto
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
-
         VentaEntity venta = ventaRepo.findByIdAndEmpresaId(ventaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Venta no encontrada"));
+
+        // El asiento pertenece al mes de la venta, no al período que esté abierto (V171).
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId,
+                venta.getFechaEmision() != null ? venta.getFechaEmision().toLocalDate() : null);
 
         BigDecimal total      = nz(venta.getTotalPagar());
         BigDecimal impuestos  = nz(venta.getImpuestosTotal());
@@ -225,14 +225,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     "Ya existe un asiento contable para la compra #" + compraId);
         }
 
-        // Validar período contable abierto
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
-
         CompraEntity compra = compraRepo.findByIdAndEmpresaId(compraId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Compra no encontrada"));
+
+        // El asiento pertenece al mes de la compra (V171).
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId,
+                compra.getFecha() != null ? compra.getFecha().toLocalDate() : null);
 
         BigDecimal subtotal   = nz(compra.getSubtotal());
         BigDecimal descuento  = nz(compra.getDescuentoTotal());
@@ -415,14 +414,21 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                         origenTipo, origenId, empresaId, ESTADO_CONTABILIZADO)
                 .orElse(null);
         if (original == null) {
+            // Borrador de un documento que ya no existe: nunca tocó saldos, así
+            // que no lleva contraasiento, pero si queda vivo alguien puede
+            // contabilizarlo después y meter a los libros un pago anulado.
+            asientoRepo.findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+                            origenTipo, origenId, empresaId, "BORRADOR")
+                    .ifPresent(borrador -> {
+                        borrador.setEstado(ESTADO_ANULADO);
+                        asientoRepo.save(borrador);
+                    });
             return null;
         }
 
-        // El contraasiento se registra en el período abierto actual (no en el del
-        // asiento original, que podría estar cerrado).
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de reversar."));
+        // El contraasiento lleva la fecha de hoy y cae en el período de hoy, no en el
+        // del asiento original: reversar un documento de un mes cerrado no reabre ese mes.
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId, java.time.LocalDate.now());
 
         // Construir el contraasiento intercambiando débito ↔ crédito de cada línea.
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
@@ -470,10 +476,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la devolución #" + devolucionId);
         }
-
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
 
         DevolucionEntity dev = devolucionRepo.findByIdAndEmpresaId(devolucionId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -605,7 +607,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId, fecha, comprobante,
                 "Devolución #" + devolucionId
                         + (dev.getVenta() != null ? " — venta " + Documentos.numeroVenta(dev.getVenta()) : ""),
-                "DEVOLUCION", devolucionId, periodo.getId(), detalles);
+                "DEVOLUCION", devolucionId, periodoResolver.resolverId(empresaId, fecha), detalles);
         detalles.forEach(d -> d.setAsiento(asiento));
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
@@ -622,7 +624,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el abono de cobro #" + abonoId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         AbonoCobrarEntity abono = abonoCobrarRepo.findById(abonoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Abono no encontrado"));
@@ -638,7 +639,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         detalles.add(linea(clientes.getId(), "Abono cartera cliente", BigDecimal.ZERO, monto, terceroId));
 
         return persistir(empresaId, usuarioId, java.time.LocalDate.now(), PREFIX_RECAUDO,
-                "Recaudo cartera — abono #" + abonoId, "ABONO_COBRAR", abonoId, periodo.getId(), detalles);
+                "Recaudo cartera — abono #" + abonoId, "ABONO_COBRAR", abonoId,
+                periodoResolver.resolverId(empresaId, java.time.LocalDate.now()), detalles);
     }
 
     @Override
@@ -649,7 +651,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el abono de pago #" + abonoId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         AbonoPagarEntity abono = abonoPagarRepo.findById(abonoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Abono no encontrado"));
@@ -665,7 +666,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         detalles.add(linea(caja.getId(), "Egreso pago (" + abono.getMetodoPago() + ")", BigDecimal.ZERO, monto));
 
         return persistir(empresaId, usuarioId, java.time.LocalDate.now(), PREFIX_EGRESO,
-                "Pago a proveedor — abono #" + abonoId, "ABONO_PAGAR", abonoId, periodo.getId(), detalles);
+                "Pago a proveedor — abono #" + abonoId, "ABONO_PAGAR", abonoId,
+                periodoResolver.resolverId(empresaId, java.time.LocalDate.now()), detalles);
     }
 
     @Override
@@ -676,7 +678,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el gasto #" + gastoId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         GastoEntity gasto = gastoRepo.findByIdAndEmpresaId(gastoId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Gasto no encontrado"));
@@ -748,7 +749,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         java.time.LocalDate fecha = gasto.getFecha() != null ? gasto.getFecha() : java.time.LocalDate.now();
         return persistir(empresaId, usuarioId, fecha, PREFIX_GASTO,
                 "Gasto #" + gastoId + (gasto.getCategoria() != null ? " — " + gasto.getCategoria() : ""),
-                "GASTO", gastoId, periodo.getId(), detalles);
+                "GASTO", gastoId, periodoResolver.resolverId(empresaId, fecha), detalles);
     }
 
     @Override
@@ -759,12 +760,30 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la merma #" + mermaId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         MermaEntity merma = mermaRepo.findByIdAndEmpresaId(mermaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merma no encontrada"));
 
-        BigDecimal costo = nz(merma.getCostoTotal());
+        // La baja acredita el inventario de cada producto con la misma cadena
+        // que usa la venta (override del producto → categoría contable →
+        // concepto INVENTARIO). Si la línea salió por receta, lo que se
+        // descarga es el inventario de cada componente, no el del padre.
+        java.util.Map<Long, BigDecimal> inventarioPorCuenta = new java.util.LinkedHashMap<>();
+        for (com.cloud_technological.aura_pos.entity.MermaDetalleEntity d : mermaDetalleRepo.findByMermaId(mermaId)) {
+            List<com.cloud_technological.aura_pos.entity.InventarioConsumoComponenteEntity> consumos =
+                    consumoComponenteRepo.findByOrigenAndDetalleIdOrderByIdAsc("MERMA", d.getId());
+            if (consumos.isEmpty()) {
+                acumularInventario(inventarioPorCuenta, d.getProducto().getId(), empresaId,
+                        nz(d.getCantidad()).multiply(nz(d.getCostoUnitario())));
+            } else {
+                for (com.cloud_technological.aura_pos.entity.InventarioConsumoComponenteEntity c : consumos) {
+                    acumularInventario(inventarioPorCuenta, c.getProductoHijo().getId(), empresaId,
+                            nz(c.getCantidad()).multiply(nz(c.getCostoUnitario())));
+                }
+            }
+        }
+
+        BigDecimal costo = inventarioPorCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         if (costo.signum() <= 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "La merma #" + mermaId + " no tiene costo a contabilizar.");
@@ -772,13 +791,24 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
         PlanCuentaEntity perdida = config.resolverCuenta(empresaId, ConceptoContable.PERDIDA_MERMA);
-        PlanCuentaEntity inventario = config.resolverCuenta(empresaId, ConceptoContable.INVENTARIO);
         detalles.add(linea(perdida.getId(), "Pérdida por merma", costo, BigDecimal.ZERO));
-        detalles.add(linea(inventario.getId(), "Baja de inventario por merma", BigDecimal.ZERO, costo));
+        inventarioPorCuenta.forEach((cuentaId, monto) ->
+                detalles.add(linea(cuentaId, "Baja de inventario por merma", BigDecimal.ZERO, monto)));
 
         java.time.LocalDate fecha = merma.getFecha() != null ? merma.getFecha().toLocalDate() : java.time.LocalDate.now();
         return persistir(empresaId, usuarioId, fecha, PREFIX_MERMA,
-                "Merma #" + mermaId, "MERMA", mermaId, periodo.getId(), detalles);
+                "Merma #" + mermaId, "MERMA", mermaId, periodoResolver.resolverId(empresaId, fecha), detalles);
+    }
+
+    /** Suma el costo de un producto en la cuenta de inventario que le corresponde. */
+    private void acumularInventario(java.util.Map<Long, BigDecimal> porCuenta, Long productoId,
+            Integer empresaId, BigDecimal monto) {
+        BigDecimal valor = monto.setScale(2, java.math.RoundingMode.HALF_UP);
+        if (valor.signum() <= 0) {
+            return;
+        }
+        Long cuentaId = resolucionCuentaProducto.resolver(productoId, empresaId).inventarioId();
+        porCuenta.merge(cuentaId, valor, BigDecimal::add);
     }
 
     @Override
@@ -789,7 +819,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la nómina #" + nominaId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
@@ -855,7 +884,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 "Nómina #" + nominaId
                         + (n.getEmpleado() != null && n.getEmpleado().getId() != null
                                 ? " — empleado " + n.getEmpleado().getId() : ""),
-                "NOMINA", nominaId, periodo.getId(), detalles);
+                "NOMINA", nominaId, periodoResolver.resolverId(empresaId, fecha), detalles);
     }
 
     /**
@@ -870,7 +899,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento de pago para la nómina #" + nominaId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
@@ -895,7 +923,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 "Pago nómina #" + nominaId
                         + (n.getEmpleado() != null && n.getEmpleado().getId() != null
                                 ? " — empleado " + n.getEmpleado().getId() : ""),
-                "NOMINA_PAGO", nominaId, periodo.getId(), detalles);
+                "NOMINA_PAGO", nominaId, periodoResolver.resolverId(empresaId, fecha), detalles);
     }
 
     /**
@@ -910,7 +938,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento de pago para la prestación #" + prestacionId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         var p = prestacionRepo.findByIdAndEmpresaId(prestacionId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Prestación no encontrada"));
@@ -983,7 +1010,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 ? p.getFechaPago().toLocalDate() : java.time.LocalDate.now();
         return persistir(empresaId, usuarioId, fecha, PREFIX_PRESTACION_PAGO,
                 "Pago " + tipoLower + " #" + prestacionId, "PRESTACION_PAGO",
-                prestacionId, periodo.getId(), detalles);
+                prestacionId, periodoResolver.resolverId(empresaId, fecha), detalles);
     }
 
     @Override
@@ -1034,8 +1061,11 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_CIERRE);
+        // El cierre se fecha el último día del mes que cierra, no el día en que el
+        // contador lo corrió: un asiento de enero con fecha de marzo descuadra el
+        // balance por fechas (V171).
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
-                java.time.LocalDate.now(), comprobante,
+                ultimoDiaDelPeriodo(periodoId), comprobante,
                 "Cierre del período #" + periodoId, "CIERRE", periodoId, periodoId, detalles);
         asiento.setEstado("CONTABILIZADO"); // el cierre es acto deliberado, nunca borrador
         detalles.forEach(x -> x.setAsiento(asiento));
@@ -1060,7 +1090,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             return null;
         }
 
-        PlanCuentaEntity sobregiros = config.resolverCuenta(empresaId, ConceptoContable.SOBREGIROS_BANCARIOS);
+        // La cuenta de sobregiros se resuelve solo si de verdad hay un banco en rojo:
+        // pedirla siempre impedía cerrar el mes a cualquier empresa que no tenga 2105,
+        // aunque no tuviera ni un sobregiro.
+        PlanCuentaEntity sobregiros = null;
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
         for (CuentaBancariaEntity cb : cuentaBancariaRepo.findByEmpresaIdOrderByNombreAsc(empresaId)) {
             if (!Boolean.TRUE.equals(cb.getPermiteSobregiro()) || cb.getCuentaContableId() == null) {
@@ -1069,6 +1102,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             BigDecimal saldo = nz(queryRepo.saldoCuenta(empresaId, cb.getCuentaContableId()));
             if (saldo.signum() < 0) { // saldo crédito en cuenta de activo = sobregiro
                 BigDecimal monto = saldo.negate();
+                if (sobregiros == null) {
+                    sobregiros = config.resolverCuenta(empresaId, ConceptoContable.SOBREGIROS_BANCARIOS);
+                }
                 detalles.add(linea(cb.getCuentaContableId(),
                         "Reclasificación sobregiro — " + cb.getNombre(), monto, BigDecimal.ZERO));
                 detalles.add(linea(sobregiros.getId(),
@@ -1081,7 +1117,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, PREFIX_SOBREGIRO);
         AsientoContableEntity asiento = buildAsiento(empresaId, usuarioId,
-                java.time.LocalDate.now(), comprobante,
+                ultimoDiaDelPeriodo(periodoId), comprobante,
                 "Reclasificación de sobregiros — cierre período #" + periodoId,
                 "SOBREGIRO", periodoId, periodoId, detalles);
         asiento.setEstado("CONTABILIZADO"); // parte del cierre, nunca borrador
@@ -1101,7 +1137,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la obligación #" + obligacionId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         ObligacionFinancieraEntity o = obligacionRepo.findByIdAndEmpresaId(obligacionId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Obligación no encontrada"));
@@ -1117,7 +1152,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         return persistir(empresaId, usuarioId, o.getFechaDesembolso(), PREFIX_OBLIGACION,
                 "Desembolso obligación #" + obligacionId + " — " + o.getEntidad(),
-                "OBLIGACION", obligacionId, periodo.getId(), detalles);
+                "OBLIGACION", obligacionId,
+                periodoResolver.resolverId(empresaId, o.getFechaDesembolso()), detalles);
     }
 
     @Override
@@ -1128,7 +1164,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para la cuota #" + cuotaId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         CuotaAmortizacionEntity cuota = cuotaRepo.findById(cuotaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cuota no encontrada"));
@@ -1159,7 +1194,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         return persistir(empresaId, usuarioId, fecha, PREFIX_CUOTA,
                 "Pago cuota #" + cuota.getNumeroCuota()
                         + (o != null ? " — obligación #" + o.getId() : ""),
-                "CUOTA_OBLIGACION", cuotaId, periodo.getId(), detalles);
+                "CUOTA_OBLIGACION", cuotaId, periodoResolver.resolverId(empresaId, fecha), detalles);
     }
 
     @Override
@@ -1170,7 +1205,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el movimiento de caja #" + movimientoId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         com.cloud_technological.aura_pos.entity.MovimientoCajaEntity mov = movimientoCajaRepo.findById(movimientoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Movimiento de caja no encontrado"));
@@ -1216,7 +1250,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         return persistirComprobante(empresaId, usuarioId, fecha, tipoComprobante, numero,
                 (ingreso ? "Ingreso de caja — " : "Egreso de caja — ") + concepto.getNombre(),
-                "MOVIMIENTO_CAJA", movimientoId, periodo.getId(), tipoComprobante, detalles);
+                "MOVIMIENTO_CAJA", movimientoId,
+                periodoResolver.resolverId(empresaId, fecha), tipoComprobante, detalles);
     }
 
     @Override
@@ -1227,7 +1262,6 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento contable para el movimiento de tesorería #" + movimientoId);
         }
-        PeriodoContableEntity periodo = periodoAbierto(empresaId);
 
         TesoreriaMovimientoEntity mov = tesoreriaMovRepo.findByIdAndEmpresaId(movimientoId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -1272,7 +1306,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         return persistirComprobante(empresaId, usuarioId, fecha, PREFIX_TESORERIA, null,
                 (entrada ? "Recaudo tesorería — " : "Egreso tesorería — ") + desc,
-                "TESORERIA", movimientoId, periodo.getId(), tipoComprobante, detalles);
+                "TESORERIA", movimientoId,
+                periodoResolver.resolverId(empresaId, fecha), tipoComprobante, detalles);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1335,13 +1370,12 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 tipoOrigen, origenId, empresaId, ESTADO_CONTABILIZADO);
     }
 
-    private PeriodoContableEntity periodoAbierto(Integer empresaId) {
-        return periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de generar asientos."));
+    /** Construye, valida, persiste el asiento y devuelve su DTO con detalles. */
+    /** Último día del mes que cubre el período: la fecha propia de sus asientos de cierre. */
+    private java.time.LocalDate ultimoDiaDelPeriodo(Long periodoId) {
+        return periodoResolver.ultimoDia(periodoId);
     }
 
-    /** Construye, valida, persiste el asiento y devuelve su DTO con detalles. */
     private AsientoContableTableDto persistir(Integer empresaId, Integer usuarioId,
             java.time.LocalDate fecha, String prefijo, String descripcion,
             String tipoOrigen, Long origenId, Long periodoId, List<AsientoDetalleEntity> detalles) {

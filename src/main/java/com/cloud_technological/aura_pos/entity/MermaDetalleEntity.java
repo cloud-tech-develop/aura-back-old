@@ -39,4 +39,12 @@ public class MermaDetalleEntity {
 
     @Column(name = "costo_unitario")
     private BigDecimal costoUnitario;
+
+    /** Presentación en que se escribió la línea (1 Paca); cantidad sigue en unidad base. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "producto_presentacion_id")
+    private ProductoPresentacionEntity productoPresentacion;
+
+    @Column(name = "cantidad_presentacion")
+    private BigDecimal cantidadPresentacion;
 }

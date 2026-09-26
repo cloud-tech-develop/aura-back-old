@@ -51,6 +51,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     private PeriodoContableJPARepository periodoRepo;
 
     @Autowired
+    private PeriodoContableResolver periodoResolver;
+
+    @Autowired
     private TerceroJPARepository terceroRepo;
 
     @Autowired
@@ -104,10 +107,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         AsientoBalanceValidator.validarCuadre(totalDebito, totalCredito);
 
-        // Validar período contable abierto
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de registrar asientos."));
+        // El período es el del mes de la fecha del asiento (V171).
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId, dto.getFecha());
 
         // La cuenta dejó de ser @NotNull en el DTO porque el comprobante manual
         // deriva la de su contrapartida del origen de fondos. En el asiento
@@ -136,6 +137,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .fecha(dto.getFecha())
                 .descripcion(dto.getDescripcion().trim())
                 .tipoOrigen("MANUAL")
+                // Es una nota de diario: sin el tipo no aparece en Notas contables.
+                .tipoComprobante("CD")
                 .periodoContableId(periodo.getId())
                 .numeroComprobante(comprobante)
                 .totalDebito(totalDebito)
@@ -168,9 +171,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         AsientoBalanceValidator.validarCuadre(totalDebito, totalCredito);
 
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de registrar comprobantes."));
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId, dto.getFecha());
 
         String tipo = dto.getTipoComprobante().trim().toUpperCase();
 
@@ -417,6 +418,28 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
         if ("ANULADO".equals(asiento.getEstado())) {
             return;
+        }
+        if ("BORRADOR".equals(asiento.getEstado())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un borrador no se anula: todavía no afecta la contabilidad. Elimínelo desde Notas contables.");
+        }
+
+        // Anular reescribe el mes del asiento. Si ese mes ya se cerró, sus
+        // saldos ya se reportaron (balance, IVA, exógena) y cambiarían por
+        // debajo sin que nadie lo note. Se resuelve por el id guardado y, en
+        // asientos anteriores a V171 que no lo tienen, por la fecha.
+        PeriodoContableEntity periodo = asiento.getPeriodoContableId() != null
+                ? periodoRepo.findById(asiento.getPeriodoContableId()).orElse(null)
+                : asiento.getFecha() == null ? null
+                : periodoRepo.findByEmpresaIdAndAnioAndMes(empresaId,
+                        (short) asiento.getFecha().getYear(),
+                        (short) asiento.getFecha().getMonthValue()).orElse(null);
+        if (periodo != null && !"ABIERTO".equals(periodo.getEstado())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El comprobante " + asiento.getNumeroComprobante() + " pertenece al período "
+                            + periodo.getAnio() + "-" + String.format("%02d", periodo.getMes())
+                            + ", que está cerrado. Anularlo cambiaría saldos ya reportados: reabra el "
+                            + "período desde Períodos contables o registre una nota de ajuste en un mes abierto.");
         }
 
         // Anular dejaba el asiento en ANULADO y nada más: el abono que rebajó

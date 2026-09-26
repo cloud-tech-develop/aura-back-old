@@ -14,6 +14,11 @@ public class ProductoPresentacionTableDto {
     private String nombre;
     private String codigoBarras;
     private BigDecimal factorConversion;
+    private BigDecimal precio;
+    private BigDecimal costo;
+    private Boolean esDefaultCompra;
+    private Boolean esDefaultVenta;
+    private Boolean seVende;
     private Boolean activo;
     private long totalRows;
 }

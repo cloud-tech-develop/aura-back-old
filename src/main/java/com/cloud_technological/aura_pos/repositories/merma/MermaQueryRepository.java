@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.repositories.merma;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -12,6 +13,9 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.merma.MermaDetalleDto;
 import com.cloud_technological.aura_pos.dto.merma.MermaTableDto;
+import com.cloud_technological.aura_pos.dto.productos.ConsumoComponenteDto;
+import com.cloud_technological.aura_pos.repositories.inventario_consumo.InventarioConsumoComponenteQueryRepository;
+import com.cloud_technological.aura_pos.services.ConsumoComposicionService;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
@@ -19,6 +23,9 @@ public class MermaQueryRepository {
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private InventarioConsumoComponenteQueryRepository consumoQueryRepository;
 
     public PageImpl<MermaTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
@@ -68,16 +75,30 @@ public class MermaQueryRepository {
                 md.id,
                 md.producto_id,
                 p.nombre AS producto_nombre,
+                p.sku    AS producto_sku,
                 md.lote_id,
                 l.codigo_lote,
                 md.cantidad,
-                md.costo_unitario
+                md.costo_unitario,
+                ROUND(md.cantidad * md.costo_unitario, 2) AS subtotal_costo,
+                md.producto_presentacion_id,
+                pp.nombre AS presentacion_nombre,
+                md.cantidad_presentacion
             FROM merma_detalle md
             INNER JOIN producto p ON md.producto_id = p.id
+            LEFT JOIN producto_presentacion pp ON pp.id = md.producto_presentacion_id
             LEFT JOIN lote l ON md.lote_id = l.id
             WHERE md.merma_id = :mermaId
+            ORDER BY md.id
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("mermaId", mermaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(MermaDetalleDto.class));
+        List<MermaDetalleDto> detalles = jdbcTemplate.query(sql, params,
+                new BeanPropertyRowMapper<>(MermaDetalleDto.class));
+
+        Map<Long, List<ConsumoComponenteDto>> componentes = consumoQueryRepository.porDetalle(
+                ConsumoComposicionService.ORIGEN_MERMA,
+                detalles.stream().map(MermaDetalleDto::getId).toList());
+        detalles.forEach(d -> d.setComponentes(componentes.getOrDefault(d.getId(), List.of())));
+        return detalles;
     }
 }

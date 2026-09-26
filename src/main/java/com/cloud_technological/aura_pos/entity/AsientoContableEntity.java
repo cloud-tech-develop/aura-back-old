@@ -113,6 +113,48 @@ public class AsientoContableEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // ── Traza de la nota contable (V173) ─────────────────────────────────
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    /** Quién la aprobó: puede no ser quien la elaboró (usuarioId). */
+    @Column(name = "contabilizado_por")
+    private Integer contabilizadoPor;
+
+    @Column(name = "contabilizado_at")
+    private LocalDateTime contabilizadoAt;
+
+    @Column(name = "anulado_por")
+    private Integer anuladoPor;
+
+    @Column(name = "anulado_at")
+    private LocalDateTime anuladoAt;
+
+    @Column(name = "motivo_anulacion", length = 300)
+    private String motivoAnulacion;
+
+    // ── Nota contable avanzada (V174) ────────────────────────────────────
+    /** AJUSTE | RECLASIFICACION | PROVISION | CAUSACION | DEPRECIACION | CORRECCION | OTRO */
+    @Column(name = "clasificacion", length = 30)
+    private String clasificacion;
+
+    /** Esta nota es la reversión de otra. */
+    @Column(name = "reversa_de_id")
+    private Long reversaDeId;
+
+    /** Esta nota fue reversada por otra (sigue CONTABILIZADA: netean en los informes). */
+    @Column(name = "revertido_por_id")
+    private Long revertidoPorId;
+
+    /** Al contabilizar se genera también la reversión el día 1 del mes siguiente. */
+    @Column(name = "reversion_automatica", nullable = false)
+    @Builder.Default
+    private Boolean reversionAutomatica = Boolean.FALSE;
+
+    /** Plantilla de la que salió la nota, si salió de una. */
+    @Column(name = "plantilla_id")
+    private Long plantillaId;
+
     /** mappedBy apunta al campo @ManyToOne en AsientoDetalleEntity */
     @OneToMany(mappedBy = "asiento", cascade = CascadeType.ALL,
                fetch = FetchType.LAZY, orphanRemoval = true)

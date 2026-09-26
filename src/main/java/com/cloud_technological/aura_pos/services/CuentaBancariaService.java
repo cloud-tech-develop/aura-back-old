@@ -12,6 +12,11 @@ public interface CuentaBancariaService {
     CuentaBancariaDto actualizar(Long id, Integer empresaId, CreateCuentaBancariaDto dto);
     void toggleActiva(Long id, Integer empresaId);
 
+    CuentaBancariaDto obtener(Long id, Integer empresaId);
+
+    /** El código que recibiría una cuenta nueva si no se digita (CB-###). */
+    String siguienteCodigo(Integer empresaId);
+
     /**
      * Concilia, por cada cuenta bancaria, su saldo de tesorería contra el saldo
      * del mayor de su cuenta contable. La diferencia debe ser 0 si todo está

@@ -36,6 +36,12 @@ public class ReconteoEntity {
     @JoinColumn(name = "sucursal_id")
     private SucursalEntity sucursal;
 
+    /** Dónde vive el stock (V172). Si el documento no la dice, es la
+     *  bodega principal de la sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_id")
+    private BodegaEntity bodega;
+
     @Column(name = "estado", length = 30)
     private String estado; // BORRADOR, EN_CONTEO, APROBADO, ANULADO
 

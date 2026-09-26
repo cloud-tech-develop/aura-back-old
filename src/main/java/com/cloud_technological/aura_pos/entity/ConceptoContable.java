@@ -93,6 +93,14 @@ public enum ConceptoContable {
      */
     IVA_ASUMIDO_RETIRO("529505", "IVA asumido en retiro de inventario", "5"),
 
+    // ── Consumo interno (el negocio usa su propio inventario) ─────────────
+    /**
+     * Cuenta del costo cuando el concepto del consumo interno no trae la suya.
+     * Admite gasto (5) y propiedad, planta y equipo (15): retirar una
+     * herramienta para usarla en el local es un activo, no un gasto.
+     */
+    GASTO_CONSUMO_INTERNO("5195", "Consumo interno de inventario", "5", "15"),
+
     // ── Devengo (E6) ──────────────────────────────────────────────────────
     ANTICIPOS_CLIENTES("2805", "Anticipos recibidos de clientes", "28"),
     ANTICIPOS_PROVEEDORES("1330", "Anticipos entregados a proveedores", "13"),

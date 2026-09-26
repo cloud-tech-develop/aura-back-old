@@ -81,6 +81,16 @@ public class EmpresaEntity {
     @lombok.Builder.Default
     private Boolean bloquearCajaRetroactiva = Boolean.TRUE;
 
+    /** La venta, el obsequio y el consumo interno no sacan de un lote vencido. */
+    @Column(name = "lotes_bloquear_vencidos", nullable = false)
+    @lombok.Builder.Default
+    private Boolean lotesBloquearVencidos = Boolean.TRUE;
+
+    /** Días antes del vencimiento en que el POS y el dashboard avisan. */
+    @Column(name = "lotes_dias_alerta", nullable = false)
+    @lombok.Builder.Default
+    private Integer lotesDiasAlerta = 30;
+
     /** Rol que puede saltarse la ventana, comparado contra el rol del token. */
     @Column(name = "rol_autoriza_retroactivo", nullable = false, length = 40)
     @lombok.Builder.Default

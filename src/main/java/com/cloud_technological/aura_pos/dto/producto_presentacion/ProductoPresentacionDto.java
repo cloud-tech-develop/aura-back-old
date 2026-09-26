@@ -16,6 +16,7 @@ public class ProductoPresentacionDto {
     private BigDecimal factorConversion;
     private Boolean esDefaultCompra;
     private Boolean esDefaultVenta;
+    private Boolean seVende;
     private BigDecimal precio;
     private BigDecimal costo;
     private Boolean activo;

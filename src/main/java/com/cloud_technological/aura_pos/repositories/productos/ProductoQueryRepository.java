@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.productos.ComponentePosDto;
+import com.cloud_technological.aura_pos.dto.productos.ProductoInventarioDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoListDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoPosDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoTableDto;
@@ -29,10 +30,18 @@ public class ProductoQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /**
+     * Listado del catálogo. Acepta en {@code params} un {@code uso} (texto
+     * "INSUMO", "INSUMO,AMBOS" o lista) para filtrar por uso del producto.
+     * Aquí el filtro es estricto: a diferencia del selector de componentes de
+     * receta, quien filtra "Insumo" en el catálogo no quiere ver las
+     * subrecetas marcadas como VENTA.
+     */
     public PageImpl<ProductoTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
         String search = pageable.getSearch() != null ? pageable.getSearch().trim().toLowerCase() : "";
+        List<String> usos = usosDeParams(pageable.getParams());
 
         StringBuilder sql = new StringBuilder("""
             SELECT
@@ -43,14 +52,19 @@ public class ProductoQueryRepository {
                 c.nombre AS categoria_nombre,
                 m.nombre AS marca_nombre,
                 p.tipo_producto,
+                p.uso_producto,
                 p.precio,
                 p.costo,
                 p.activo,
                 p.iva_porcentaje AS ivaPorcentaje,
+                um.abreviatura AS unidad_abreviatura,
+                COALESCE(p.maneja_lotes, false) AS maneja_lotes,
+                COALESCE(p.maneja_serial, false) AS maneja_serial,
                 COUNT(*) OVER() AS total_rows
             FROM producto p
             LEFT JOIN categoria c ON p.categoria_id = c.id
             LEFT JOIN marca m ON p.marca_id = m.id
+            LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
             WHERE p.empresa_id = :empresaId
             AND p.deleted_at IS NULL
         """);
@@ -68,6 +82,11 @@ public class ProductoQueryRepository {
             params.addValue("search", "%" + search + "%");
         }
 
+        if (!usos.isEmpty()) {
+            sql.append(" AND p.uso_producto IN (:usos) ");
+            params.addValue("usos", usos);
+        }
+
         sql.append(" ORDER BY p.id DESC OFFSET :offset LIMIT :limit ");
         params.addValue("offset", page * size);
         params.addValue("limit", size);
@@ -77,6 +96,26 @@ public class ProductoQueryRepository {
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
         return new PageImpl<>(list, PageRequest.of(page, size), total);
+    }
+
+    /**
+     * Lee el filtro de uso que manda el front en {@code params.uso}. Admite un
+     * texto ("INSUMO" o "INSUMO,AMBOS") o una lista; ignora valores vacíos.
+     */
+    private static List<String> usosDeParams(Object params) {
+        if (!(params instanceof java.util.Map<?, ?> paramMap)) {
+            return List.of();
+        }
+        Object uso = paramMap.get("uso");
+        if (uso == null) {
+            return List.of();
+        }
+        java.util.stream.Stream<String> crudos = uso instanceof Iterable<?> it
+                ? java.util.stream.StreamSupport.stream(it.spliterator(), false).map(String::valueOf)
+                : java.util.Arrays.stream(uso.toString().split(","));
+        return crudos.map(u -> u.trim().toUpperCase())
+                .filter(u -> !u.isEmpty())
+                .toList();
     }
 
     public boolean existeCodigoBarras(String codigoBarras, Integer empresaId) {
@@ -108,8 +147,39 @@ public class ProductoQueryRepository {
         Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
         return count != null && count > 0;
     }
-    public List<ProductoListDto> list(Integer empresaId){
+
+    /**
+     * El POS resuelve el escaneo también contra los códigos de presentación: un
+     * producto no puede usar el código de una presentación activa de la empresa.
+     */
+    public boolean codigoUsadoPorPresentacion(String codigoBarras, Integer empresaId) {
         String sql = """
+            SELECT EXISTS (
+                SELECT 1 FROM producto_presentacion pp
+                JOIN producto p ON p.id = pp.producto_id
+                WHERE p.empresa_id = :empresaId
+                  AND p.deleted_at IS NULL
+                  AND pp.activo = true
+                  AND TRIM(pp.codigo_barras) = :codigo
+            )
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("codigo", codigoBarras.trim());
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(sql, params, Boolean.class));
+    }
+
+    public List<ProductoListDto> list(Integer empresaId){
+        return list(empresaId, null, null);
+    }
+
+    /**
+     * @param usos si viene, restringe por uso del producto. Los productos que
+     *             tienen receta propia pasan siempre: una subreceta ("masa
+     *             madre") es componente válido aunque la hayan marcado VENTA.
+     */
+    public List<ProductoListDto> list(Integer empresaId, String search, List<String> usos) {
+        StringBuilder sql = new StringBuilder("""
             SELECT
                 p.id,
                 p.sku,
@@ -119,14 +189,132 @@ public class ProductoQueryRepository {
                 p.precio_2 AS precio2,
                 p.precio_3 AS precio3,
                 p.iva_porcentaje,
-                p.tipo_producto
+                p.tipo_producto,
+                p.uso_producto,
+                p.codigo_barras,
+                c.nombre AS categoria_nombre
             FROM producto p
+            LEFT JOIN categoria c ON c.id = p.categoria_id
             WHERE p.empresa_id = :empresaId
               AND p.deleted_at IS NULL
-                """;
+            """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ProductoListDto.class));
+
+        String texto = search != null ? search.trim().toLowerCase() : "";
+        if (!texto.isEmpty()) {
+            sql.append("""
+                AND (LOWER(p.nombre) LIKE :search
+                  OR LOWER(p.sku) LIKE :search
+                  OR LOWER(p.codigo_barras) LIKE :search)
+                """);
+            params.addValue("search", "%" + texto + "%");
+        }
+
+        if (usos != null && !usos.isEmpty()) {
+            sql.append("""
+                AND (p.uso_producto IN (:usos)
+                  OR EXISTS (SELECT 1 FROM producto_composicion pc WHERE pc.producto_padre_id = p.id))
+                """);
+            params.addValue("usos", usos.stream().map(u -> u.trim().toUpperCase()).toList());
+        }
+
+        sql.append(" ORDER BY p.nombre");
+        if (!texto.isEmpty()) {
+            sql.append(" LIMIT 50");
+        }
+
+        return jdbcTemplate.query(sql.toString(), params, new BeanPropertyRowMapper<>(ProductoListDto.class));
+    }
+
+    private static final String SELECT_INVENTARIO = """
+        SELECT
+            p.id,
+            p.nombre,
+            p.sku,
+            p.codigo_barras,
+            COALESCE(i.stock_actual, 0) AS stock_actual,
+            p.costo,
+            p.precio,
+            p.iva_porcentaje,
+            p.maneja_lotes,
+            COALESCE(p.maneja_serial, false) AS maneja_serial,
+            p.maneja_inventario,
+            p.permitir_stock_negativo,
+            EXISTS (SELECT 1 FROM producto_composicion pc WHERE pc.producto_padre_id = p.id) AS es_compuesto,
+            um.abreviatura AS unidad_abreviatura,
+            p.uso_producto
+        FROM producto p
+        LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
+        LEFT JOIN LATERAL (
+            -- El saldo vive por bodega (V172): el stock de la sucursal es la
+            -- suma de sus bodegas activas. Un JOIN directo duplicaría el
+            -- producto una vez por bodega.
+            SELECT SUM(inv.stock_actual) AS stock_actual
+              FROM inventario inv
+              JOIN bodega b ON b.id = inv.bodega_id
+             WHERE inv.producto_id = p.id
+               AND inv.sucursal_id = :sucursalId
+               AND b.activa = TRUE
+        ) i ON TRUE
+        WHERE p.empresa_id = :empresaId
+          AND p.deleted_at IS NULL
+          AND p.activo = true
+        """;
+
+    /**
+     * Productos para operaciones de inventario (merma, obsequio). No filtra
+     * `visible_en_pos` ni uso: un insumo oculto del POS también se daña o se
+     * regala. Primero las coincidencias exactas de SKU o código de barras.
+     */
+    public List<ProductoInventarioDto> buscarInventario(Integer empresaId, Long sucursalId, String search) {
+        StringBuilder sql = new StringBuilder(SELECT_INVENTARIO);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("sucursalId", sucursalId);
+
+        String texto = search != null ? search.trim().toLowerCase() : "";
+        if (!texto.isEmpty()) {
+            sql.append("""
+                  AND (LOWER(p.nombre) LIKE :search
+                    OR LOWER(p.sku) LIKE :search
+                    OR LOWER(p.codigo_barras) LIKE :search)
+                ORDER BY CASE WHEN LOWER(p.sku) = :exacto OR LOWER(p.codigo_barras) = :exacto THEN 0 ELSE 1 END,
+                         p.nombre
+                """);
+            params.addValue("search", "%" + texto + "%");
+            params.addValue("exacto", texto);
+        } else {
+            sql.append(" ORDER BY p.nombre ");
+        }
+        sql.append(" LIMIT 30");
+
+        return jdbcTemplate.query(sql.toString(), params, new BeanPropertyRowMapper<>(ProductoInventarioDto.class));
+    }
+
+    /** Coincidencia exacta de SKU (sin distinguir mayúsculas) o de código de barras. Null si no hay. */
+    public ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long productoId) {
+        List<ProductoInventarioDto> encontrados = jdbcTemplate.query(SELECT_INVENTARIO + " AND p.id = :productoId",
+                new MapSqlParameterSource().addValue("empresaId", empresaId)
+                        .addValue("sucursalId", sucursalId).addValue("productoId", productoId),
+                new BeanPropertyRowMapper<>(ProductoInventarioDto.class));
+        return encontrados.isEmpty() ? null : encontrados.get(0);
+    }
+
+    public ProductoInventarioDto buscarPorCodigo(Integer empresaId, Long sucursalId, String codigo) {
+        String sql = SELECT_INVENTARIO + """
+              AND (LOWER(TRIM(p.sku)) = LOWER(:codigo) OR TRIM(p.codigo_barras) = :codigo)
+            ORDER BY CASE WHEN LOWER(TRIM(p.sku)) = LOWER(:codigo) THEN 0 ELSE 1 END, p.id
+            LIMIT 1
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("sucursalId", sucursalId)
+                .addValue("codigo", codigo);
+
+        List<ProductoInventarioDto> encontrados = jdbcTemplate.query(sql, params,
+                new BeanPropertyRowMapper<>(ProductoInventarioDto.class));
+        return encontrados.isEmpty() ? null : encontrados.get(0);
     }
 
     public List<ProductoPosDto> listarPos(Integer empresaId, Long sucursalId) {
@@ -135,6 +323,12 @@ public class ProductoQueryRepository {
 
         // ← NUEVO: cargar todas las composiciones de la empresa en una sola query
         List<ComponentePosDto> todasComposiciones = getComposiciones(empresaId);
+
+        // Presentaciones a la venta, agrupadas por producto (una tarjeta por producto)
+        java.util.Map<Long, List<com.cloud_technological.aura_pos.dto.productos.PresentacionPosDto>> presentacionesPorProducto =
+                getPresentacionesPos(empresaId, sucursalId).stream()
+                        .collect(Collectors.groupingBy(
+                                com.cloud_technological.aura_pos.dto.productos.PresentacionPosDto::getProductoId));
 
         for (ProductoPosDto p : productos) {
             // Descuentos — igual que antes
@@ -157,6 +351,7 @@ public class ProductoQueryRepository {
                 .collect(Collectors.toList());
 
             p.setComponentes(misComponentes);
+            p.setPresentaciones(presentacionesPorProducto.getOrDefault(p.getId(), List.of()));
             p.setEsCompuesto(!misComponentes.isEmpty());
         }
         return productos;
@@ -295,6 +490,14 @@ public class ProductoQueryRepository {
             m.nombre             AS marcaNombre,
             um.id                AS unidadMedidaId,
             um.nombre            AS unidadMedidaNombre,
+            um.abreviatura       AS unidadMedidaAbreviatura,
+            p.vende_por_unidad   AS vendePorUnidad,
+            COALESCE(p.maneja_lotes, false) AS manejaLotes,
+            lv.proximo_vencimiento AS proximoVencimiento,
+            (lv.proximo_vencimiento - CURRENT_DATE) AS diasParaVencer,
+            COALESCE(lv.stock_vencido, 0) AS stockVencido,
+            COALESCE(emp.lotes_dias_alerta, 30) AS diasAlertaVencimiento,
+            COALESCE(emp.lotes_bloquear_vencidos, true) AS bloquearVencidos,
             COALESCE(i.stock_actual, 0) AS stockActual,
             p.activo,
             NULL                 AS presentacionId,
@@ -306,60 +509,42 @@ public class ProductoQueryRepository {
         LEFT JOIN categoria c      ON p.categoria_id          = c.id
         LEFT JOIN marca m          ON p.marca_id               = m.id
         LEFT JOIN unidad_medida um ON p.unidad_medida_base_id  = um.id
-        LEFT JOIN inventario i     ON p.id = i.producto_id AND i.sucursal_id = :sucursalId
+        LEFT JOIN LATERAL (
+            -- El saldo vive por bodega (V172): el stock de la sucursal es la
+            -- suma de sus bodegas activas. Un JOIN directo duplicaría el
+            -- producto una vez por bodega.
+            SELECT SUM(inv.stock_actual) AS stock_actual
+              FROM inventario inv
+              JOIN bodega b ON b.id = inv.bodega_id
+             WHERE inv.producto_id = p.id
+               AND inv.sucursal_id = :sucursalId
+               AND b.activa = TRUE
+        ) i ON TRUE
+        LEFT JOIN empresa emp      ON emp.id = p.empresa_id
+        -- Lotes con stock: el próximo en vencer (para avisar en el carrito) y
+        -- cuánto hay ya vencido (la venta no lo saca si la empresa lo bloquea).
+        LEFT JOIN LATERAL (
+            SELECT MIN(l.fecha_vencimiento) FILTER (WHERE l.fecha_vencimiento >= CURRENT_DATE) AS proximo_vencimiento,
+                   SUM(l.stock_actual) FILTER (WHERE l.fecha_vencimiento < CURRENT_DATE)         AS stock_vencido
+              FROM lote l
+             WHERE p.maneja_lotes = true
+               AND l.producto_id = p.id
+               AND l.sucursal_id = :sucursalId
+               AND COALESCE(l.activo, true)
+               AND l.stock_actual > 0
+        ) lv ON true
         WHERE p.empresa_id   = :empresaId
           AND p.deleted_at   IS NULL
           AND p.visible_en_pos = true
+          AND p.uso_producto <> 'INSUMO'
           AND p.activo       = true
+          -- Un producto que no se vende por unidad solo aparece si tiene alguna
+          -- presentación a la venta (F2: una tarjeta por producto).
+          AND (p.vende_por_unidad = true
+               OR EXISTS (SELECT 1 FROM producto_presentacion x
+                           WHERE x.producto_id = p.id AND x.activo = true AND x.se_vende = true))
 
-        UNION ALL
-
-        -- Una fila por cada presentación activa
-        SELECT
-            p.id,
-            p.sku,
-            p.codigo_barras      AS codigoBarras,
-            p.nombre,
-            p.descripcion,
-            p.imagen_url         AS imagenUrl,
-            p.tipo_producto      AS tipoProducto,
-            p.maneja_inventario          AS manejaInventario,
-            p.maneja_lotes               AS manejaLotes,
-            p.maneja_serial              AS manejaSerial,
-            p.permitir_stock_negativo    AS permitirStockNegativo,
-            p.precio,
-            p.precio_2           AS precio2,
-            p.precio_3           AS precio3,
-            p.costo,
-            p.iva_porcentaje     AS ivaPorcentaje,
-            p.iva_incluido       AS ivaIncluido,
-            p.visible_en_pos     AS visibleEnPos,
-            p.impoconsumo,
-            c.id                 AS categoriaId,
-            c.nombre             AS categoriaNombre,
-            m.id                 AS marcaId,
-            m.nombre             AS marcaNombre,
-            um.id                AS unidadMedidaId,
-            um.nombre            AS unidadMedidaNombre,
-            COALESCE(i.stock_actual, 0) * pres.factor_conversion AS stockActual,
-            p.activo,
-            pres.id              AS presentacionId,
-            pres.nombre          AS presentacionNombre,
-            pres.codigo_barras   AS presentacionCodigoBarras,
-            pres.precio          AS presentacionPrecio,
-            pres.factor_conversion AS presentacionFactorConversion
-        FROM producto p
-        LEFT JOIN categoria c      ON p.categoria_id          = c.id
-        LEFT JOIN marca m          ON p.marca_id               = m.id
-        LEFT JOIN unidad_medida um ON p.unidad_medida_base_id  = um.id
-        LEFT JOIN inventario i     ON p.id = i.producto_id AND i.sucursal_id = :sucursalId
-        JOIN  producto_presentacion pres ON pres.producto_id = p.id AND pres.activo = true
-        WHERE p.empresa_id   = :empresaId
-          AND p.deleted_at   IS NULL
-          AND p.visible_en_pos = true
-          AND p.activo       = true
-
-        ORDER BY nombre ASC, presentacionId ASC NULLS FIRST
+        ORDER BY p.nombre ASC
         """;
 
     MapSqlParameterSource params = new MapSqlParameterSource();
@@ -368,4 +553,47 @@ public class ProductoQueryRepository {
 
     return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ProductoPosDto.class));
 }
+
+    /** Presentaciones a la venta de los productos del POS, con su stock en presentaciones completas. */
+    private List<com.cloud_technological.aura_pos.dto.productos.PresentacionPosDto> getPresentacionesPos(
+            Integer empresaId, Long sucursalId) {
+        String sql = """
+            SELECT
+                pres.producto_id        AS productoId,
+                pres.id,
+                pres.nombre,
+                pres.codigo_barras      AS codigoBarras,
+                pres.precio,
+                pres.factor_conversion  AS factorConversion,
+                pres.es_default_venta   AS esDefaultVenta,
+                -- Cuántas presentaciones completas alcanzan (el factor es lo que contiene cada una)
+                CASE WHEN pres.factor_conversion > 0
+                     THEN FLOOR(ROUND(COALESCE(i.stock_actual, 0) / pres.factor_conversion, 4))
+                     ELSE 0 END         AS stock
+            FROM producto_presentacion pres
+            JOIN producto p        ON p.id = pres.producto_id
+            LEFT JOIN LATERAL (
+            -- El saldo vive por bodega (V172): el stock de la sucursal es la
+            -- suma de sus bodegas activas. Un JOIN directo duplicaría el
+            -- producto una vez por bodega.
+            SELECT SUM(inv.stock_actual) AS stock_actual
+              FROM inventario inv
+              JOIN bodega b ON b.id = inv.bodega_id
+             WHERE inv.producto_id = p.id
+               AND inv.sucursal_id = :sucursalId
+               AND b.activa = TRUE
+        ) i ON TRUE
+            WHERE p.empresa_id = :empresaId
+              AND p.deleted_at IS NULL
+              AND p.activo     = true
+              AND pres.activo  = true
+              AND pres.se_vende = true
+            ORDER BY pres.producto_id, pres.factor_conversion, pres.id
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("sucursalId", sucursalId);
+        return jdbcTemplate.query(sql, params,
+                new BeanPropertyRowMapper<>(com.cloud_technological.aura_pos.dto.productos.PresentacionPosDto.class));
+    }
 }

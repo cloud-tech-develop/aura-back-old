@@ -17,7 +17,13 @@ public interface LectorAnticipos {
             BigDecimal monto,
             Long terceroId,
             String metodoPago,
-            Long cuentaBancariaId) {
+            Long cuentaBancariaId,
+            Long cuentaContableId) {
+
+        public AnticipoContable(String tipo, LocalDate fecha, BigDecimal monto, Long terceroId,
+                String metodoPago, Long cuentaBancariaId) {
+            this(tipo, fecha, monto, terceroId, metodoPago, cuentaBancariaId, null);
+        }
     }
 
     record CruceContable(

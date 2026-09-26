@@ -13,6 +13,9 @@ import lombok.Setter;
 public class CreateMermaDto {
     @NotNull(message = "La sucursal es obligatoria")
     private Long sucursalId;
+
+    /** Bodega de la que sale o a la que entra. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
     @NotNull(message = "El motivo es obligatorio")
     private Long motivoId;
     private String observacion;

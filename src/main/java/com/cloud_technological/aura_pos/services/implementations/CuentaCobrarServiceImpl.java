@@ -44,6 +44,10 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private AcuerdoPagoService acuerdoPagoService;
+
     private final CuentaCobrarQueryRepository queryRepository;
     private final CuentaCobrarJPARepository jpaRepository;
     private final AbonoCobrarJPARepository abonoJpaRepository;
@@ -228,11 +232,15 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         }
 
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
 
         // Asiento contable del recaudo tras el commit (evento único, ADR-003).
         eventPublisher.publishEvent(
                 new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
                         "ABONO_COBRAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+        if (cuenta.getTercero() != null)
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.CreditoMovimientoEvent(
+                    cuenta.getTercero().getId(), empresaId, "AL_PAGAR"));
 
         return toAbonoDto(abono);
     }
@@ -294,6 +302,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             cuenta.setEstado("parcial");
         }
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
         // Sin evento contable: el comprobante ya generó el asiento.
     }
 
@@ -323,6 +332,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
                 ? "parcial" : "pendiente");
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
     }
 
     @Override
@@ -366,6 +376,11 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         AbonoCobrarEntity abono = abonoJpaRepository.findByIdAndCuentaCobrarId(abonoId, cuentaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Abono no encontrado"));
 
+        if (abono.getReciboCajaId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Este abono hace parte de un recibo de caja: anule el recibo completo desde cartera");
+        }
+
         // Solo permitir anulación si el abono es del día actual
         if (!abono.getCreatedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Solo se pueden eliminar abonos del día actual");
@@ -383,6 +398,22 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
         jpaRepository.save(cuenta);
         abonoJpaRepository.delete(abono);
+        evaluarAcuerdos(cuenta, empresaId);
+        // Sin esto el asiento RC del abono borrado quedaba vivo en contabilidad.
+        eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                "ABONO_COBRAR", abonoId, empresaId, null));
+    }
+
+    /**
+     * El abono puede pagar o despagar cuotas de un acuerdo. Flush antes: la
+     * evaluación lee el saldo por JDBC y mueve el vencimiento de la cuenta, que
+     * un flush posterior de la entidad pisaría.
+     */
+    private void evaluarAcuerdos(CuentaCobrarEntity cuenta, Integer empresaId) {
+        if (cuenta.getTercero() == null) return;
+        jpaRepository.flush();
+        abonoJpaRepository.flush();
+        acuerdoPagoService.evaluar(empresaId, cuenta.getTercero().getId(), null);
     }
 
     @Override

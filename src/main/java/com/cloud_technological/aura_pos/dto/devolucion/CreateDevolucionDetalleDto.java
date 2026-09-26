@@ -22,4 +22,7 @@ public class CreateDevolucionDetalleDto {
     @NotNull(message = "La cantidad es obligatoria")
     @Positive(message = "La cantidad debe ser mayor a 0")
     private BigDecimal cantidad;
+
+    /** Seriales que salen, si el producto maneja serial: uno por unidad. */
+    private java.util.List<Long> serialIds;
 }
