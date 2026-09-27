@@ -1,6 +1,9 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -8,6 +11,7 @@ import org.springframework.stereotype.Service;
 import com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago;
 import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.services.OrigenFondosService;
@@ -37,6 +41,7 @@ public class OrigenFondosServiceImpl implements OrigenFondosService {
     private final TurnoCajaJPARepository turnoRepository;
     private final PlanCuentaJPARepository planCuentaRepository;
     private final ResolucionCuentaPago resolucionCuentaPago;
+    private final AsientoContableQueryRepository asientoQueryRepository;
 
     @Override
     public OrigenFondos resolver(Integer empresaId, Solicitud solicitud) {
@@ -114,6 +119,41 @@ public class OrigenFondosServiceImpl implements OrigenFondosService {
         return new OrigenFondos(Tipo.CUENTA_CONTABLE,
                 resolucionCuentaPago.resolver(empresaId, solicitud.metodoPago(), null),
                 turno);
+    }
+
+    @Override
+    public void exigirSaldoDisponible(Integer empresaId, OrigenFondos origen, BigDecimal monto,
+            String documento, String origenTipo, Long origenId) {
+        if (origen == null || origen.tipo() != Tipo.CUENTA_CONTABLE
+                || origen.cuentaContableId() == null
+                || monto == null || monto.signum() <= 0) {
+            return;
+        }
+        PlanCuentaEntity cuenta = planCuentaRepository
+                .findByIdAndEmpresaId(origen.cuentaContableId(), empresaId)
+                .orElse(null);
+        if (cuenta == null || cuenta.getCodigo() == null || !cuenta.getCodigo().startsWith("1105")) {
+            return;
+        }
+        BigDecimal saldo = asientoQueryRepository.saldoDisponible(
+                empresaId, cuenta.getId(), origenTipo, origenId);
+        if (saldo == null) {
+            saldo = BigDecimal.ZERO;
+        }
+        if (saldo.compareTo(monto) < 0) {
+            String doc = documento != null ? documento : "documento";
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cuenta " + cuenta.getCodigo() + " — " + cuenta.getNombre()
+                            + " tiene " + pesos(saldo) + " y el " + doc + " necesita "
+                            + pesos(monto) + ". Reponga el fondo con un traslado "
+                            + "(reembolso de caja menor) o pague desde otra cuenta");
+        }
+    }
+
+    private static String pesos(BigDecimal v) {
+        NumberFormat f = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
+        f.setMaximumFractionDigits(0);
+        return f.format(v);
     }
 
     /**

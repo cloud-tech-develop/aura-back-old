@@ -102,6 +102,57 @@ public class R2StorageService {
         return url;
     }
 
+    /** Tipos que se aceptan como soporte contable, con su extensión. */
+    private static final java.util.Map<String, String> TIPOS_SOPORTE = java.util.Map.ofEntries(
+            java.util.Map.entry("application/pdf", "pdf"),
+            java.util.Map.entry("image/jpeg", "jpg"),
+            java.util.Map.entry("image/png", "png"),
+            java.util.Map.entry("image/webp", "webp"),
+            java.util.Map.entry("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+            java.util.Map.entry("application/vnd.ms-excel", "xls"),
+            java.util.Map.entry("text/csv", "csv"),
+            java.util.Map.entry("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"));
+
+    /**
+     * Sube el soporte de un documento contable: PDF, imagen, Excel o Word.
+     * El contador suele respaldar una provisión con la hoja del cálculo, no
+     * solo con un PDF.
+     */
+    public String subirSoporte(MultipartFile file, String carpeta) {
+        if (s3Client == null)
+            throw new GlobalException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "El almacenamiento de archivos no está configurado en este entorno.");
+        if (file == null || file.isEmpty())
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo no puede estar vacío");
+        String ext = TIPOS_SOPORTE.get(file.getContentType());
+        if (ext == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Tipo de archivo no permitido. Se aceptan PDF, imágenes (JPG, PNG, WebP), Excel, CSV y Word.");
+        // 10 MB: es el tope de spring.servlet.multipart; prometer más sería mentir.
+        if (file.getSize() > MAX_BYTES)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El archivo supera el tamaño máximo permitido de 10 MB");
+
+        String key = carpeta + "/" + UUID.randomUUID() + "." + ext;
+        try {
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType(file.getContentType())
+                            .build(),
+                    RequestBody.fromBytes(file.getBytes())
+            );
+        } catch (Exception e) {
+            log.error("Error subiendo soporte a R2: {}", e.getMessage(), e);
+            throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo subir el soporte. Intenta de nuevo.");
+        }
+
+        String base = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
+        return base + "/" + key;
+    }
+
     private void validar(MultipartFile file) {
         if (file == null || file.isEmpty())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo no puede estar vacío");

@@ -20,6 +20,8 @@ public class CreateVentaDto {
     private Long pedidoVendedorId;
     private Long turnoCajaId;   // null cuando el usuario es VENDEDOR (sin caja)
     private Integer sucursalId; // requerido cuando turnoCajaId es null
+    /** Bodega que despacha. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
     private String tipoDocumento = "POS";
     private String observaciones;
     private LocalDateTime fechaVencimiento; // Para cuentas por cobrar

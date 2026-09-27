@@ -29,6 +29,12 @@ public class MovimientoInventarioEntity {
     @JoinColumn(name = "sucursal_id")
     private SucursalEntity sucursal;
 
+    /** Dónde vive el stock (V172). Si el documento no la dice, es la
+     *  bodega principal de la sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_id")
+    private BodegaEntity bodega;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "producto_id")
     private ProductoEntity producto;

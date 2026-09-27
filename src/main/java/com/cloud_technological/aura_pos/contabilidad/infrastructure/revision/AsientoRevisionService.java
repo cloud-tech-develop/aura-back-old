@@ -28,8 +28,10 @@ public class AsientoRevisionService {
     private final PeriodoContableJPARepository periodoRepo;
 
     public List<AsientoContableTableDto> pendientes(Integer empresaId) {
+        // Las notas contables manuales tienen su propio flujo de aprobación
+        // (con consecutivo y validación de cuentas): no pasan por esta bandeja.
         return asientoRepo.findByEmpresaIdAndEstadoOrderByFechaDescIdDesc(empresaId, "BORRADOR")
-                .stream().map(this::toDto).toList();
+                .stream().filter(a -> !esManual(a)).map(this::toDto).toList();
     }
 
     public List<AsientoContableTableDto> descuadrados(Integer empresaId) {
@@ -45,6 +47,10 @@ public class AsientoRevisionService {
         if (!"BORRADOR".equals(asiento.getEstado())) {
             throw new IllegalStateException("El asiento " + asiento.getNumeroComprobante()
                     + " no está en borrador (estado " + asiento.getEstado() + ").");
+        }
+        if (esManual(asiento)) {
+            throw new IllegalStateException("Las notas contables se contabilizan desde Notas contables:"
+                    + " ahí reciben su consecutivo y se validan las cuentas.");
         }
         validarPeriodoAbierto(asiento);
         asiento.setEstado("CONTABILIZADO");
@@ -64,6 +70,9 @@ public class AsientoRevisionService {
                         empresaId, "BORRADOR", desde, hasta);
         int contabilizados = 0;
         for (AsientoContableEntity asiento : borradores) {
+            if (esManual(asiento)) {
+                continue;
+            }
             if (tipoOrigen != null && !tipoOrigen.isBlank()
                     && !tipoOrigen.equalsIgnoreCase(asiento.getTipoOrigen())) {
                 continue;
@@ -74,6 +83,10 @@ public class AsientoRevisionService {
             contabilizados++;
         }
         return contabilizados;
+    }
+
+    private static boolean esManual(AsientoContableEntity asiento) {
+        return "MANUAL".equals(asiento.getTipoOrigen());
     }
 
     private void validarPeriodoAbierto(AsientoContableEntity asiento) {

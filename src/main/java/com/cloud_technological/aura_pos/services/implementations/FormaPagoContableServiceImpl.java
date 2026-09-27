@@ -88,7 +88,7 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
     @Override
     @Transactional
     public void seedDefaults(Integer empresaId) {
-        seedUna(empresaId, "EFECTIVO", "Efectivo", "1105", false);
+        seedUna(empresaId, "EFECTIVO", "Efectivo", "110505", false);
         seedUna(empresaId, "TRANSFERENCIA", "Transferencia bancaria", "1110", true);
         seedUna(empresaId, "TARJETA", "Tarjeta débito/crédito", "1110", false);
         seedUna(empresaId, "NEQUI", "Nequi", "1110", false);

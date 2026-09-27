@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -36,6 +37,7 @@ import com.cloud_technological.aura_pos.repositories.movimiento_inventario.Movim
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
+import com.cloud_technological.aura_pos.services.ConsumoComposicionService;
 import com.cloud_technological.aura_pos.services.MermaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -62,6 +64,22 @@ public class MermaServiceImpl implements MermaService {
     private final MovimientoInventarioJPARepository movimientoJPARepository;
     private final MermaMapper mermaMapper;
     private final MermaDetalleMapper detalleMapper;
+    private final ConsumoComposicionService consumoComposicion;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.SerialStockService serialStock;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CambioUnidadProductoService cambioUnidadProducto;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository presentacionJPARepository;
 
     @Autowired
     public MermaServiceImpl(MermaQueryRepository mermaRepository,
@@ -76,7 +94,8 @@ public class MermaServiceImpl implements MermaService {
             UsuarioJPARepository usuarioJPARepository,
             MovimientoInventarioJPARepository movimientoJPARepository,
             MermaMapper mermaMapper,
-            MermaDetalleMapper detalleMapper) {
+            MermaDetalleMapper detalleMapper,
+            ConsumoComposicionService consumoComposicion) {
         this.mermaRepository = mermaRepository;
         this.mermaJPARepository = mermaJPARepository;
         this.detalleJPARepository = detalleJPARepository;
@@ -90,6 +109,7 @@ public class MermaServiceImpl implements MermaService {
         this.movimientoJPARepository = movimientoJPARepository;
         this.mermaMapper = mermaMapper;
         this.detalleMapper = detalleMapper;
+        this.consumoComposicion = consumoComposicion;
     }
 
     @Override
@@ -122,9 +142,14 @@ public class MermaServiceImpl implements MermaService {
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Usuario no encontrado"));
 
         // 1. Crear cabecera
+        // De qué bodega sale. Si el documento no la trae, la principal.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+
         MermaEntity merma = mermaMapper.toEntity(dto);
         merma.setEmpresa(empresa);
         merma.setSucursal(sucursal);
+        merma.setBodega(bodega);
         merma.setUsuario(usuario);
         merma.setMotivo(motivo);
         merma.setFecha(LocalDateTime.now());
@@ -135,15 +160,36 @@ public class MermaServiceImpl implements MermaService {
 
         // 2. Procesar cada detalle
         for (CreateMermaDetalleDto item : dto.getDetalles()) {
+            if (item.getCantidad() == null || item.getCantidad().signum() <= 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "La cantidad debe ser mayor a cero");
+
             ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "Producto no encontrado: " + item.getProductoId()));
 
+            // Línea escrita en una presentación (1 Paca): se pasa a unidad base.
+            var presentacion = resolverPresentacion(item.getProductoPresentacionId(), producto, empresaId);
+            BigDecimal cantidadPresentacion = null;
+            if (presentacion != null) {
+                if (consumoComposicion.tieneComposicion(producto.getId()))
+                    throw new GlobalException(HttpStatus.BAD_REQUEST,
+                            "'" + producto.getNombre() + "' se descuenta por su receta: regístralo por unidad");
+                cantidadPresentacion = item.getCantidad();
+                item.setCantidad(com.cloud_technological.aura_pos.utils.PresentacionConversion
+                        .aBase(item.getCantidad(), presentacion));
+            }
+
+            if (consumoComposicion.tieneComposicion(producto.getId())) {
+                costoTotal = costoTotal.add(registrarLineaPorReceta(merma, bodega, producto, item, empresaId));
+                continue;
+            }
+
             // 2.1 Validar stock
             InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
+                    .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "El producto " + producto.getNombre() + " no tiene inventario en esta sucursal"));
+                            "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
+                            + bodega.getNombre()));
 
             if (inventario.getStockActual().compareTo(item.getCantidad()) < 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
@@ -154,18 +200,23 @@ public class MermaServiceImpl implements MermaService {
             MermaDetalleEntity detalle = detalleMapper.toEntity(item);
             detalle.setMerma(merma);
             detalle.setProducto(producto);
-
-            // 2.3 Manejar lote si aplica
-            if (item.getLoteId() != null) {
-                LoteEntity lote = loteJPARepository.findById(item.getLoteId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Lote no encontrado"));
-                detalle.setLote(lote);
-
-                lote.setStockActual(lote.getStockActual().subtract(item.getCantidad()));
-                loteJPARepository.save(lote);
-            }
+            detalle.setProductoPresentacion(presentacion);
+            detalle.setCantidadPresentacion(cantidadPresentacion);
 
             detalleJPARepository.save(detalle);
+
+            // 2.3 Lotes: el elegido o el que vence primero. La merma sí saca
+            //     vencidos: es justo lo que más se merma.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.MERMA,
+                    detalle.getId(), producto, bodega, empresaId, item.getCantidad(), item.getLoteId(),
+                    true, false);
+            if (lotes.size() == 1) {
+                detalle.setLote(lotes.get(0).lote());
+                detalleJPARepository.save(detalle);
+            }
+
+            serialStock.salida(com.cloud_technological.aura_pos.services.SerialStockService.ORIGEN_MERMA, detalle.getId(), producto, bodega, empresaId,
+                    item.getCantidad(), item.getSerialIds(), com.cloud_technological.aura_pos.services.SerialStockService.MERMA);
 
             // 2.4 Actualizar inventario
             BigDecimal saldoAnterior = inventario.getStockActual();
@@ -174,10 +225,11 @@ public class MermaServiceImpl implements MermaService {
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            // 2.5 Kardex
-            registrarMovimiento(sucursal, producto, detalle.getLote(),
-                    item.getCantidad().negate(), saldoAnterior, saldoNuevo,
-                    item.getCostoUnitario(), TipoMovimientoInventario.MERMA.codigo(), "Merma #" + merma.getId());
+            // 2.5 Kardex (un movimiento por lote)
+            final String refMerma = "Merma #" + merma.getId();
+            loteStock.kardex(lotes, item.getCantidad().negate(), saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodega, producto, lote, cant, ant, nuevo,
+                            item.getCostoUnitario(), TipoMovimientoInventario.MERMA.codigo(), refMerma));
 
             costoTotal = costoTotal.add(item.getCantidad().multiply(item.getCostoUnitario()));
         }
@@ -194,6 +246,51 @@ public class MermaServiceImpl implements MermaService {
         return obtenerPorId(merma.getId(), empresaId);
     }
 
+    /** Presentación de la línea, validada contra el producto; null si la línea va en unidad base. */
+    private com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity resolverPresentacion(
+            Long presentacionId, ProductoEntity producto, Integer empresaId) {
+        if (presentacionId == null) return null;
+        return presentacionJPARepository.findByIdAndProductoEmpresaId(presentacionId, empresaId)
+                .filter(p -> p.getProducto().getId().equals(producto.getId()))
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La presentación no pertenece a " + producto.getNombre()));
+    }
+
+    /**
+     * Un producto con receta no tiene stock propio: lo que se pierde son sus
+     * componentes, igual que al venderlo. El costo que manda el front se
+     * ignora — el de un compuesto es lo que valen hoy sus componentes.
+     *
+     * @return costo de la línea
+     */
+    private BigDecimal registrarLineaPorReceta(MermaEntity merma,
+            com.cloud_technological.aura_pos.entity.BodegaEntity bodega,
+            ProductoEntity producto, CreateMermaDetalleDto item, Integer empresaId) {
+        if (item.getLoteId() != null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "'" + producto.getNombre() + "' se descuenta por su receta: no admite lote");
+
+        List<ConsumoComposicionService.Consumo> consumos = consumoComposicion.explotar(
+                producto.getId(), item.getCantidad(), bodega.getId());
+        consumoComposicion.validarStock(producto, consumos);
+
+        MermaDetalleEntity detalle = new MermaDetalleEntity();
+        detalle.setMerma(merma);
+        detalle.setProducto(producto);
+        detalle.setCantidad(item.getCantidad());
+        detalle.setCostoUnitario(BigDecimal.ZERO);
+        // Se guarda antes de consumir: el registro de componentes cuelga de su id.
+        detalle = detalleJPARepository.save(detalle);
+
+        BigDecimal costoLinea = consumoComposicion.consumir(ConsumoComposicionService.ORIGEN_MERMA,
+                detalle.getId(), empresaId, bodega, producto, consumos,
+                TipoMovimientoInventario.MERMA.codigo(), "Merma #" + merma.getId());
+
+        detalle.setCostoUnitario(costoLinea.divide(item.getCantidad(), 2, RoundingMode.HALF_UP));
+        detalleJPARepository.save(detalle);
+        return costoLinea;
+    }
+
     @Override
     @Transactional
     public void anular(Long id, Integer empresaId) {
@@ -205,9 +302,32 @@ public class MermaServiceImpl implements MermaService {
 
         List<MermaDetalleEntity> detalles = detalleJPARepository.findByMermaId(id);
 
+        // La bodega del documento, no la principal de hoy: la mercancía vuelve
+        // exactamente de donde salió.
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(merma.getBodega() != null ? merma.getBodega().getId() : null,
+                        merma.getSucursal().getId(), empresaId);
+
+        // Lo que salió por receta también cuenta: el componente pudo cambiar de unidad.
+        List<Long> productosMerma = new java.util.ArrayList<>();
+        for (MermaDetalleEntity d : detalles) {
+            productosMerma.add(d.getProducto().getId());
+            consumoComposicion.consumosDe(ConsumoComposicionService.ORIGEN_MERMA, d.getId())
+                    .forEach(c -> productosMerma.add(c.getProductoHijo().getId()));
+        }
+        cambioUnidadProducto.validarDocumentoPrevio("MERMA", id, productosMerma, "anular la merma");
+
         for (MermaDetalleEntity detalle : detalles) {
+            // Si salió por receta se devuelve lo que se consumió entonces, no lo
+            // que diga la receta hoy.
+            if (consumoComposicion.revertir(ConsumoComposicionService.ORIGEN_MERMA, detalle.getId(),
+                    bodega, detalle.getProducto(),
+                    TipoMovimientoInventario.ANULACION_MERMA.codigo(), "Anulación Merma #" + merma.getId())) {
+                continue;
+            }
+
             InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(Long.valueOf(merma.getSucursal().getId()), detalle.getProducto().getId())
+                    .findByBodegaIdAndProductoId(bodega.getId(), detalle.getProducto().getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + detalle.getProducto().getNombre()));
 
@@ -218,15 +338,22 @@ public class MermaServiceImpl implements MermaService {
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            if (detalle.getLote() != null) {
+            serialStock.revertirSalida(com.cloud_technological.aura_pos.services.SerialStockService.ORIGEN_MERMA, detalle.getId(), "anular la merma");
+
+            // Vuelve a los mismos lotes de donde salió.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.revertirDocumento(com.cloud_technological.aura_pos.services.LoteStockService.MERMA,
+                    detalle.getId(), true, "anular la merma");
+            if (lotes.isEmpty() && detalle.getLote() != null) {
                 LoteEntity lote = detalle.getLote();
                 lote.setStockActual(lote.getStockActual().add(detalle.getCantidad()));
                 loteJPARepository.save(lote);
             }
 
-            registrarMovimiento(merma.getSucursal(), detalle.getProducto(), detalle.getLote(),
-                    detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                    detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_MERMA.codigo(), "Anulación Merma #" + merma.getId());
+            loteStock.kardex(lotes, detalle.getCantidad(), saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodega, detalle.getProducto(),
+                            lote != null ? lote : detalle.getLote(), cant, ant, nuevo,
+                            detalle.getCostoUnitario(), TipoMovimientoInventario.ANULACION_MERMA.codigo(),
+                            "Anulación Merma #" + merma.getId()));
         }
 
         merma.setEstado("ANULADA");
@@ -238,11 +365,13 @@ public class MermaServiceImpl implements MermaService {
                         "MERMA", merma.getId(), empresaId, null));
     }
 
-    private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega,
+            ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
         MovimientoInventarioEntity movimiento = new MovimientoInventarioEntity();
-        movimiento.setSucursal(sucursal);
+        movimiento.setBodega(bodega);
+        movimiento.setSucursal(bodega.getSucursal());
         movimiento.setProducto(producto);
         movimiento.setLote(lote);
         movimiento.setTipoMovimiento(tipo);

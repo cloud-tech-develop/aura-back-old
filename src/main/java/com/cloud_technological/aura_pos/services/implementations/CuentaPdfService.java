@@ -50,6 +50,8 @@ public class CuentaPdfService {
     private final AbonoPagarJPARepository abonoPagarRepository;
     private final VentaDetalleJPARepository ventaDetalleRepository;
     private final IEmpresaService empresaService;
+    private final com.cloud_technological.aura_pos.repositories.cartera.ReciboCajaQueryRepository reciboCajaQueryRepository;
+    private final com.cloud_technological.aura_pos.repositories.cartera.AcuerdoPagoQueryRepository acuerdoPagoQueryRepository;
 
     // Modern Color Palette
     private static final DeviceRgb ACCENT_BLUE = new DeviceRgb(25, 118, 210);
@@ -63,13 +65,214 @@ public class CuentaPdfService {
                            AbonoCobrarJPARepository abonoCobrarRepository,
                            AbonoPagarJPARepository abonoPagarRepository,
                            VentaDetalleJPARepository ventaDetalleRepository,
-                           IEmpresaService empresaService) {
+                           IEmpresaService empresaService,
+                           com.cloud_technological.aura_pos.repositories.cartera.ReciboCajaQueryRepository reciboCajaQueryRepository,
+                           com.cloud_technological.aura_pos.repositories.cartera.AcuerdoPagoQueryRepository acuerdoPagoQueryRepository) {
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.cuentaPagarRepository = cuentaPagarRepository;
         this.abonoCobrarRepository = abonoCobrarRepository;
         this.abonoPagarRepository = abonoPagarRepository;
         this.ventaDetalleRepository = ventaDetalleRepository;
         this.empresaService = empresaService;
+        this.reciboCajaQueryRepository = reciboCajaQueryRepository;
+        this.acuerdoPagoQueryRepository = acuerdoPagoQueryRepository;
+    }
+
+    /** Acuerdo de pago para firmar: facturas que entran, plan de cuotas y compromiso. */
+    public byte[] generarAcuerdoPago(Long acuerdoId, Integer empresaId) {
+        var a = acuerdoPagoQueryRepository.obtener(acuerdoId, empresaId);
+        if (a == null) throw new GlobalException(HttpStatus.NOT_FOUND, "Acuerdo de pago no encontrado");
+        DateTimeFormatter dia = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            PdfDocument pdf = new PdfDocument(new PdfWriter(baos));
+            Document document = new Document(pdf);
+            addModernHeader(document, empresaId, "ACUERDO DE PAGO", "COMPROMISO DE PAGO EN CUOTAS", a.getNumero());
+
+            if ("ANULADO".equals(a.getEstado())) {
+                document.add(new Paragraph("ANULADO" + (a.getMotivoAnulacion() != null ? " — " + a.getMotivoAnulacion() : ""))
+                        .setBold().setFontSize(12).setFontColor(new DeviceRgb(220, 38, 38))
+                        .setTextAlignment(TextAlignment.CENTER));
+            }
+
+            Table card = new Table(UnitValue.createPercentArray(new float[]{100})).useAllAvailableWidth();
+            Cell cardCell = new Cell().setBackgroundColor(LIGHT_BG).setPadding(15).setBorder(new SolidBorder(ZEBRA_GRAY, 1));
+            Table datos = new Table(UnitValue.createPercentArray(new float[]{30, 70})).useAllAvailableWidth().setBorder(Border.NO_BORDER);
+            addCardRow(datos, "Fecha del acuerdo:", a.getCreatedAt().format(dia));
+            addCardRow(datos, "Deudor:", a.getTerceroNombre()
+                    + (a.getTerceroDocumento() != null ? " (" + a.getTerceroDocumento() + ")" : ""));
+            addCardRow(datos, "Valor acordado:", formatCOP(a.getValorTotal()));
+            addCardRow(datos, "Cuotas:", a.getNumeroCuotas() + (a.getDiasGracia() != null && a.getDiasGracia() > 0
+                    ? " · " + a.getDiasGracia() + " días de gracia por cuota" : ""));
+            if (a.getObservaciones() != null) addCardRow(datos, "Observaciones:", a.getObservaciones());
+            cardCell.add(datos);
+            card.addCell(cardCell);
+            document.add(card);
+
+            document.add(new Paragraph("Facturas que se incluyen").setBold().setFontSize(11).setFontColor(DARK_HEADER).setMarginTop(12));
+            Table facturas = new Table(UnitValue.createPercentArray(new float[]{30, 30, 20, 20})).useAllAvailableWidth();
+            for (String h : new String[]{"Cuenta", "Venta", "Vencía", "Saldo acordado"}) {
+                facturas.addHeaderCell(new Cell().add(new Paragraph(h).setBold().setFontSize(9).setFontColor(ColorConstants.WHITE))
+                        .setBackgroundColor(DARK_HEADER).setBorder(Border.NO_BORDER).setPadding(6)
+                        .setTextAlignment("Saldo acordado".equals(h) ? TextAlignment.RIGHT : TextAlignment.LEFT));
+            }
+            boolean zebra = false;
+            for (var c : a.getCuentas()) {
+                com.itextpdf.kernel.colors.Color bg = zebra ? ZEBRA_GRAY : ColorConstants.WHITE;
+                zebra = !zebra;
+                facturas.addCell(celda(c.getNumeroCuenta(), bg, TextAlignment.LEFT, false));
+                facturas.addCell(celda(c.getNumeroVenta() != null ? c.getNumeroVenta() : "—", bg, TextAlignment.LEFT, false));
+                facturas.addCell(celda(c.getFechaVencimientoOriginal() != null ? c.getFechaVencimientoOriginal().format(dia) : "—",
+                        bg, TextAlignment.LEFT, false));
+                facturas.addCell(celda(formatCOP(c.getSaldoInicial()), bg, TextAlignment.RIGHT, true));
+            }
+            document.add(facturas);
+
+            document.add(new Paragraph("Plan de pagos").setBold().setFontSize(11).setFontColor(DARK_HEADER).setMarginTop(12));
+            Table cuotas = new Table(UnitValue.createPercentArray(new float[]{15, 30, 25, 30})).useAllAvailableWidth();
+            for (String h : new String[]{"Cuota", "Fecha límite", "Valor", "Estado"}) {
+                cuotas.addHeaderCell(new Cell().add(new Paragraph(h).setBold().setFontSize(9).setFontColor(ColorConstants.WHITE))
+                        .setBackgroundColor(DARK_HEADER).setBorder(Border.NO_BORDER).setPadding(6)
+                        .setTextAlignment("Valor".equals(h) ? TextAlignment.RIGHT : TextAlignment.LEFT));
+            }
+            zebra = false;
+            for (var q : a.getCuotas()) {
+                com.itextpdf.kernel.colors.Color bg = zebra ? ZEBRA_GRAY : ColorConstants.WHITE;
+                zebra = !zebra;
+                cuotas.addCell(celda(String.valueOf(q.getNumero()), bg, TextAlignment.LEFT, false));
+                cuotas.addCell(celda(q.getFechaVencimiento().format(dia), bg, TextAlignment.LEFT, false));
+                cuotas.addCell(celda(formatCOP(q.getValor()), bg, TextAlignment.RIGHT, true));
+                String estado = switch (q.getEstado()) {
+                    case "PAGADA" -> "Pagada";
+                    case "PARCIAL" -> "Abonó " + formatCOP(q.getValorPagado());
+                    case "VENCIDA" -> "Vencida";
+                    default -> "Pendiente";
+                };
+                cuotas.addCell(celda(estado, bg, TextAlignment.LEFT, false));
+            }
+            document.add(cuotas);
+
+            Table totales = new Table(UnitValue.createPercentArray(new float[]{60, 40})).useAllAvailableWidth().setMarginTop(8);
+            totales.addCell(new Cell().add(new Paragraph("TOTAL ACORDADO").setBold().setFontSize(12)).setBorder(Border.NO_BORDER));
+            totales.addCell(new Cell().add(new Paragraph(formatCOP(a.getValorTotal())).setBold().setFontSize(18).setFontColor(ACCENT_BLUE))
+                    .setBorder(Border.NO_BORDER).setTextAlignment(TextAlignment.RIGHT));
+            document.add(totales);
+
+            String gracia = a.getDiasGracia() != null && a.getDiasGracia() > 0
+                    ? " más " + a.getDiasGracia() + " días de gracia" : "";
+            document.add(new Paragraph("El deudor reconoce la deuda descrita y se compromete a pagarla en las fechas y valores "
+                    + "del plan de pagos. Los pagos se aplican a las cuotas en orden. Si una cuota no se paga en su fecha"
+                    + gracia + ", el acuerdo se considera incumplido y la empresa puede exigir el saldo total pendiente.")
+                    .setFontSize(9).setFontColor(TEXT_GRAY).setMarginTop(10).setTextAlignment(TextAlignment.JUSTIFIED));
+
+            // Espacio para firmar, y las dos firmas siempre en la misma página.
+            Table firmas = new Table(UnitValue.createPercentArray(new float[]{40, 20, 40})).useAllAvailableWidth()
+                    .setMarginTop(40);
+            firmas.setKeepTogether(true);
+            firmas.addCell(new Cell().add(new Paragraph("__________________________\nPor la empresa"
+                    + (a.getUsuarioNombre() != null ? ": " + a.getUsuarioNombre() : ""))).setBorder(Border.NO_BORDER)
+                    .setTextAlignment(TextAlignment.CENTER).setFontSize(10).setFontColor(TEXT_GRAY));
+            firmas.addCell(new Cell().setBorder(Border.NO_BORDER));
+            firmas.addCell(new Cell().add(new Paragraph("__________________________\nEl deudor"
+                    + (a.getTerceroDocumento() != null ? "\nDocumento " + a.getTerceroDocumento() : ""))).setBorder(Border.NO_BORDER)
+                    .setTextAlignment(TextAlignment.CENTER).setFontSize(10).setFontColor(TEXT_GRAY));
+            document.add(firmas);
+            addFooter(document);
+            document.close();
+            return baos.toByteArray();
+        } catch (GlobalException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error PDF acuerdo de pago {}: {}", acuerdoId, e.getMessage());
+            throw new RuntimeException("Error generando el acuerdo de pago", e);
+        }
+    }
+
+
+    /** Recibo de caja multi-factura: una fila por factura y el sobrante como anticipo. */
+    public byte[] generarReciboCajaCartera(Long reciboId, Integer empresaId) {
+        var r = reciboCajaQueryRepository.obtener(reciboId, empresaId);
+        if (r == null) throw new GlobalException(HttpStatus.NOT_FOUND, "Recibo de caja no encontrado");
+        DateTimeFormatter dia = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            PdfDocument pdf = new PdfDocument(new PdfWriter(baos));
+            Document document = new Document(pdf);
+            addModernHeader(document, empresaId, "RECIBO DE CAJA", "INGRESO DE DINERO", r.getNumero());
+
+            if ("ANULADO".equals(r.getEstado())) {
+                document.add(new Paragraph("ANULADO" + (r.getMotivoAnulacion() != null ? " — " + r.getMotivoAnulacion() : ""))
+                        .setBold().setFontSize(12).setFontColor(new DeviceRgb(220, 38, 38))
+                        .setTextAlignment(TextAlignment.CENTER));
+            }
+
+            Table card = new Table(UnitValue.createPercentArray(new float[]{100})).useAllAvailableWidth();
+            Cell cardCell = new Cell().setBackgroundColor(LIGHT_BG).setPadding(15).setBorder(new SolidBorder(ZEBRA_GRAY, 1));
+            Table datos = new Table(UnitValue.createPercentArray(new float[]{30, 70})).useAllAvailableWidth().setBorder(Border.NO_BORDER);
+            addCardRow(datos, "Fecha de pago:", r.getFechaPago().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+            addCardRow(datos, "Recibido de:", r.getTerceroNombre() + " (" + r.getTerceroDocumento() + ")");
+            addCardRow(datos, "Medio de pago:", r.getMetodoPago() != null ? r.getMetodoPago().toUpperCase() : "N/A");
+            addCardRow(datos, "Referencia:", r.getReferencia() != null ? r.getReferencia() : "N/A");
+            if (r.getObservaciones() != null) addCardRow(datos, "Observaciones:", r.getObservaciones());
+            cardCell.add(datos);
+            card.addCell(cardCell);
+            document.add(card);
+
+            document.add(new Paragraph("\n").setFontSize(6));
+            Table tabla = new Table(UnitValue.createPercentArray(new float[]{26, 18, 19, 18, 19})).useAllAvailableWidth();
+            for (String h : new String[]{"Factura", "Vence", "Saldo anterior", "Abonado", "Nuevo saldo"}) {
+                tabla.addHeaderCell(new Cell().add(new Paragraph(h).setBold().setFontSize(9).setFontColor(ColorConstants.WHITE))
+                        .setBackgroundColor(DARK_HEADER).setBorder(Border.NO_BORDER).setPadding(6)
+                        .setTextAlignment("Factura".equals(h) || "Vence".equals(h) ? TextAlignment.LEFT : TextAlignment.RIGHT));
+            }
+            boolean zebra = false;
+            for (var a : r.getAplicaciones()) {
+                com.itextpdf.kernel.colors.Color bg = zebra ? ZEBRA_GRAY : ColorConstants.WHITE;
+                zebra = !zebra;
+                tabla.addCell(celda(a.getNumeroCuenta(), bg, TextAlignment.LEFT, false));
+                tabla.addCell(celda(a.getFechaVencimiento() != null ? a.getFechaVencimiento().format(dia) : "—", bg, TextAlignment.LEFT, false));
+                tabla.addCell(celda(formatCOP(a.getSaldoAnterior()), bg, TextAlignment.RIGHT, false));
+                tabla.addCell(celda(formatCOP(a.getMonto()), bg, TextAlignment.RIGHT, true));
+                tabla.addCell(celda(formatCOP(a.getSaldoDespues()), bg, TextAlignment.RIGHT, false));
+            }
+            if (r.getAplicaciones().isEmpty()) {
+                tabla.addCell(new Cell(1, 5).add(new Paragraph("Sin facturas: todo el valor queda como anticipo").setFontSize(9))
+                        .setBorder(Border.NO_BORDER).setPadding(6).setFontColor(TEXT_GRAY));
+            }
+            document.add(tabla);
+
+            document.add(new Paragraph("\n").setFontSize(6));
+            Table totales = new Table(UnitValue.createPercentArray(new float[]{60, 40})).useAllAvailableWidth();
+            addCardRow(totales, "Aplicado a facturas:", formatCOP(r.getValorAplicado()));
+            if (r.getValorAnticipo() != null && r.getValorAnticipo().signum() > 0)
+                addCardRow(totales, "Queda como anticipo (saldo a favor):", formatCOP(r.getValorAnticipo()));
+            totales.addCell(new Cell().add(new Paragraph("TOTAL RECIBIDO").setBold().setFontSize(12)).setBorder(Border.NO_BORDER));
+            totales.addCell(new Cell().add(new Paragraph(formatCOP(r.getValorRecibido())).setBold().setFontSize(18).setFontColor(ACCENT_BLUE))
+                    .setBorder(Border.NO_BORDER));
+            document.add(totales);
+
+            document.add(new Paragraph("\n\n\n"));
+            Table firmas = new Table(UnitValue.createPercentArray(new float[]{40, 20, 40})).useAllAvailableWidth();
+            firmas.addCell(new Cell().add(new Paragraph("__________________________\nElaborado por"
+                    + (r.getUsuarioNombre() != null ? ": " + r.getUsuarioNombre() : ""))).setBorder(Border.NO_BORDER)
+                    .setTextAlignment(TextAlignment.CENTER).setFontSize(10).setFontColor(TEXT_GRAY));
+            firmas.addCell(new Cell().setBorder(Border.NO_BORDER));
+            firmas.addCell(new Cell().add(new Paragraph("__________________________\nFirma cliente")).setBorder(Border.NO_BORDER)
+                    .setTextAlignment(TextAlignment.CENTER).setFontSize(10).setFontColor(TEXT_GRAY));
+            document.add(firmas);
+            addFooter(document);
+            document.close();
+            return baos.toByteArray();
+        } catch (GlobalException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error PDF recibo de caja {}: {}", reciboId, e.getMessage());
+            throw new RuntimeException("Error generando el recibo de caja", e);
+        }
+    }
+
+    private Cell celda(String texto, com.itextpdf.kernel.colors.Color bg, TextAlignment alineacion, boolean negrita) {
+        Paragraph p = new Paragraph(texto != null ? texto : "").setFontSize(9);
+        if (negrita) p.setBold();
+        return new Cell().add(p).setBackgroundColor(bg).setBorder(Border.NO_BORDER).setPadding(6).setTextAlignment(alineacion);
     }
 
     public byte[] generarReciboCajaCobrar(Long abonoId, Integer empresaId) {

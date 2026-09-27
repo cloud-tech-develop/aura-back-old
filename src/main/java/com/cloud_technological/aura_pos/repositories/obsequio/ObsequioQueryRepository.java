@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.repositories.obsequio;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -12,6 +13,9 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.obsequio.ObsequioDetalleDto;
 import com.cloud_technological.aura_pos.dto.obsequio.ObsequioTableDto;
+import com.cloud_technological.aura_pos.dto.productos.ConsumoComponenteDto;
+import com.cloud_technological.aura_pos.repositories.inventario_consumo.InventarioConsumoComponenteQueryRepository;
+import com.cloud_technological.aura_pos.services.ConsumoComposicionService;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
@@ -19,6 +23,9 @@ public class ObsequioQueryRepository {
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private InventarioConsumoComponenteQueryRepository consumoQueryRepository;
 
     public PageImpl<ObsequioTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
@@ -66,24 +73,35 @@ public class ObsequioQueryRepository {
     }
 
     public List<ObsequioDetalleDto> obtenerDetalles(Long obsequioId) {
-        return jdbcTemplate.query("""
+        List<ObsequioDetalleDto> detalles = jdbcTemplate.query("""
             SELECT
                 od.id,
                 od.producto_id,
                 p.nombre AS producto_nombre,
+                p.sku    AS producto_sku,
                 od.lote_id,
                 l.codigo_lote,
                 od.cantidad,
                 od.costo_unitario,
                 od.base_comercial_unitaria,
-                od.iva_valor
+                od.iva_valor,
+                od.producto_presentacion_id,
+                pp.nombre AS presentacion_nombre,
+                od.cantidad_presentacion
             FROM obsequio_detalle od
             INNER JOIN producto p ON od.producto_id = p.id
+            LEFT  JOIN producto_presentacion pp ON pp.id = od.producto_presentacion_id
             LEFT  JOIN lote     l ON od.lote_id     = l.id
             WHERE od.obsequio_id = :obsequioId
             ORDER BY od.id
             """,
             new MapSqlParameterSource("obsequioId", obsequioId),
             new BeanPropertyRowMapper<>(ObsequioDetalleDto.class));
+
+        Map<Long, List<ConsumoComponenteDto>> componentes = consumoQueryRepository.porDetalle(
+                ConsumoComposicionService.ORIGEN_OBSEQUIO,
+                detalles.stream().map(ObsequioDetalleDto::getId).toList());
+        detalles.forEach(d -> d.setComponentes(componentes.getOrDefault(d.getId(), List.of())));
+        return detalles;
     }
 }

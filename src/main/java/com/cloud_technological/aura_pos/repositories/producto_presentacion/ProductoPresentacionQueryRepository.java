@@ -63,30 +63,35 @@ public class ProductoPresentacionQueryRepository {
         return new PageImpl<>(list, PageRequest.of(page, size), total);
     }
 
-    public boolean existeCodigoBarras(String codigoBarras) {
+    /**
+     * Código ya usado dentro de la empresa: por otra presentación activa o por
+     * el código de barras o el SKU de un producto. El POS resuelve el escaneo
+     * contra los tres, así que un choque vendería el artículo equivocado. Entre
+     * empresas el mismo código es válido: el EAN de una caja es igual en todas
+     * las droguerías.
+     */
+    public boolean codigoBarrasEnUso(String codigoBarras, Integer empresaId, Long excluirPresentacionId) {
         String sql = """
-            SELECT COUNT(*) FROM producto_presentacion
-            WHERE codigo_barras = :codigoBarras
-            AND activo = true
+            SELECT EXISTS (
+                SELECT 1 FROM producto_presentacion pp
+                JOIN producto p ON p.id = pp.producto_id
+                WHERE p.empresa_id = :empresaId
+                  AND p.deleted_at IS NULL
+                  AND pp.activo = true
+                  AND TRIM(pp.codigo_barras) = :codigo
+                  AND pp.id <> COALESCE(CAST(:excluirId AS BIGINT), -1)
+            ) OR EXISTS (
+                SELECT 1 FROM producto p
+                WHERE p.empresa_id = :empresaId
+                  AND p.deleted_at IS NULL
+                  AND (TRIM(p.codigo_barras) = :codigo OR TRIM(p.sku) = :codigo)
+            )
         """;
-        MapSqlParameterSource params = new MapSqlParameterSource();
-        params.addValue("codigoBarras", codigoBarras);
-        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
-        return count != null && count > 0;
-    }
-
-    public boolean existeCodigoBarrasExcluyendo(String codigoBarras, Long id) {
-        String sql = """
-            SELECT COUNT(*) FROM producto_presentacion
-            WHERE codigo_barras = :codigoBarras
-            AND id != :id
-            AND activo = true
-        """;
-        MapSqlParameterSource params = new MapSqlParameterSource();
-        params.addValue("codigoBarras", codigoBarras);
-        params.addValue("id", id);
-        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
-        return count != null && count > 0;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("codigo", codigoBarras.trim())
+                .addValue("excluirId", excluirPresentacionId);
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(sql, params, Boolean.class));
     }
 
     public List<ProductoPresentacionTableDto> listarPorProducto(Long productoId) {
@@ -98,6 +103,11 @@ public class ProductoPresentacionQueryRepository {
                 pp.nombre,
                 pp.codigo_barras,
                 pp.factor_conversion,
+                pp.precio,
+                pp.costo,
+                pp.es_default_compra,
+                pp.es_default_venta,
+                pp.se_vende,
                 pp.activo
             FROM producto_presentacion pp
             INNER JOIN producto p ON pp.producto_id = p.id

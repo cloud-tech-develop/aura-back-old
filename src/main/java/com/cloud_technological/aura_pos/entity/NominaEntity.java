@@ -138,6 +138,14 @@ public class NominaEntity {
     @Column(name = "cuenta_bancaria_id")
     private Long cuentaBancariaId;
 
+    /**
+     * Cuenta contable de la que salió el pago en efectivo, resuelta por el
+     * origen de fondos (110505 si salió de una caja, 110510 si de la caja
+     * menor). Es el crédito del asiento de pago.
+     */
+    @Column(name = "cuenta_pago_id")
+    private Long cuentaPagoId;
+
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
 

@@ -17,6 +17,7 @@ import com.cloud_technological.aura_pos.dto.activos_fijos.ActivoFijoTableDto;
 import com.cloud_technological.aura_pos.dto.activos_fijos.CreateActivoFijoDto;
 import com.cloud_technological.aura_pos.dto.activos_fijos.DepreciacionPeriodoDto;
 import com.cloud_technological.aura_pos.entity.ActivoFijoEntity;
+import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
 import com.cloud_technological.aura_pos.entity.AsientoContableEntity;
 import com.cloud_technological.aura_pos.entity.AsientoDetalleEntity;
 import com.cloud_technological.aura_pos.entity.DepreciacionPeriodoEntity;
@@ -36,6 +37,18 @@ public class ActivoFijoServiceImpl {
     @Autowired private DepreciacionPeriodoJPARepository depreciacionJPARepository;
     @Autowired private AsientoContableJPARepository asientoJPARepository;
     @Autowired private PeriodoContableJPARepository periodoJPARepository;
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaRepository;
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository asientoQueryRepository;
+    @Autowired private PeriodoContableResolver periodoResolver;
+
+    /**
+     * Qué clase del PUC acepta cada cuenta del activo. Sin esto se podía poner
+     * la caja como depreciación acumulada: cada mes el asiento sacaba plata de
+     * la caja sin que nadie la hubiera tocado.
+     */
+    private static final String[] PREFIJOS_ACTIVO = { "15", "16" };
+    private static final String[] PREFIJOS_DEPRECIACION = { "1592", "1597", "1598", "1698" };
+    private static final String[] PREFIJOS_GASTO = { "51", "52", "72", "73" };
 
     // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +57,7 @@ public class ActivoFijoServiceImpl {
         if (activoJPARepository.existsByCodigoAndEmpresaIdAndDeletedAtIsNull(dto.getCodigo(), empresaId))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe un activo con el código " + dto.getCodigo());
 
+        validarCuentas(dto, empresaId);
         ActivoFijoEntity entity = new ActivoFijoEntity();
         entity.setEmpresaId(empresaId);
         mapFromDto(dto, entity);
@@ -60,6 +74,7 @@ public class ActivoFijoServiceImpl {
         if (activoJPARepository.existsByCodigoAndEmpresaIdAndIdNotAndDeletedAtIsNull(dto.getCodigo(), empresaId, id))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El código ya está en uso por otro activo");
 
+        validarCuentas(dto, empresaId);
         mapFromDto(dto, entity);
         return toDto(activoJPARepository.save(entity));
     }
@@ -143,6 +158,11 @@ public class ActivoFijoServiceImpl {
         BigDecimal cuotaMensual = baseDepreciable
                 .divide(BigDecimal.valueOf(activo.getVidaUtilMeses()), 2, RoundingMode.HALF_UP);
 
+        // Un activo creado antes de la validación puede tener cuentas de otra
+        // clase: mejor frenar aquí que contabilizar la depreciación contra la caja.
+        exigirClase(activo.getCuentaGastoDepId(), PREFIJOS_GASTO, "gasto de depreciación", empresaId);
+        exigirClase(activo.getCuentaDepreciacionId(), PREFIJOS_DEPRECIACION, "depreciación acumulada", empresaId);
+
         // Crear asiento si tiene cuentas configuradas
         Long asientoId = null;
         if (activo.getCuentaGastoDepId() != null && activo.getCuentaDepreciacionId() != null) {
@@ -174,9 +194,16 @@ public class ActivoFijoServiceImpl {
     private Long crearAsientoDepreciacion(ActivoFijoEntity activo, BigDecimal valor,
             Long periodoId, Integer empresaId, Integer usuarioId) {
 
+        // La depreciación es del mes que se calcula: se fecha su último día, igual
+        // que los asientos de cierre. Con la fecha de hoy caía en otro período
+        // que el que declaraba, y el período lo decide la fecha.
+        LocalDate fecha = periodoResolver.ultimoDia(periodoId);
+        periodoResolver.resolver(empresaId, fecha);
+
         AsientoContableEntity asiento = AsientoContableEntity.builder()
                 .empresaId(empresaId)
-                .fecha(LocalDate.now())
+                .fecha(fecha)
+                .numeroComprobante(asientoQueryRepository.siguienteNumeroComprobante(empresaId, "DP"))
                 .descripcion("Depreciación activo: " + activo.getCodigo() + " - " + activo.getDescripcion())
                 .tipoOrigen("DEPRECIACION")
                 .origenId(activo.getId())
@@ -207,6 +234,34 @@ public class ActivoFijoServiceImpl {
         credito.setAsiento(asiento);
 
         return asientoJPARepository.save(asiento).getId();
+    }
+
+    private void validarCuentas(CreateActivoFijoDto dto, Integer empresaId) {
+        exigirClase(dto.getCuentaActivoId(), PREFIJOS_ACTIVO, "cuenta del activo", empresaId);
+        exigirClase(dto.getCuentaDepreciacionId(), PREFIJOS_DEPRECIACION, "depreciación acumulada", empresaId);
+        exigirClase(dto.getCuentaGastoDepId(), PREFIJOS_GASTO, "gasto de depreciación", empresaId);
+    }
+
+    /** La cuenta es opcional, pero si viene tiene que ser auxiliar, activa y de su clase. */
+    private void exigirClase(Long cuentaId, String[] prefijos, String rol, Integer empresaId) {
+        if (cuentaId == null) {
+            return;
+        }
+        PlanCuentaEntity cuenta = planCuentaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La cuenta de " + rol + " no existe"));
+        String codigo = cuenta.getCodigo() != null ? cuenta.getCodigo() : "";
+        boolean claseValida = java.util.Arrays.stream(prefijos).anyMatch(codigo::startsWith);
+        if (!claseValida) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cuenta " + codigo + " — " + cuenta.getNombre() + " no sirve como " + rol
+                            + ". Use una cuenta que empiece por " + String.join(", ", prefijos));
+        }
+        if (!Boolean.TRUE.equals(cuenta.getActiva()) || !Boolean.TRUE.equals(cuenta.getAuxiliar())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cuenta " + codigo + " — " + cuenta.getNombre()
+                            + " está inactiva o es de agrupación. Elija una subcuenta auxiliar");
+        }
     }
 
     private void mapFromDto(CreateActivoFijoDto dto, ActivoFijoEntity entity) {

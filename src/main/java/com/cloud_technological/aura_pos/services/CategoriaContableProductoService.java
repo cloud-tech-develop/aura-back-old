@@ -22,4 +22,12 @@ public interface CategoriaContableProductoService {
      * existe. Los productos sin categoría contabilizan idéntico a hoy.
      */
     void seedDefaults(Integer empresaId);
+
+    /**
+     * Valida lo contable que se asigna a un producto: la categoría debe ser de
+     * la empresa y estar activa, y cada override una auxiliar activa de su
+     * clase. Todos pueden venir null (hereda).
+     */
+    void validarCuentasProducto(Integer empresaId, Long categoriaContableId, Long cuentaIngresoId,
+            Long cuentaCostoId, Long cuentaInventarioId);
 }

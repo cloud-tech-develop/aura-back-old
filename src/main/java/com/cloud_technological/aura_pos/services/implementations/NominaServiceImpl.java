@@ -32,6 +32,7 @@ import com.cloud_technological.aura_pos.repositories.nomina.NominaQueryRepositor
 import com.cloud_technological.aura_pos.repositories.nomina.PeriodoNominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
 import com.cloud_technological.aura_pos.services.NominaService;
+import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.services.nomina.BasesLiquidacion;
 import com.cloud_technological.aura_pos.services.nomina.MotorLiquidacion;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -40,6 +41,12 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @lombok.extern.slf4j.Slf4j
 @Service
 public class NominaServiceImpl implements NominaService {
+
+    @Autowired
+    private OrigenFondosService origenFondosService;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository movimientoCajaRepository;
 
     @Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -503,14 +510,39 @@ public class NominaServiceImpl implements NominaService {
         cerrarPeriodoSiCompleto(periodo, empresaId);
     }
 
-    /** Marca la nómina como PAGADA con su origen y dispara el asiento de pago. */
+    /**
+     * Marca la nómina como PAGADA con su origen y dispara el asiento de pago.
+     *
+     * <p>El medio de pago es obligatorio. Antes, si no llegaba, se asumía
+     * EFECTIVO: el botón "Pagar nómina" del detalle no mandaba nada, así que
+     * nóminas pagadas por banco acreditaban la caja y la dejaban en negativo.
+     */
     private void aplicarPago(NominaEntity nomina, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId) {
-        String medio = dto != null && dto.getMedioPago() != null ? dto.getMedioPago() : "EFECTIVO";
-        if ("TRANSFERENCIA".equals(medio) && (dto == null || dto.getCuentaBancariaId() == null))
+        String medio = dto != null && dto.getMedioPago() != null && !dto.getMedioPago().isBlank()
+                ? dto.getMedioPago().trim().toUpperCase() : null;
+        if (medio == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Indique cómo se pagó la nómina: transferencia (cuenta bancaria), "
+                            + "efectivo de una caja o una cuenta de fondos como la caja menor");
+        if ("TRANSFERENCIA".equals(medio) && dto.getCuentaBancariaId() == null)
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Para pago por transferencia debe indicar la cuenta bancaria");
 
-        Long cuentaBancariaId = dto != null ? dto.getCuentaBancariaId() : null;
+        BigDecimal netoPago = nomina.getNetoPagar() != null ? nomina.getNetoPagar() : BigDecimal.ZERO;
+
+        // Efectivo: de qué caja o cuenta sale, con las mismas reglas que un
+        // gasto — caja abierta o cuenta de fondos, y sin pagar más de lo que hay.
+        OrigenFondosService.OrigenFondos origen = null;
+        if (!"TRANSFERENCIA".equals(medio)) {
+            origen = origenFondosService.resolver(empresaId, new OrigenFondosService.Solicitud(
+                    medio, dto.getTurnoCajaId(), null, dto.getCuentaContableId(),
+                    dto.getSucursalId(), "pago de nómina"));
+            origenFondosService.exigirSaldoDisponible(empresaId, origen, netoPago,
+                    "pago de nómina", null, null);
+            nomina.setCuentaPagoId(origen.cuentaContableId());
+        }
+
+        Long cuentaBancariaId = "TRANSFERENCIA".equals(medio) ? dto.getCuentaBancariaId() : null;
         nomina.setEstado("PAGADO");
         nomina.setMedioPago(medio);
         nomina.setCuentaBancariaId(cuentaBancariaId);
@@ -543,7 +575,21 @@ public class NominaServiceImpl implements NominaService {
             mov.setContrapartidaCuentaId(cuentaSalarios);
             tesoreriaService.crearEgreso(empresaId, usuarioId != null ? usuarioId.intValue() : null, mov);
         } else {
-            // Efectivo (caja): solo asiento contable DB Salarios por pagar / CR Caja.
+            // Efectivo: si salió de una caja abierta, se ve en su arqueo.
+            if (origen != null && origen.generaMovimientoCaja() && neto.signum() > 0) {
+                movimientoCajaRepository.save(com.cloud_technological.aura_pos.entity.MovimientoCajaEntity.builder()
+                        .turnoCaja(origen.turno())
+                        .tipo("EGRESO")
+                        .concepto("Pago nómina #" + nomina.getId() + " — " + beneficiario)
+                        .monto(neto)
+                        .fecha(java.time.LocalDate.now())
+                        .origenTipo(com.cloud_technological.aura_pos.entity.MovimientoCajaEntity.ORIGEN_NOMINA)
+                        .origenId(nomina.getId())
+                        .origenInferido(origen.turnoInferido())
+                        .metodoPago("EFECTIVO")
+                        .build());
+            }
+            // Asiento DB Salarios por pagar / CR la cuenta que resolvió el origen.
             eventPublisher.publishEvent(
                     new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
                             "NOMINA_PAGO", nomina.getId(), empresaId, null));

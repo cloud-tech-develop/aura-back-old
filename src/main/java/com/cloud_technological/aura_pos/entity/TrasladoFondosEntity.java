@@ -134,6 +134,16 @@ public class TrasladoFondosEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /** Por qué se anuló. El traslado nunca se borra: queda con su motivo. */
+    @Column(name = "motivo_anulacion", length = 500)
+    private String motivoAnulacion;
+
+    @Column(name = "anulado_por")
+    private Integer anuladoPor;
+
+    @Column(name = "anulado_at")
+    private LocalDateTime anuladoAt;
+
     @PrePersist
     void prePersist() {
         if (this.createdAt == null) this.createdAt = LocalDateTime.now();

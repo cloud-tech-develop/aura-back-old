@@ -5,7 +5,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
@@ -20,6 +27,7 @@ import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +38,8 @@ import com.cloud_technological.aura_pos.entity.NotaElectronicaEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
 import com.cloud_technological.aura_pos.entity.VentaEntity;
 import com.cloud_technological.aura_pos.repositories.facturacion.FacturaJPARepository;
+import com.cloud_technological.aura_pos.repositories.venta_pago.VentaPagoJPARepository;
+import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.NotaElectronicaJPARepository;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
@@ -40,7 +50,7 @@ import lombok.extern.slf4j.Slf4j;
  * y notas crédito/débito, por rango de fechas.
  *
  * <p>El Excel se arma localmente con Apache POI a partir de nuestra propia base
- * ({@code factura} y {@code nota_electronica}), no se pide al panel de Factus:
+ * (ventas con CUFE y {@code nota_electronica}), no se pide al panel de Factus:
  * ese host exige sesión de usuario y no acepta el bearer de la API (ver la nota
  * en {@code FactusNotaService}).
  */
@@ -71,14 +81,87 @@ public class ReporteFacturacionElectronicaService {
 
     private final FacturaJPARepository facturaRepository;
     private final NotaElectronicaJPARepository notaRepository;
+    private final VentaJPARepository ventaRepository;
+    private final VentaPagoJPARepository ventaPagoRepository;
     private final SecurityUtils securityUtils;
+    /** Pruebas o Producción, según contra qué Factus está conectado el backend. */
+    private final String ambiente;
 
     public ReporteFacturacionElectronicaService(FacturaJPARepository facturaRepository,
                                                 NotaElectronicaJPARepository notaRepository,
-                                                SecurityUtils securityUtils) {
+                                                VentaJPARepository ventaRepository,
+                                                VentaPagoJPARepository ventaPagoRepository,
+                                                SecurityUtils securityUtils,
+                                                @Value("${factus.api.base-url:}") String factusBaseUrl) {
         this.facturaRepository = facturaRepository;
         this.notaRepository = notaRepository;
+        this.ventaRepository = ventaRepository;
+        this.ventaPagoRepository = ventaPagoRepository;
         this.securityUtils = securityUtils;
+        this.ambiente = factusBaseUrl != null && factusBaseUrl.toLowerCase().contains("sandbox")
+                ? "Pruebas" : "Producción";
+    }
+
+    /** Una fila del Excel de facturas, venga de la venta (flujo actual) o de la tabla factura (viejo). */
+    private record FilaFactura(String numero, LocalDateTime fecha, VentaEntity venta, String formaPago,
+                               BigDecimal base0, BigDecimal base5, BigDecimal iva5,
+                               BigDecimal base19, BigDecimal iva19, BigDecimal descuento,
+                               BigDecimal total, String cufe, String estado, String ambiente) {
+    }
+
+    /**
+     * Las facturas salen de las ventas con CUFE: ahí guarda el POS lo que devuelve
+     * Factus. Antes el reporte leía solo la tabla {@code factura}, que ese flujo no
+     * llena, y salía vacío con facturas emitidas. Se suman las filas viejas de
+     * {@code factura} cuya venta no esté ya incluida.
+     */
+    private List<FilaFactura> filasFacturas(Integer empresaId, LocalDateTime desde, LocalDateTime hasta) {
+        List<VentaEntity> ventas = ventaRepository.findFacturadasElectronicamente(empresaId, desde, hasta);
+        Map<Long, String> formas = formasDePago(ventas);
+
+        List<FilaFactura> filas = new ArrayList<>();
+        Set<Long> incluidas = new HashSet<>();
+        for (VentaEntity v : ventas) {
+            incluidas.add(v.getId());
+            String numero = esTexto(v.getFactusNumero()) ? v.getFactusNumero()
+                    : nvl(v.getPrefijo()) + (v.getConsecutivo() != null ? v.getConsecutivo() : "");
+            String estado = nvl(v.getEstadoDian());
+            if ("ANULADA".equalsIgnoreCase(v.getEstadoVenta())) estado += " · venta anulada en Aura";
+            filas.add(new FilaFactura(numero, v.getFechaEmision(), v, formas.getOrDefault(v.getId(), ""),
+                    nz(v.getIvaBase0()), nz(v.getIvaBase5()), nz(v.getIvaValor5()),
+                    nz(v.getIvaBase19()), nz(v.getIvaValor19()), nz(v.getDescuentoTotal()),
+                    nz(v.getTotalPagar()), v.getCufe(), estado, ambiente));
+        }
+
+        for (FacturaEntity f : facturaRepository.findParaReporte(empresaId, desde, hasta)) {
+            if (f.getVenta() != null && incluidas.contains(f.getVenta().getId())) continue;
+            // El flujo viejo dejaba la factura en PENDIENTE con un CUFE interno: nunca
+            // llegó a la DIAN, así que no es una factura emitida.
+            if ("PENDIENTE".equalsIgnoreCase(f.getEstadoDian())) continue;
+            filas.add(new FilaFactura(numeroFactura(f), f.getFechaHoraEmision(), f.getVenta(), f.getMetodoPago(),
+                    nz(f.getIvaBase0()), nz(f.getIvaBase5()), nz(f.getIvaValor5()),
+                    nz(f.getIvaBase19()), nz(f.getIvaValor19()), nz(f.getDescuento()),
+                    nz(f.getValor()), f.getCufe(), f.getEstadoDian(), f.getTipoAmbiente()));
+        }
+        filas.sort(Comparator.comparing(FilaFactura::fecha, Comparator.nullsLast(Comparator.naturalOrder())));
+        return filas;
+    }
+
+    /** "Efectivo + Tarjeta" por venta, en una sola consulta. */
+    private Map<Long, String> formasDePago(List<VentaEntity> ventas) {
+        if (ventas.isEmpty()) return Map.of();
+        List<Long> ids = ventas.stream().map(VentaEntity::getId).toList();
+        return ventaPagoRepository.findByVentaIdIn(ids).stream()
+                .filter(p -> p.getVenta() != null && esTexto(p.getMetodoPago()))
+                .collect(Collectors.groupingBy(p -> p.getVenta().getId(),
+                        Collectors.mapping(p -> etiquetaMetodo(p.getMetodoPago()),
+                                Collectors.collectingAndThen(Collectors.toCollection(LinkedHashSet::new),
+                                        s -> String.join(" + ", s)))));
+    }
+
+    private static String etiquetaMetodo(String m) {
+        String t = m.trim().replace('_', ' ').toLowerCase();
+        return t.isEmpty() ? t : Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
     // ── FACTURAS ──────────────────────────────────────────────
@@ -88,7 +171,7 @@ public class ReporteFacturacionElectronicaService {
         Integer empresaId = securityUtils.getEmpresaId();
         validarRango(desde, hasta);
 
-        List<FacturaEntity> facturas = facturaRepository.findParaReporte(
+        List<FilaFactura> facturas = filasFacturas(
                 empresaId, desde.atStartOfDay(), hasta.plusDays(1).atStartOfDay());
         log.info("[Reporte FE] Empresa {} — {} facturas entre {} y {}",
                 empresaId, facturas.size(), desde, hasta);
@@ -105,33 +188,32 @@ public class ReporteFacturacionElectronicaService {
             BigDecimal totTotal = BigDecimal.ZERO;
 
             for (int i = 0; i < facturas.size(); i++) {
-                FacturaEntity f = facturas.get(i);
+                FilaFactura f = facturas.get(i);
                 XSSFCellStyle st = (i % 2 == 0) ? e.data : e.dataAlt;
                 XSSFCellStyle val = e.filaValor(i);
                 Row r = ws.createRow(fila++);
 
-                BigDecimal ivaTotal = nz(f.getIvaValor5()).add(nz(f.getIvaValor19()));
-                BigDecimal descuento = nz(f.getDescuento());
-                BigDecimal total = nz(f.getValor());
+                BigDecimal ivaTotal = f.iva5().add(f.iva19());
+                BigDecimal descuento = f.descuento();
+                BigDecimal total = f.total();
 
                 int c = 0;
-                texto(r, c++, numeroFactura(f), st);
-                texto(r, c++, f.getFechaHoraEmision() != null
-                        ? f.getFechaHoraEmision().format(F_FECHA_HORA) : "", st);
-                texto(r, c++, nombreCliente(f.getVenta()), st);
-                texto(r, c++, identificacion(f.getVenta()), st);
-                texto(r, c++, f.getMetodoPago(), st);
-                numero(r, c++, nz(f.getIvaBase0()), val);
-                numero(r, c++, nz(f.getIvaBase5()), val);
-                numero(r, c++, nz(f.getIvaValor5()), val);
-                numero(r, c++, nz(f.getIvaBase19()), val);
-                numero(r, c++, nz(f.getIvaValor19()), val);
+                texto(r, c++, f.numero(), st);
+                texto(r, c++, f.fecha() != null ? f.fecha().format(F_FECHA_HORA) : "", st);
+                texto(r, c++, nombreCliente(f.venta()), st);
+                texto(r, c++, identificacion(f.venta()), st);
+                texto(r, c++, f.formaPago(), st);
+                numero(r, c++, f.base0(), val);
+                numero(r, c++, f.base5(), val);
+                numero(r, c++, f.iva5(), val);
+                numero(r, c++, f.base19(), val);
+                numero(r, c++, f.iva19(), val);
                 numero(r, c++, descuento, val);
                 numero(r, c++, ivaTotal, val);
                 numero(r, c++, total, val);
-                texto(r, c++, f.getCufe(), st);
-                texto(r, c++, f.getEstadoDian(), st);
-                texto(r, c, f.getTipoAmbiente(), st);
+                texto(r, c++, f.cufe(), st);
+                texto(r, c++, f.estado(), st);
+                texto(r, c, f.ambiente(), st);
 
                 totDescuento = totDescuento.add(descuento);
                 totIva = totIva.add(ivaTotal);

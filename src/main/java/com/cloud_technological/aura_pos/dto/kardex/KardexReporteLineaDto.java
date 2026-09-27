@@ -53,6 +53,7 @@ public class KardexReporteLineaDto {
     private BigDecimal devoluciones;
     private BigDecimal mermas;
     private BigDecimal obsequios;
+    private BigDecimal consumosInternos;
     private BigDecimal traslados;
     private BigDecimal anulaciones;
     private BigDecimal reconteos;

@@ -8,4 +8,7 @@ import com.cloud_technological.aura_pos.entity.SolicitudAutorizacionCreditoEntit
 
 public interface SolicitudAutorizacionJPARepository extends JpaRepository<SolicitudAutorizacionCreditoEntity, Long> {
     List<SolicitudAutorizacionCreditoEntity> findByEmpresaIdAndEstadoOrderByCreatedAtDesc(Integer empresaId, String estado);
+
+    java.util.Optional<SolicitudAutorizacionCreditoEntity> findFirstByEmpresaIdAndTerceroIdAndEstadoOrderByCreatedAtDesc(
+            Integer empresaId, Long terceroId, String estado);
 }

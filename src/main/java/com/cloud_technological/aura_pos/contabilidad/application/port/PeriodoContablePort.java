@@ -13,7 +13,7 @@ public interface PeriodoContablePort {
     /**
      * Id del período ABIERTO de la empresa para la fecha.
      *
-     * @throws PeriodoCerradoException si no hay período abierto
+     * @throws PeriodoCerradoException si el período de esa fecha está cerrado
      */
     Long abiertoPara(Integer empresaId, LocalDate fecha);
 }

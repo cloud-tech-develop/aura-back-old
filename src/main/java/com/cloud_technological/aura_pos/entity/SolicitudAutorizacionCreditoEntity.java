@@ -40,7 +40,24 @@ public class SolicitudAutorizacionCreditoEntity {
     private BigDecimal excedente;
 
     @Column(length = 20)
-    private String estado; // PENDIENTE | APROBADA | RECHAZADA
+    private String estado; // PENDIENTE | APROBADA | RECHAZADA | USADA | VENCIDA
+
+    /** Quien pidió la autorización desde el POS (V169). */
+    @Column(name = "solicitado_por_id")
+    private Integer solicitadoPorId;
+
+    @Column(length = 300)
+    private String observacion;
+
+    @Column(name = "respondido_at")
+    private LocalDateTime respondidoAt;
+
+    /** Hasta cuándo la aprobación sirve para cerrar la venta. */
+    @Column(name = "vigente_hasta")
+    private LocalDateTime vigenteHasta;
+
+    @Column(name = "usada_at")
+    private LocalDateTime usadaAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "aprobado_por_id")

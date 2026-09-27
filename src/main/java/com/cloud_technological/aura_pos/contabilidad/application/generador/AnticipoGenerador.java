@@ -35,7 +35,8 @@ public class AnticipoGenerador implements GeneradorAsiento {
     @Override
     public Asiento generar(ContextoContabilizacion ctx) {
         LectorAnticipos.AnticipoContable a = anticipos.cargar(ctx.origenId(), ctx.empresaId());
-        Long cuentaDinero = cuentaPago.resolver(ctx.empresaId(), a.metodoPago(), a.cuentaBancariaId());
+        Long cuentaDinero = cuentaPago.resolver(ctx.empresaId(), a.metodoPago(), a.cuentaBancariaId(),
+                a.cuentaContableId());
         var monto = ReglasAsiento.nz(a.monto());
 
         var b = Asiento.builder(ctx.origen(), a.fecha()).prefijo(PREFIJO);

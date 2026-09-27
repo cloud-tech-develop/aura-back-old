@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,10 +64,8 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
     @Override
     @Transactional
     public ProductoPresentacionDto crear(CreateProductoPresentacionDto dto, Integer empresaId) {
-        // Validar código de barras duplicado
-        if (dto.getCodigoBarras() != null && !dto.getCodigoBarras().isBlank() &&
-                presentacionRepository.existeCodigoBarras(dto.getCodigoBarras()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está registrado");
+        validarFactor(dto.getFactorConversion());
+        validarCodigoBarras(dto.getCodigoBarras(), empresaId, null);
 
         ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Producto no encontrado"));
@@ -89,6 +88,8 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
 
         ProductoPresentacionEntity entity = presentacionMapper.toEntity(dto);
         entity.setProducto(producto);
+        if (entity.getSeVende() == null)
+            entity.setSeVende(true);
 
         return presentacionMapper.toDto(presentacionJPARepository.save(entity));
     }
@@ -99,10 +100,8 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
         ProductoPresentacionEntity entity = presentacionJPARepository.findByIdAndProductoEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Presentación no encontrada"));
 
-        // Validar código de barras duplicado excluyendo la actual
-        if (dto.getCodigoBarras() != null && !dto.getCodigoBarras().isBlank() &&
-                presentacionRepository.existeCodigoBarrasExcluyendo(dto.getCodigoBarras(), id))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está en uso");
+        validarFactor(dto.getFactorConversion());
+        validarCodigoBarras(dto.getCodigoBarras(), empresaId, id);
 
         // Validar factor duplicado excluyendo la actual
         if (presentacionJPARepository.existsByProductoIdAndFactorConversionAndIdNot(
@@ -124,7 +123,11 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
             desmarcarDefaultVenta(productoId);
         }
 
+        // Las pantallas que no manejan "se vende" no lo mandan: se conserva.
+        Boolean seVendeActual = entity.getSeVende();
         presentacionMapper.updateEntityFromDto(dto, entity);
+        if (dto.getSeVende() == null)
+            entity.setSeVende(seVendeActual != null ? seVendeActual : true);
         return presentacionMapper.toDto(presentacionJPARepository.save(entity));
     }
 
@@ -148,6 +151,20 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
     }
 
     // ─── Helpers privados ────────────────────────────────────────────
+
+    /** El factor son las unidades base que contiene la presentación (V159). */
+    private void validarFactor(BigDecimal factor) {
+        if (factor != null && factor.signum() <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La cantidad que contiene la presentación debe ser mayor que cero");
+    }
+
+    private void validarCodigoBarras(String codigoBarras, Integer empresaId, Long presentacionId) {
+        if (codigoBarras == null || codigoBarras.isBlank()) return;
+        if (presentacionRepository.codigoBarrasEnUso(codigoBarras, empresaId, presentacionId))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El código " + codigoBarras.trim() + " ya lo usa otro producto o presentación de la empresa");
+    }
 
     private void desmarcarDefaultCompra(Long productoId) {
         presentacionJPARepository.findByProductoIdAndEsDefaultCompraTrue(productoId)

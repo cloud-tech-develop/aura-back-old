@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CuentaBancariaDto {
     private Long id;
+    private String codigo;
     private String nombre;
     private String tipo;
     private String banco;

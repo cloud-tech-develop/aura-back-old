@@ -89,11 +89,15 @@ public class TerceroEntity {
 
     private String regimen;
 
-    @Column(name = "gran_contribuyente")
-    private Boolean granContribuyente;
+    // NOT NULL en BD (V52). Sin default aqui, cualquier alta que no mande el
+    // campo (p.ej. crear usuario) inserta NULL y revienta la constraint.
+    @Column(name = "gran_contribuyente", nullable = false)
+    @lombok.Builder.Default
+    private Boolean granContribuyente = Boolean.FALSE;
 
-    @Column(name = "auto_retenedor")
-    private Boolean autoRetenedor;
+    @Column(name = "auto_retenedor", nullable = false)
+    @lombok.Builder.Default
+    private Boolean autoRetenedor = Boolean.FALSE;
 
     @Column(name = "codigo_ciiu")
     private String codigoCIIU;
@@ -217,11 +221,25 @@ public class TerceroEntity {
     @PrePersist
 	protected void onCreate() {
 		created_at = LocalDateTime.now();
+		normalizarBooleanosObligatorios();
+	}
+
+	/**
+	 * Las columnas booleanas NOT NULL de V52/V97 tienen DEFAULT en BD, pero el
+	 * default no aplica cuando Hibernate manda NULL explicito en el INSERT.
+	 */
+	private void normalizarBooleanosObligatorios() {
+		if (granContribuyente == null) granContribuyente = Boolean.FALSE;
+		if (autoRetenedor == null) autoRetenedor = Boolean.FALSE;
+		if (esAutoretenedorIca == null) esAutoretenedorIca = Boolean.FALSE;
+		if (esAutoretenedorFuente == null) esAutoretenedorFuente = Boolean.FALSE;
+		if (declarante == null) declarante = Boolean.FALSE;
 	}
 
 	@PreUpdate
 	protected void onUpdate() {
 		updated_at = LocalDateTime.now();
+		normalizarBooleanosObligatorios();
 	}
     @PreRemove
 	public void onDelete() {

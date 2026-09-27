@@ -26,6 +26,9 @@ public interface AbonoCobrarJPARepository extends JpaRepository<AbonoCobrarEntit
 
     List<AbonoCobrarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
+    /** Las retenciones que acompañan a un abono principal (V181). */
+    List<AbonoCobrarEntity> findByAbonoOrigenId(Long abonoOrigenId);
+
     // Solo el efectivo cuenta para el arqueo: un abono con datáfono o
     // transferencia queda atado al turno para trazabilidad, pero si se sumara
     // aquí el cajero cerraría con un faltante que nunca existió.

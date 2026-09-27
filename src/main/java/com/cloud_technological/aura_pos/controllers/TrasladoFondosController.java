@@ -11,13 +11,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.dto.traslado_fondos.AnularTrasladoFondosDto;
 import com.cloud_technological.aura_pos.dto.traslado_fondos.CreateTrasladoFondosDto;
+import com.cloud_technological.aura_pos.dto.traslado_fondos.ReembolsoFondoDto;
 import com.cloud_technological.aura_pos.dto.traslado_fondos.TrasladoFondosDto;
 import com.cloud_technological.aura_pos.services.TrasladoFondosService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
@@ -54,6 +57,24 @@ public class TrasladoFondosController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 trasladoFondosService.obtener(id, empresaId)));
+    }
+
+    /** Cuánto reponer a la caja menor y la relación de gastos que lo soporta. */
+    @GetMapping("/reembolso")
+    public ResponseEntity<ApiResponse<ReembolsoFondoDto>> reembolso(@RequestParam Long cuentaId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                trasladoFondosService.reembolso(empresaId, cuentaId)));
+    }
+
+    @PatchMapping("/{id}/anular")
+    public ResponseEntity<ApiResponse<TrasladoFondosDto>> anular(@PathVariable Long id,
+            @Valid @RequestBody AnularTrasladoFondosDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "Traslado anulado", false,
+                trasladoFondosService.anular(id, empresaId,
+                        usuarioId != null ? usuarioId.intValue() : null, dto.getMotivo())));
     }
 
     /** Sin fechas lista el mes en curso; el concepto filtra por tipo de traslado. */

@@ -50,6 +50,7 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.implementations.AsientoContableServiceImpl;
+import com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver;
 
 /**
  * El comprobante manual (CE/RC) mueve dinero real y tiene que aparecer en el
@@ -87,6 +88,7 @@ class ComprobanteOrigenFondosTest {
     @Mock private TurnoCajaJPARepository turnoCajaRepo;
     @Mock private UsuarioJPARepository usuarioRepo;
     @Mock private ComprobanteCajaService comprobanteCajaService;
+    @Mock private PeriodoContableResolver periodoResolver;
 
     @InjectMocks private AsientoContableServiceImpl service;
 
@@ -99,8 +101,8 @@ class ComprobanteOrigenFondosTest {
     void setUp() {
         PeriodoContableEntity periodo = new PeriodoContableEntity();
         periodo.setId(10L);
-        when(periodoRepo.findByEmpresaIdAndEstado(EMPRESA_ID, "ABIERTO"))
-                .thenReturn(Optional.of(periodo));
+        // Desde V171 el período sale de la fecha del documento.
+        when(periodoResolver.resolver(eq(EMPRESA_ID), any())).thenReturn(periodo);
         when(queryRepo.siguienteNumeroComprobante(eq(EMPRESA_ID), anyString()))
                 .thenReturn("CE-000001");
         when(queryRepo.obtenerDetalles(anyLong())).thenReturn(new ArrayList<>());

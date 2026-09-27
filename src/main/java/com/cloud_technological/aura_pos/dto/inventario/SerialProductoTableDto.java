@@ -13,5 +13,9 @@ public class SerialProductoTableDto {
     private String sucursalNombre;
     private String serial;
     private String estado;
+    private java.math.BigDecimal costo;
+    private java.time.LocalDateTime fechaIngreso;
+    private java.time.LocalDate garantiaClienteHasta;
+    private String compraNumero;
     private long totalRows;
 }

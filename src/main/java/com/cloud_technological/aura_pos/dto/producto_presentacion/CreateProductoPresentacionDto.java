@@ -20,6 +20,8 @@ public class CreateProductoPresentacionDto {
     private BigDecimal factorConversion;
     private Boolean esDefaultCompra;
     private Boolean esDefaultVenta;
+    /** false = solo para comprar: el POS no la ofrece. */
+    private Boolean seVende = true;
     @NotNull(message = "El precio es obligatorio")
     private BigDecimal precio;
     @NotNull(message = "El costo es obligatorio")

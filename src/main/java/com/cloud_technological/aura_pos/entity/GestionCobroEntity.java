@@ -46,6 +46,17 @@ public class GestionCobroEntity {
     @Column(name = "monto_prometido", precision = 15, scale = 2)
     private BigDecimal montoPrometido;
 
+    /** PENDIENTE | CUMPLIDA | INCUMPLIDA | CANCELADA; null si no es promesa (V168). */
+    @Column(name = "estado_promesa", length = 12)
+    private String estadoPromesa;
+
+    /** Lo abonado dentro del plazo de la promesa, según la última evaluación. */
+    @Column(name = "monto_pagado_promesa", precision = 15, scale = 2)
+    private BigDecimal montoPagadoPromesa;
+
+    @Column(name = "promesa_resuelta_at")
+    private LocalDateTime promesaResueltaAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id")
     private UsuarioEntity usuario;

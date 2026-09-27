@@ -33,10 +33,14 @@ public enum ConceptoContable {
     RETEICA_PRACTICADA("2368", "ReteICA practicada", "23"),
 
     // ── Retenciones que le practican a la empresa (anticipo: activo) ──────
-    RETEFUENTE_ASUMIDA("1355", "Retención en la fuente que nos practican", "13"),
+    // Subcuentas de la 1355: cada declaración descuenta la suya.
+    RETEFUENTE_ASUMIDA("135515", "Retención en la fuente que nos practican", "13"),
+    RETEIVA_ASUMIDA("135517", "ReteIVA que nos practican", "13"),
+    RETEICA_ASUMIDA("135518", "ReteICA que nos practican", "13"),
 
     // ── Disponible / tesorería ────────────────────────────────────────────
-    CAJA("1105", "Caja", "11"),
+    // 110505 Caja general: la 1105 agrupa la caja general y las cajas menores.
+    CAJA("110505", "Caja general", "11"),
     BANCOS("1110", "Bancos", "11"),
 
     // ── Financiación ──────────────────────────────────────────────────────
@@ -92,6 +96,14 @@ public enum ConceptoContable {
      * renta la decide el contador, no el motor.
      */
     IVA_ASUMIDO_RETIRO("529505", "IVA asumido en retiro de inventario", "5"),
+
+    // ── Consumo interno (el negocio usa su propio inventario) ─────────────
+    /**
+     * Cuenta del costo cuando el concepto del consumo interno no trae la suya.
+     * Admite gasto (5) y propiedad, planta y equipo (15): retirar una
+     * herramienta para usarla en el local es un activo, no un gasto.
+     */
+    GASTO_CONSUMO_INTERNO("5195", "Consumo interno de inventario", "5", "15"),
 
     // ── Devengo (E6) ──────────────────────────────────────────────────────
     ANTICIPOS_CLIENTES("2805", "Anticipos recibidos de clientes", "28"),

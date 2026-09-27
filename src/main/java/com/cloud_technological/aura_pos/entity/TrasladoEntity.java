@@ -36,6 +36,15 @@ public class TrasladoEntity {
     @JoinColumn(name = "sucursal_destino_id")
     private SucursalEntity sucursalDestino;
 
+    /** El traslado ahora es entre bodegas; pueden ser de la misma sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_origen_id")
+    private BodegaEntity bodegaOrigen;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_destino_id")
+    private BodegaEntity bodegaDestino;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id")
     private UsuarioEntity usuario;

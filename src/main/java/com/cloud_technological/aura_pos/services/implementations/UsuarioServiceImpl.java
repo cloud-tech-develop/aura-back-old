@@ -142,6 +142,28 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     @Override
     @Transactional
+    public UsuarioDto actualizarPropio(Integer id, UpdateUsuarioDto dto, Integer empresaId) {
+        UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));
+
+        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+            usuario.setPassword(passwordEncoder.encode(dto.getPassword()));
+        }
+        if (dto.getPinAccesoRapido() != null && !dto.getPinAccesoRapido().isBlank()) {
+            usuario.setPinAccesoRapido(passwordEncoder.encode(dto.getPinAccesoRapido()));
+        }
+
+        // Solo contacto en el tercero; el mapper de usuario no se usa porque
+        // pondría en null (o cambiaría) el rol, el estado y el username.
+        TerceroEntity tercero = usuario.getTercero();
+        usuarioMapper.updateTerceroFromUpdateDto(dto, tercero);
+        terceroRepo.save(tercero);
+
+        return mapToDtoCompleto(usuarioRepo.save(usuario));
+    }
+
+    @Override
+    @Transactional
     public void desactivar(Integer id, Integer empresaId) {
         UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));

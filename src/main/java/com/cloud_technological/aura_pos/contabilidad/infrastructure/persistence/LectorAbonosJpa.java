@@ -30,8 +30,12 @@ public class LectorAbonosJpa implements LectorAbonos {
                         "Abono de cobro #" + abonoId + " no encontrado para contabilizar"));
         Long terceroId = abono.getCuentaCobrar() != null && abono.getCuentaCobrar().getTercero() != null
                 ? abono.getCuentaCobrar().getTercero().getId() : null;
+        // Las retenciones que acompañan al pago van en su mismo asiento (V181).
+        java.util.List<Retencion> retenciones = abonoCobrarRepo.findByAbonoOrigenId(abonoId).stream()
+                .map(r -> new Retencion(r.getMetodoPago(), r.getMonto()))
+                .toList();
         return new AbonoContable(LocalDate.now(), abono.getMonto(), terceroId,
-                abono.getMetodoPago(), null, abono.getCuentaContableId());
+                abono.getMetodoPago(), null, abono.getCuentaContableId(), retenciones);
     }
 
     @Override

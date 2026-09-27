@@ -21,4 +21,11 @@ public class ValidacionCreditoDto {
     private int  diasMoraMaximo;
     private int  diasMoraTolerancia;
     private String estadoCredito;
+
+    /** Aprobación vigente que permite pasar el cupo; la venta la consume. */
+    private Long solicitudAutorizadaId;
+    /** Solicitud ya enviada y aún sin respuesta: el POS la sigue esperando. */
+    private Long solicitudPendienteId;
+    /** "Autorizado por X hasta las HH:mm". */
+    private String autorizacion;
 }

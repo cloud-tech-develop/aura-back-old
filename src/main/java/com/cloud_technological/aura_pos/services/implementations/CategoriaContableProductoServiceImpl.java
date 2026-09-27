@@ -68,18 +68,49 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
     @Override
     @Transactional
     public void seedDefaults(Integer empresaId) {
-        if (repo.findByEmpresaIdAndNombre(empresaId, "General").isPresent()) {
-            return;
+        if (repo.findByEmpresaIdAndNombre(empresaId, "General").isEmpty()) {
+            repo.save(CategoriaContableProductoEntity.builder()
+                    .empresaId(empresaId)
+                    .nombre("General")
+                    .tipo("BIEN")
+                    .cuentaIngresoId(idCuenta(empresaId, "4135"))
+                    .cuentaInventarioId(idCuenta(empresaId, "1435"))
+                    .cuentaCostoId(idCuenta(empresaId, "6135"))
+                    .activo(true)
+                    .build());
         }
-        repo.save(CategoriaContableProductoEntity.builder()
-                .empresaId(empresaId)
-                .nombre("General")
-                .tipo("BIEN")
-                .cuentaIngresoId(idCuenta(empresaId, "4135"))
-                .cuentaInventarioId(idCuenta(empresaId, "1435"))
-                .cuentaCostoId(idCuenta(empresaId, "6135"))
-                .activo(true)
-                .build());
+
+        // Materias primas e insumos de receta: descargan su propio inventario
+        // (1405) y no el de mercancías. Si el plan no tiene la 1405, cae a la
+        // 1435 para no dejar la categoría sin cuenta.
+        if (repo.findByEmpresaIdAndNombre(empresaId, "Insumos").isEmpty()) {
+            Long inventario = idCuenta(empresaId, "1405");
+            repo.save(CategoriaContableProductoEntity.builder()
+                    .empresaId(empresaId)
+                    .nombre("Insumos")
+                    .tipo("INSUMO")
+                    .cuentaIngresoId(idCuenta(empresaId, "4135"))
+                    .cuentaInventarioId(inventario != null ? inventario : idCuenta(empresaId, "1435"))
+                    .cuentaCostoId(idCuenta(empresaId, "6135"))
+                    .activo(true)
+                    .build());
+        }
+    }
+
+    @Override
+    public void validarCuentasProducto(Integer empresaId, Long categoriaContableId, Long cuentaIngresoId,
+            Long cuentaCostoId, Long cuentaInventarioId) {
+        if (categoriaContableId != null) {
+            repo.findByIdAndEmpresaId(categoriaContableId, empresaId)
+                    .filter(c -> Boolean.TRUE.equals(c.getActivo()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "La categoría contable no existe o está inactiva."));
+        }
+        validar(empresaId, cuentaIngresoId, "de ingreso", "4");
+        validar(empresaId, cuentaCostoId, "de costo", "5", "6", "7");
+        // En el producto se exige inventario (14): un override es una excepción
+        // puntual y no hay razón para mandarlo a otra clase del activo.
+        validar(empresaId, cuentaInventarioId, "de inventario", "14");
     }
 
     /** Guardarraíles (ADR-006): cada cuenta en su clase PUC. */

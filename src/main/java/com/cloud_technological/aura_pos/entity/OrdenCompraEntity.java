@@ -28,6 +28,10 @@ public class OrdenCompraEntity {
     @Column(name = "sucursal_id", nullable = false)
     private Integer sucursalId;
 
+    /** Bodega que va a recibir la mercancía (V172). */
+    @Column(name = "bodega_id")
+    private Long bodegaId;
+
     @Column(name = "proveedor_id", nullable = false)
     private Long proveedorId;
 

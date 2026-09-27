@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.entity;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -32,6 +33,12 @@ public class LoteEntity {
     @JoinColumn(name = "sucursal_id")
     private SucursalEntity sucursal;
 
+    /** Dónde vive el stock (V172). Si el documento no la dice, es la
+     *  bodega principal de la sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_id")
+    private BodegaEntity bodega;
+
     @Column(name = "codigo_lote")
     private String codigoLote;
 
@@ -45,4 +52,17 @@ public class LoteEntity {
     private BigDecimal costoUnitario;
 
     private Boolean activo;
+
+    @Column(name = "empresa_id")
+    private Integer empresaId;
+
+    @Column(name = "fecha_fabricacion")
+    private LocalDate fechaFabricacion;
+
+    /** Línea de compra que creó el lote (la primera, si otra compra suma después). */
+    @Column(name = "compra_detalle_id")
+    private Long compraDetalleId;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 }

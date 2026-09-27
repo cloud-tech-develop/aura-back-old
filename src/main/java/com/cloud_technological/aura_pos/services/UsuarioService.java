@@ -28,5 +28,12 @@ public interface UsuarioService {
 
     UsuarioDto actualizar(Integer id, UpdateUsuarioDto dto, Integer empresaId);
 
+    /**
+     * Lo que un usuario sin rol de administrador puede cambiar de sí mismo:
+     * contraseña, PIN y datos de contacto. Nunca su rol, estado, sucursales ni
+     * username.
+     */
+    UsuarioDto actualizarPropio(Integer id, UpdateUsuarioDto dto, Integer empresaId);
+
     void desactivar(Integer id, Integer empresaId);
 }
