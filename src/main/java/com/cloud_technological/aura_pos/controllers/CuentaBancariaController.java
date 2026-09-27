@@ -33,6 +33,21 @@ public class CuentaBancariaController {
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, data));
     }
 
+    /** Lo que recibiría una cuenta nueva si no se digita código. Antes de /{id}. */
+    @GetMapping("/siguiente-codigo")
+    public ResponseEntity<ApiResponse<String>> siguienteCodigo() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                cuentaBancariaService.siguienteCodigo(empresaId)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<CuentaBancariaDto>> obtener(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                cuentaBancariaService.obtener(id, empresaId)));
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<CuentaBancariaDto>> crear(
             @Valid @RequestBody CreateCuentaBancariaDto dto) {

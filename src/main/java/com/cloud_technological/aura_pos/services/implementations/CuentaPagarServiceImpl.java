@@ -207,6 +207,8 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
                         dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
                         "abono a la cuenta por pagar",
                         cajaOtroDia));
+        origenFondosService.exigirSaldoDisponible(empresaId, origen, dto.getMonto(),
+                "abono a la cuenta por pagar", null, null);
 
         // Crear abono
         AbonoPagarEntity abono = AbonoPagarEntity.builder()

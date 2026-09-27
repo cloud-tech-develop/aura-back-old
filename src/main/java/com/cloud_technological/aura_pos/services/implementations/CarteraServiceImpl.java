@@ -55,6 +55,12 @@ public class CarteraServiceImpl implements CarteraService {
     @Autowired private EmpresaJPARepository empresaRepo;
     @Autowired private UsuarioJPARepository usuarioRepo;
     @Autowired private CuentaCobrarJPARepository cuentaCobrarRepo;
+    @Autowired @org.springframework.context.annotation.Lazy
+    private com.cloud_technological.aura_pos.services.implementations.PromesaPagoService promesaPagoService;
+    @Autowired @org.springframework.context.annotation.Lazy
+    private ReglaCreditoService reglaCreditoService;
+    @Autowired @org.springframework.context.annotation.Lazy
+    private SolicitudCreditoService solicitudCreditoService;
     @Autowired private ObjectMapper objectMapper;
 
     // ─── Dashboard ────────────────────────────────────────────────────────────
@@ -210,8 +216,22 @@ public class CarteraServiceImpl implements CarteraService {
             resultado.setExcedente(excedente);
 
             if (credito.getRequiereAutorizacion()) {
+                var aprobada = solicitudCreditoService.aprobadaVigente(terceroId, monto, empresaId);
+                if (aprobada.isPresent()) {
+                    // Un administrador ya autorizó pasar el cupo: la venta la consume.
+                    var s = aprobada.get();
+                    resultado.setPermitido(true);
+                    resultado.setRequiereAutorizacion(false);
+                    resultado.setSolicitudAutorizadaId(s.getId());
+                    resultado.setAutorizacion("Autorizado por "
+                        + (s.getAprobadoPor() != null ? s.getAprobadoPor().getUsername() : "un administrador")
+                        + " hasta las " + s.getVigenteHasta().format(java.time.format.DateTimeFormatter.ofPattern("hh:mm a")));
+                    return resultado;
+                }
                 resultado.setPermitido(false);
                 resultado.setRequiereAutorizacion(true);
+                solicitudCreditoService.pendienteDe(terceroId, empresaId)
+                    .ifPresent(p -> resultado.setSolicitudPendienteId(p.getId()));
                 resultado.setMotivoBloqueo("Venta supera el cupo disponible en $" + excedente.setScale(0, RoundingMode.HALF_UP) + ". Requiere autorización.");
             } else {
                 resultado.setPermitido(false);
@@ -257,6 +277,12 @@ public class CarteraServiceImpl implements CarteraService {
         // ── Mora actual (200 pts, penalización) ──────────────────────────────
         int ptsMora = Math.max(0, 200 - (diasMora * 5));
 
+        // ── Promesas incumplidas en 180 días: 50 pts cada una, hasta 150 ─────
+        int ptsPromesas = Math.min(150, queryRepo.promesasIncumplidasRecientes(terceroId, empresaId) * 50);
+
+        // ── Acuerdos de pago incumplidos en un año: 100 pts cada uno, hasta 200 ─
+        int ptsAcuerdos = Math.min(200, queryRepo.acuerdosIncumplidosRecientes(terceroId, empresaId) * 100);
+
         // ── Antigüedad (150 pts) ─────────────────────────────────────────────
         int ptsAntiguedad = 75; // default 75 si no hay historial suficiente
         long eventosHistorial = historialRepo.countByTerceroIdAndEmpresaIdAndTipoEvento(
@@ -264,7 +290,7 @@ public class CarteraServiceImpl implements CarteraService {
         if (eventosHistorial > 0) ptsAntiguedad = Math.min(150, pagosATiempo * 10 + 50);
 
         int scoreAnterior = credito.getScoreCrediticio();
-        int scoreNuevo = ptsHistorial + ptsUtilizacion + ptsMora + ptsAntiguedad;
+        int scoreNuevo = ptsHistorial + ptsUtilizacion + ptsMora + ptsAntiguedad - ptsPromesas - ptsAcuerdos;
         scoreNuevo = Math.max(0, Math.min(1000, scoreNuevo));
 
         credito.setScoreCrediticio(scoreNuevo);
@@ -294,100 +320,8 @@ public class CarteraServiceImpl implements CarteraService {
     // ─── Motor de reglas automáticas ─────────────────────────────────────────
 
     @Override
-    @Transactional
     public void evaluarReglasAutomaticas(Long terceroId, Integer empresaId, String evento) {
-        TerceroCreditoEntity credito = creditoRepo.findByTerceroIdAndEmpresaId(terceroId, empresaId)
-            .orElse(null);
-        if (credito == null) return;
-
-        List<ReglaCreditoEntity> reglas = reglaRepo.findByEmpresaIdAndActivoTrueAndEventoOrderByOrdenAsc(empresaId, evento);
-        if (reglas.isEmpty()) return;
-
-        int pagosATiempo = queryRepo.pagosConsecutivosATiempo(terceroId, empresaId);
-        int diasMora = queryRepo.diasMoraMaxima(terceroId, empresaId);
-
-        for (ReglaCreditoEntity regla : reglas) {
-            try {
-                Map<String, Object> condicion = objectMapper.readValue(
-                    regla.getCondicionJson(), new TypeReference<Map<String, Object>>() {});
-                Map<String, Object> accion = objectMapper.readValue(
-                    regla.getAccionJson(), new TypeReference<Map<String, Object>>() {});
-
-                if (!cumpleCondicion(condicion, credito, pagosATiempo, diasMora)) continue;
-
-                aplicarAccion(regla, accion, credito, empresaId);
-
-            } catch (Exception ignored) {
-                // Si la regla tiene JSON inválido, la omitimos
-            }
-        }
-    }
-
-    private boolean cumpleCondicion(Map<String, Object> cond, TerceroCreditoEntity credito,
-                                     int pagosATiempo, int diasMora) {
-        if (cond.containsKey("pagos_consecutivos_a_tiempo")) {
-            int requeridos = ((Number) cond.get("pagos_consecutivos_a_tiempo")).intValue();
-            if (pagosATiempo < requeridos) return false;
-        }
-        if (cond.containsKey("score_minimo")) {
-            int scoreMin = ((Number) cond.get("score_minimo")).intValue();
-            if (credito.getScoreCrediticio() < scoreMin) return false;
-        }
-        if (cond.containsKey("sin_mora_dias")) {
-            int sinMoraDias = ((Number) cond.get("sin_mora_dias")).intValue();
-            if (diasMora > sinMoraDias) return false;
-        }
-        if (cond.containsKey("estado_credito")) {
-            String estadoReq = (String) cond.get("estado_credito");
-            if (!estadoReq.equals(credito.getEstadoCredito())) return false;
-        }
-        return true;
-    }
-
-    @Transactional
-    private void aplicarAccion(ReglaCreditoEntity regla, Map<String, Object> accion,
-                                TerceroCreditoEntity credito, Integer empresaId) {
-        BigDecimal cupoAnterior = credito.getCupoCreditoActual();
-
-        switch (regla.getTipo()) {
-            case "AUMENTO_CUPO" -> {
-                if (accion.containsKey("aumentar_pct")) {
-                    double pct = ((Number) accion.get("aumentar_pct")).doubleValue();
-                    BigDecimal incremento = cupoAnterior.multiply(BigDecimal.valueOf(pct / 100));
-                    BigDecimal cupoNuevo = cupoAnterior.add(incremento);
-
-                    if (accion.containsKey("cupo_maximo")) {
-                        BigDecimal maximo = BigDecimal.valueOf(((Number) accion.get("cupo_maximo")).doubleValue());
-                        cupoNuevo = cupoNuevo.min(maximo);
-                    }
-
-                    credito.setCupoCreditoActual(cupoNuevo);
-                    creditoRepo.save(credito);
-                    guardarHistorial(credito.getEmpresa(), credito.getTercero(), "AUMENTO_CUPO",
-                        cupoAnterior, cupoNuevo, null, null,
-                        "Motor automático — Regla: " + regla.getNombre(), null);
-                }
-            }
-            case "REDUCCION_CUPO" -> {
-                if (accion.containsKey("reducir_pct")) {
-                    double pct = ((Number) accion.get("reducir_pct")).doubleValue();
-                    BigDecimal reduccion = cupoAnterior.multiply(BigDecimal.valueOf(pct / 100));
-                    BigDecimal cupoNuevo = cupoAnterior.subtract(reduccion).max(BigDecimal.ZERO);
-                    credito.setCupoCreditoActual(cupoNuevo);
-                    creditoRepo.save(credito);
-                    guardarHistorial(credito.getEmpresa(), credito.getTercero(), "REDUCCION_CUPO",
-                        cupoAnterior, cupoNuevo, null, null,
-                        "Motor automático — Regla: " + regla.getNombre(), null);
-                }
-            }
-            case "BLOQUEO" -> {
-                credito.setEstadoCredito("BLOQUEADO");
-                creditoRepo.save(credito);
-                guardarHistorial(credito.getEmpresa(), credito.getTercero(), "BLOQUEO",
-                    null, null, null, null,
-                    "Motor automático — Regla: " + regla.getNombre(), null);
-            }
-        }
+        reglaCreditoService.evaluarCliente(terceroId, empresaId, evento, false);
     }
 
     // ─── Gestión de cobros ────────────────────────────────────────────────────
@@ -401,17 +335,35 @@ public class CarteraServiceImpl implements CarteraService {
             .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
         UsuarioEntity usuario = usuarioRepo.findById(usuarioId.intValue()).orElse(null);
 
+        boolean promesa = "PROMESA_PAGO".equals(dto.getResultado());
+        if (promesa) {
+            if (dto.getFechaPromesaPago() == null || dto.getFechaPromesaPago().isBefore(java.time.LocalDate.now()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "La promesa necesita una fecha de hoy en adelante");
+            if (dto.getMontoPrometido() == null || dto.getMontoPrometido().signum() <= 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "La promesa necesita el monto que el cliente va a pagar");
+            if (dto.getCuentaCobrarId() != null) {
+                var cuentaPromesa = cuentaCobrarRepo.findByIdAndEmpresaId(dto.getCuentaCobrarId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por cobrar no encontrada"));
+                if (cuentaPromesa.getSaldoPendiente() == null || cuentaPromesa.getSaldoPendiente().signum() <= 0)
+                    throw new GlobalException(HttpStatus.BAD_REQUEST, "Esa factura ya no tiene saldo: no hay nada que prometer");
+            }
+            // Una promesa nueva deja sin efecto la que estaba pendiente: el cliente renegoció.
+            promesaPagoService.cancelarPendientes(dto.getTerceroId(), empresaId);
+        }
+
         GestionCobroEntity gestion = GestionCobroEntity.builder()
             .empresa(empresa)
             .tercero(tercero)
             .cuentaCobrar(dto.getCuentaCobrarId() != null
-                ? cuentaCobrarRepo.findById(dto.getCuentaCobrarId()).orElse(null)
+                ? cuentaCobrarRepo.findByIdAndEmpresaId(dto.getCuentaCobrarId(), empresaId).orElse(null)
                 : null)
             .tipoGestion(dto.getTipoGestion())
             .resultado(dto.getResultado())
             .nota(dto.getNota())
-            .fechaPromesaPago(dto.getFechaPromesaPago())
-            .montoPrometido(dto.getMontoPrometido())
+            .fechaPromesaPago(promesa ? dto.getFechaPromesaPago() : null)
+            .montoPrometido(promesa ? dto.getMontoPrometido() : null)
+            .estadoPromesa(promesa ? "PENDIENTE" : null)
+            .montoPagadoPromesa(promesa ? java.math.BigDecimal.ZERO : null)
             .usuario(usuario)
             .build();
 
@@ -421,30 +373,13 @@ public class CarteraServiceImpl implements CarteraService {
     // ─── Solicitudes de autorización ─────────────────────────────────────────
 
     @Override
-    @Transactional
     public void aprobarSolicitud(Long solicitudId, Integer empresaId, Long usuarioId) {
-        var solicitud = solicitudRepo.findById(solicitudId)
-            .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Solicitud no encontrada"));
-        if (!"PENDIENTE".equals(solicitud.getEstado()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "La solicitud ya fue procesada");
-
-        UsuarioEntity usuario = usuarioRepo.findById(usuarioId.intValue()).orElse(null);
-        solicitud.setEstado("APROBADA");
-        solicitud.setAprobadoPor(usuario);
-        solicitudRepo.save(solicitud);
+        solicitudCreditoService.aprobar(solicitudId, null, empresaId, usuarioId);
     }
 
     @Override
-    @Transactional
     public void rechazarSolicitud(Long solicitudId, String motivo, Integer empresaId, Long usuarioId) {
-        var solicitud = solicitudRepo.findById(solicitudId)
-            .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Solicitud no encontrada"));
-        if (!"PENDIENTE".equals(solicitud.getEstado()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "La solicitud ya fue procesada");
-
-        solicitud.setEstado("RECHAZADA");
-        solicitud.setMotivoRechazo(motivo);
-        solicitudRepo.save(solicitud);
+        solicitudCreditoService.rechazar(solicitudId, motivo, empresaId, usuarioId);
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

@@ -17,6 +17,9 @@ public class CreateObsequioDto {
     @NotNull(message = "La sucursal es obligatoria")
     private Long sucursalId;
 
+    /** Bodega de la que sale o a la que entra. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
+
     /** Quién recibe. Opcional: una muestra en punto de venta no siempre lo tiene. */
     private Long terceroId;
 

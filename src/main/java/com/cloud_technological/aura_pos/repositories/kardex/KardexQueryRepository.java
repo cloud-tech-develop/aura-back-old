@@ -191,6 +191,7 @@ public class KardexQueryRepository {
         sql.append(desglose("devoluciones", Familia.DEVOLUCIONES, params));
         sql.append(desglose("mermas", Familia.MERMAS, params));
         sql.append(desglose("obsequios", Familia.OBSEQUIOS, params));
+        sql.append(desglose("consumos_internos", Familia.CONSUMOS_INTERNOS, params));
         sql.append(desglose("traslados", Familia.TRASLADOS, params));
         sql.append(desglose("anulaciones", Familia.ANULACIONES, params));
         sql.append(desglose("reconteos", Familia.RECONTEOS, params));
@@ -434,14 +435,16 @@ public class KardexQueryRepository {
                 p.id AS producto_id,
                 p.nombre AS producto_nombre,
                 p.sku AS producto_sku,
-                i.stock_actual,
-                i.stock_minimo,
-                CASE WHEN i.stock_actual <= i.stock_minimo THEN true ELSE false END AS stock_critico
+                SUM(i.stock_actual) AS stock_actual,
+                MAX(i.stock_minimo)  AS stock_minimo,
+                CASE WHEN SUM(i.stock_actual) <= MAX(i.stock_minimo) THEN true ELSE false END AS stock_critico
             FROM inventario i
             INNER JOIN sucursal s ON i.sucursal_id = s.id
             INNER JOIN producto p ON i.producto_id = p.id
             WHERE s.empresa_id = :empresaId
             AND p.id = :productoId
+            -- El saldo vive por bodega (V172): la sucursal es la suma de las suyas.
+            GROUP BY s.id, s.nombre, p.id, p.nombre, p.sku
             ORDER BY s.nombre
         """;
         MapSqlParameterSource params = new MapSqlParameterSource();

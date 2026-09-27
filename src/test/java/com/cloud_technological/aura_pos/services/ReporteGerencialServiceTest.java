@@ -56,6 +56,8 @@ class ReporteGerencialServiceTest {
     @Mock private com.cloud_technological.aura_pos.repositories.kardex.KardexQueryRepository kardexRepo;
     @Mock private IEmpresaService empresaService;
     @Mock private SecurityUtils securityUtils;
+    @Mock private com.cloud_technological.aura_pos.services.implementations.CarritoAbandonadoService carritos;
+    @Mock private DeclaracionesService declaraciones;
 
     @InjectMocks private ReporteGerencialService service;
 
@@ -76,6 +78,11 @@ class ReporteGerencialServiceTest {
                 .thenThrow(new RuntimeException("sin gastos"));
         when(kardexRepo.movimientoPorFamilia(anyInt(), any(), any()))
                 .thenThrow(new RuntimeException("sin inventario"));
+        when(carritos.reporte(anyInt(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("sin carritos"));
+        when(declaraciones.iva(anyInt(), any(), any())).thenThrow(new RuntimeException("sin iva"));
+        when(declaraciones.retencion(anyInt(), any(), any())).thenThrow(new RuntimeException("sin retención"));
+        when(carteraRepo.recaudoPorMedio(anyInt(), any(), any(), any())).thenReturn(List.of());
     }
 
     private AuditoriaResultadoDto auditoria(List<HallazgoDto> hallazgos, int alta,
@@ -326,5 +333,73 @@ class ReporteGerencialServiceTest {
         // reporte dice "hay deuda técnica ya diagnosticada".
         assertTrue(t.contains("anteriores a las correcciones"));
         assertTrue(t.contains("ya están diagnosticados"));
+    }
+
+    // ── Secciones nuevas (2026-09-27) ──────────────────────────────────
+
+    @Test
+    void lasSeccionesNuevasNoTumbanElReporteSiSuFuenteFalla() throws Exception {
+        when(auditoriaService.auditar(any())).thenReturn(auditoria(List.of(), 0, BigDecimal.ZERO));
+
+        String t = texto(service.generarPdf(new AuditoriaFiltroDto()));
+
+        assertTrue(t.contains("2. Ventas que no se concretaron"));
+        assertTrue(t.contains("No se pudo leer el registro de carritos abandonados"));
+        assertTrue(t.contains("7. Impuestos del período"));
+        assertTrue(t.contains("No se pudieron calcular los impuestos"));
+        assertTrue(t.contains("8. Qué no cuadra"));
+    }
+
+    @Test
+    void traeCarritosEstadosDeCuentaRecaudoEImpuestos() throws Exception {
+        when(auditoriaService.auditar(any())).thenReturn(auditoria(List.of(), 0, BigDecimal.ZERO));
+
+        var r = new com.cloud_technological.aura_pos.dto.carrito.CarritoAbandonadoDtos.Reporte();
+        r.setCarritos(3);
+        r.setProductos(7);
+        r.setValor(new BigDecimal("48500"));
+        r.setMinutosPromedio(new BigDecimal("12.5"));
+        var pa = new com.cloud_technological.aura_pos.dto.carrito.CarritoAbandonadoDtos.ProductoAbandonado();
+        pa.setNombre("Cemento gris 50 kg");
+        pa.setCarritos(2);
+        pa.setCantidad(new BigDecimal("3"));
+        pa.setValor(new BigDecimal("36000"));
+        r.getTopProductos().add(pa);
+        org.mockito.Mockito.doReturn(r).when(carritos).reporte(anyInt(), any(), any(), any(), any());
+
+        var cxc = new com.cloud_technological.aura_pos.dto.reportes.ReporteCarteraResumenDto();
+        cxc.setSaldoPendiente(new BigDecimal("500000"));
+        var tercero = new com.cloud_technological.aura_pos.dto.reportes.ReporteCarteraTerceroDto();
+        tercero.setTerceroNombre("Constructora Andina");
+        tercero.setDocumentos(2);
+        tercero.setSaldoPendiente(new BigDecimal("500000"));
+        tercero.setCorriente(new BigDecimal("200000"));
+        tercero.setDiasMoraMax(45);
+        cxc.getTerceros().add(tercero);
+        org.mockito.Mockito.doReturn(cxc).when(carteraRepo).resumen(any(), anyInt());
+        org.mockito.Mockito.doReturn(List.of(
+                new ReporteCarteraQueryRepository.MedioRecaudo("TRANSFERENCIA", new BigDecimal("1139000"), 1),
+                new ReporteCarteraQueryRepository.MedioRecaudo("RETEFUENTE", new BigDecimal("20000"), 1)))
+                .when(carteraRepo).recaudoPorMedio(anyInt(), any(), any(), any());
+
+        var iva = new com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto();
+        var sGen = new com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto.Seccion(
+                "IVA generado", false, false);
+        sGen.setTotal(new BigDecimal("1900000"));
+        iva.getSecciones().add(sGen);
+        iva.setResultado(new BigDecimal("1200000"));
+        iva.setResultadoEtiqueta("Saldo a pagar");
+        org.mockito.Mockito.doReturn(iva).when(declaraciones).iva(anyInt(), any(), any());
+
+        String t = texto(service.generarPdf(new AuditoriaFiltroDto()));
+
+        assertTrue(t.contains("Cemento gris 50 kg"));
+        assertTrue(t.contains("48.500") || t.contains("48,500"));
+        assertTrue(t.contains("Quién le debe más"));
+        assertTrue(t.contains("Constructora Andina"));
+        assertTrue(t.contains("45 días"));
+        assertTrue(t.contains("Retención en la fuente (se la practicaron)"));
+        assertTrue(t.contains("no entró como dinero"));
+        assertTrue(t.contains("IVA: saldo a pagar"));
     }
 }

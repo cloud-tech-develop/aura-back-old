@@ -1,6 +1,8 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -11,6 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent;
 import com.cloud_technological.aura_pos.dto.traslado_fondos.CreateTrasladoFondosDto;
+import com.cloud_technological.aura_pos.dto.traslado_fondos.MovimientoFondoDto;
+import com.cloud_technological.aura_pos.dto.traslado_fondos.ReembolsoFondoDto;
+import com.cloud_technological.aura_pos.event.ContabilidadReversaEvent;
+import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
+import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.dto.traslado_fondos.TrasladoFondosDto;
 import com.cloud_technological.aura_pos.entity.MovimientoCajaEntity;
 import com.cloud_technological.aura_pos.entity.TrasladoFondosEntity;
@@ -55,6 +63,8 @@ public class TrasladoFondosServiceImpl implements TrasladoFondosService {
     private final OrigenFondosService origenFondosService;
     private final TesoreriaService tesoreriaService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PeriodoContableResolver periodoResolver;
+    private final AsientoContableQueryRepository asientoQueryRepository;
 
     @Override
     @Transactional
@@ -69,6 +79,16 @@ public class TrasladoFondosServiceImpl implements TrasladoFondosService {
         // origen ya movido.
         OrigenFondosService.OrigenFondos origen = resolverExtremo(empresaId, dto, true);
         OrigenFondosService.OrigenFondos destino = resolverExtremo(empresaId, dto, false);
+
+        // El asiento se genera tras el commit: si el mes está cerrado fallaría
+        // allá, con el arqueo y el banco ya movidos y sin asiento. Se pregunta
+        // antes de tocar nada.
+        periodoResolver.resolver(empresaId, fecha);
+
+        // Consignar el efectivo de la caja menor o devolverlo al banco: no se
+        // puede sacar de ella más de lo que tiene.
+        origenFondosService.exigirSaldoDisponible(empresaId, origen, dto.getMonto(),
+                "traslado", null, null);
 
         TrasladoFondosEntity traslado = TrasladoFondosEntity.builder()
                 .empresaId(empresaId)
@@ -124,6 +144,136 @@ public class TrasladoFondosServiceImpl implements TrasladoFondosService {
                         empresaId, d, h);
 
         return traslados.stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    // ── Reembolso de caja menor ─────────────────────────────────────────────
+
+    @Override
+    public ReembolsoFondoDto reembolso(Integer empresaId, Long cuentaId) {
+        PlanCuentaEntity cuenta = planCuentaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                        "Cuenta contable no encontrada"));
+
+        List<TrasladoFondosEntity> reposiciones = trasladoRepository
+                .findByEmpresaIdAndDestinoCuentaIdAndEstadoAndConceptoInOrderByCreatedAtDesc(
+                        empresaId, cuentaId, TrasladoFondosEntity.ESTADO_CONFIRMADO,
+                        List.of(TrasladoFondosEntity.CONCEPTO_CONSTITUCION_CAJA_MENOR,
+                                TrasladoFondosEntity.CONCEPTO_REEMBOLSO_CAJA_MENOR));
+
+        // El valor fijo del fondo es lo que se constituyó; los reembolsos solo
+        // lo devuelven a ese valor.
+        BigDecimal fondoFijo = reposiciones.stream()
+                .filter(t -> TrasladoFondosEntity.CONCEPTO_CONSTITUCION_CAJA_MENOR.equals(t.getConcepto()))
+                .map(TrasladoFondosEntity::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal saldo = asientoQueryRepository.saldoDisponible(empresaId, cuentaId, null, null);
+        if (saldo == null) {
+            saldo = BigDecimal.ZERO;
+        }
+
+        TrasladoFondosEntity ultima = reposiciones.isEmpty() ? null : reposiciones.get(0);
+        List<MovimientoFondoDto> movimientos = asientoQueryRepository.movimientosFondoDesde(
+                empresaId, cuentaId, ultima != null ? ultima.getCreatedAt() : null);
+        BigDecimal salidas = movimientos.stream()
+                .map(MovimientoFondoDto::getCredito)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        ReembolsoFondoDto dto = new ReembolsoFondoDto();
+        dto.setCuentaId(cuenta.getId());
+        dto.setCuentaNombre(cuenta.getCodigo() + " — " + cuenta.getNombre());
+        dto.setFondoFijo(fondoFijo);
+        dto.setSaldoActual(saldo);
+        dto.setMontoSugerido(fondoFijo.subtract(saldo).max(BigDecimal.ZERO));
+        dto.setUltimaReposicion(ultima != null ? ultima.getFecha() : null);
+        dto.setTotalSalidas(salidas);
+        dto.setMovimientos(movimientos);
+        return dto;
+    }
+
+    // ── Anulación ───────────────────────────────────────────────────────────
+
+    /**
+     * Deshace el traslado sin borrarlo: saca los movimientos del arqueo de las
+     * cajas que siguen abiertas, devuelve la plata en el extracto de los bancos
+     * y reversa el asiento (el contraasiento cae en el período de hoy).
+     *
+     * <p>Una caja ya cerrada no se toca: su conteo físico ya se hizo con ese
+     * traslado adentro. Se corrige con "Corregir arqueo" del cierre, que es el
+     * único camino que deja rastro de quién y por qué.
+     */
+    @Override
+    @Transactional
+    public TrasladoFondosDto anular(Long id, Integer empresaId, Integer usuarioId, String motivo) {
+        TrasladoFondosEntity traslado = trasladoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                        "Traslado de fondos no encontrado"));
+        if (TrasladoFondosEntity.ESTADO_ANULADO.equals(traslado.getEstado())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El traslado ya está anulado");
+        }
+        if (motivo == null || motivo.trim().length() < 10) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Indique el motivo de la anulación (mínimo 10 caracteres)");
+        }
+
+        // El contraasiento cae hoy: el período de hoy tiene que admitirlo.
+        periodoResolver.resolver(empresaId, LocalDate.now());
+
+        // Anular una constitución le quita la plata a la caja menor: tiene que
+        // seguir teniéndola (no se puede devolver lo que ya se gastó).
+        if (TrasladoFondosEntity.TIPO_CUENTA.equals(traslado.getDestinoTipo())) {
+            origenFondosService.exigirSaldoDisponible(empresaId,
+                    new OrigenFondosService.OrigenFondos(OrigenFondosService.Tipo.CUENTA_CONTABLE,
+                            traslado.getDestinoCuentaId(), null),
+                    traslado.getMonto(), "anulación del traslado", null, null);
+        }
+
+        List<MovimientoCajaEntity> movimientos = movimientoCajaRepository
+                .findByOrigenTipoAndOrigenId(MovimientoCajaEntity.ORIGEN_TRASLADO_FONDOS, traslado.getId());
+        for (MovimientoCajaEntity m : movimientos) {
+            TurnoCajaEntity turno = m.getTurnoCaja();
+            if (turno != null && !"ABIERTA".equals(turno.getEstado())) {
+                String caja = turno.getCaja() != null ? turno.getCaja().getNombre() : "la caja";
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "El turno de " + caja + " que movió este traslado ya cerró. Corrija ese "
+                                + "cierre con \"Corregir arqueo\" en vez de anular el traslado");
+            }
+        }
+        movimientoCajaRepository.deleteAll(movimientos);
+
+        revertirBancos(traslado, empresaId, usuarioId);
+
+        traslado.setEstado(TrasladoFondosEntity.ESTADO_ANULADO);
+        traslado.setMotivoAnulacion(motivo.trim());
+        traslado.setAnuladoPor(usuarioId);
+        traslado.setAnuladoAt(LocalDateTime.now());
+        trasladoRepository.save(traslado);
+
+        eventPublisher.publishEvent(
+                new ContabilidadReversaEvent(TIPO_ORIGEN, traslado.getId(), empresaId, usuarioId));
+
+        return toDto(traslado);
+    }
+
+    /** Lo contrario de {@link #moverBancos}: el origen recibe, el destino entrega. */
+    private void revertirBancos(TrasladoFondosEntity traslado, Integer empresaId, Integer usuarioId) {
+        String referencia = "TF-" + traslado.getId() + "-ANULADO";
+        String detalle = "Anulación " + descripcion(traslado).toLowerCase();
+
+        if (TrasladoFondosEntity.TIPO_BANCO.equals(traslado.getDestinoTipo())
+                && traslado.getDestinoCuentaBancoId() != null) {
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId,
+                    new TesoreriaService.MovimientoDocumento(
+                            traslado.getDestinoCuentaBancoId(), true, traslado.getMonto(),
+                            detalle + " (salida)", null, referencia, TIPO_ORIGEN));
+        }
+        if (TrasladoFondosEntity.TIPO_BANCO.equals(traslado.getOrigenTipo())
+                && traslado.getOrigenCuentaBancoId() != null) {
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId,
+                    new TesoreriaService.MovimientoDocumento(
+                            traslado.getOrigenCuentaBancoId(), false, traslado.getMonto(),
+                            detalle + " (entrada)", null, referencia, TIPO_ORIGEN));
+        }
     }
 
     // ── Resolución de extremos ──────────────────────────────────────────────
@@ -322,6 +472,9 @@ public class TrasladoFondosServiceImpl implements TrasladoFondosService {
         dto.setUsuarioId(e.getUsuarioId());
         dto.setEstado(e.getEstado());
         dto.setCreatedAt(e.getCreatedAt());
+        dto.setMotivoAnulacion(e.getMotivoAnulacion());
+        dto.setAnuladoPor(e.getAnuladoPor());
+        dto.setAnuladoAt(e.getAnuladoAt());
         return dto;
     }
 

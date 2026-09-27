@@ -40,10 +40,16 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class ReconteoServiceImpl implements ReconteoService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
     private final ReconteoJPARepository reconteoJPARepository;
     private final ReconteoQueryRepository reconteoQueryRepository;
     private final InventarioJPARepository inventarioJPARepository;
     private final LoteJPARepository loteJPARepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
     private final SucursalJPARepository sucursalJPARepository;
     private final EmpresaJPARepository empresaRepository;
     private final UsuarioJPARepository usuarioJPARepository;
@@ -99,6 +105,9 @@ public class ReconteoServiceImpl implements ReconteoService {
         ReconteoEntity reconteo = new ReconteoEntity();
         reconteo.setEmpresa(empresa);
         reconteo.setSucursal(sucursal);
+        // Un conteo físico es de una bodega concreta: contar "la sucursal"
+        // mezclaría el saldo de la vitrina con el de la bodega de atrás.
+        reconteo.setBodega(bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId));
         reconteo.setEstado("BORRADOR");
         reconteo.setTipo(dto.getTipo() != null ? dto.getTipo() : "TOTAL");
         reconteo.setObservaciones(dto.getObservaciones());
@@ -171,6 +180,10 @@ public class ReconteoServiceImpl implements ReconteoService {
         UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Usuario no encontrado"));
 
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolver(reconteo.getBodega() != null ? reconteo.getBodega().getId() : null,
+                        reconteo.getSucursal().getId(), empresaId);
+
         for (ReconteoDetalleEntity detalle : reconteo.getDetalles()) {
             if (detalle.getStockContado() == null) continue;
 
@@ -179,9 +192,7 @@ public class ReconteoServiceImpl implements ReconteoService {
 
             // Actualizar inventario
             InventarioEntity inventario = inventarioJPARepository
-                    .findBySucursalIdAndProductoId(
-                            reconteo.getSucursal().getId().longValue(),
-                            detalle.getProducto().getId())
+                    .findByBodegaIdAndProductoId(bodega.getId(), detalle.getProducto().getId())
                     .orElse(null);
 
             if (inventario == null) continue;
@@ -193,11 +204,22 @@ public class ReconteoServiceImpl implements ReconteoService {
             inventario.setUpdatedAt(LocalDateTime.now());
             inventarioJPARepository.save(inventario);
 
-            // Actualizar lote si aplica
+            // Lotes: si se contó un lote, se ajusta ese; si no, el faltante sale
+            // del que vence primero (vencidos incluidos) y el sobrante entra a SIN-LOTE.
+            List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes;
             if (detalle.getLote() != null) {
                 LoteEntity lote = detalle.getLote();
                 lote.setStockActual(lote.getStockActual().add(diferencia));
                 loteJPARepository.save(lote);
+                lotes = List.of(new com.cloud_technological.aura_pos.services.LoteStockService.Asignacion(lote, diferencia.abs()));
+            } else if (diferencia.signum() < 0) {
+                lotes = loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.RECONTEO, detalle.getId(),
+                        detalle.getProducto(), bodega, empresaId, diferencia.abs(), null, true,
+                        true);
+            } else {
+                lotes = loteStock.entradaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.RECONTEO, detalle.getId(),
+                        detalle.getProducto(), bodega, empresaId, diferencia, null,
+                        detalle.getProducto().getCosto());
             }
 
             // Kardex
@@ -205,16 +227,11 @@ public class ReconteoServiceImpl implements ReconteoService {
                     ? TipoMovimientoInventario.RECONTEO_AJUSTE_POSITIVO.codigo()
                     : TipoMovimientoInventario.RECONTEO_AJUSTE_NEGATIVO.codigo();
 
-            registrarMovimiento(
-                    reconteo.getSucursal(),
-                    detalle.getProducto(),
-                    detalle.getLote(),
-                    diferencia.abs(),
-                    saldoAnterior,
-                    saldoNuevo,
-                    BigDecimal.ZERO,
-                    tipoMovimiento,
-                    "Reconteo #" + reconteo.getId());
+            // El reconteo guarda la cantidad en abs() (ver gotcha del kardex): se conserva.
+            loteStock.kardex(lotes, diferencia, saldoAnterior,
+                    (lote, cant, ant, nuevo) -> registrarMovimiento(bodega, detalle.getProducto(),
+                            lote, cant.abs(), ant, nuevo, BigDecimal.ZERO, tipoMovimiento,
+                            "Reconteo #" + reconteo.getId()));
 
             detalle.setAjusteAplicado(true);
         }
@@ -269,11 +286,12 @@ public class ReconteoServiceImpl implements ReconteoService {
         return dto;
     }
 
-    private void registrarMovimiento(SucursalEntity sucursal, com.cloud_technological.aura_pos.entity.ProductoEntity producto,
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, com.cloud_technological.aura_pos.entity.ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
         MovimientoInventarioEntity movimiento = new MovimientoInventarioEntity();
-        movimiento.setSucursal(sucursal);
+        movimiento.setBodega(bodega);
+        movimiento.setSucursal(bodega.getSucursal());
         movimiento.setProducto(producto);
         movimiento.setLote(lote);
         movimiento.setTipoMovimiento(tipo);

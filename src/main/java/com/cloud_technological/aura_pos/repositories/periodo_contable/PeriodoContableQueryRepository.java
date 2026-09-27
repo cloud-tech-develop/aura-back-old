@@ -27,7 +27,12 @@ public class PeriodoContableQueryRepository {
                 p.fecha_cierre,
                 p.observaciones,
                 p.created_at,
-                COUNT(a.id) AS total_asientos
+                p.reaperturas,
+                p.fecha_reapertura,
+                p.motivo_reapertura,
+                p.creado_automatico,
+                COUNT(a.id) AS total_asientos,
+                COUNT(a.id) FILTER (WHERE a.estado = 'BORRADOR') AS borradores
             FROM periodo_contable p
             LEFT JOIN asiento_contable a
                    ON a.periodo_contable_id = p.id
@@ -35,7 +40,8 @@ public class PeriodoContableQueryRepository {
             WHERE p.empresa_id = :empresaId
             GROUP BY p.id, p.anio, p.mes, p.estado,
                      p.fecha_apertura, p.fecha_cierre,
-                     p.observaciones, p.created_at
+                     p.observaciones, p.created_at, p.reaperturas,
+                     p.fecha_reapertura, p.motivo_reapertura, p.creado_automatico
             ORDER BY p.anio DESC, p.mes DESC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);

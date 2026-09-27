@@ -18,6 +18,8 @@ public class UpdateProductoPresentacionDto {
     private BigDecimal factorConversion;
     private Boolean esDefaultCompra;
     private Boolean esDefaultVenta;
+    /** Null = conservar el valor actual (pantallas que no lo manejan). */
+    private Boolean seVende;
     @NotNull(message = "El precio es obligatorio")
     private BigDecimal precio;
     @NotNull(message = "El costo es obligatorio")

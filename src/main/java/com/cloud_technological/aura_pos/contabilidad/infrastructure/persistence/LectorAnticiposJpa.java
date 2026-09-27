@@ -24,7 +24,7 @@ public class LectorAnticiposJpa implements LectorAnticipos {
                 .orElseThrow(() -> new IllegalStateException(
                         "Anticipo #" + anticipoId + " no encontrado para contabilizar"));
         return new AnticipoContable(a.getTipo(), a.getFecha(), a.getMonto(),
-                a.getTerceroId(), a.getMetodoPago(), a.getCuentaBancariaId());
+                a.getTerceroId(), a.getMetodoPago(), a.getCuentaBancariaId(), a.getCuentaContableId());
     }
 
     @Override

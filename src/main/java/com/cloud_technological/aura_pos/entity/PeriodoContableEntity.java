@@ -44,6 +44,25 @@ public class PeriodoContableEntity {
     @Column(columnDefinition = "TEXT")
     private String observaciones;
 
+    /** Cuántas veces se ha reabierto este mes (V171). */
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer reaperturas = 0;
+
+    @Column(name = "fecha_reapertura")
+    private LocalDateTime fechaReapertura;
+
+    @Column(name = "usuario_reapertura_id")
+    private Long usuarioReaperturaId;
+
+    @Column(name = "motivo_reapertura", length = 300)
+    private String motivoReapertura;
+
+    /** True si lo abrió el sistema al llegar el primer documento del mes. */
+    @Column(name = "creado_automatico", nullable = false)
+    @Builder.Default
+    private Boolean creadoAutomatico = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

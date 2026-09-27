@@ -42,7 +42,14 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
     @org.springframework.beans.factory.annotation.Autowired
+    private RetencionRecaudoService retencionRecaudo;
+
+    @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private AcuerdoPagoService acuerdoPagoService;
 
     private final CuentaCobrarQueryRepository queryRepository;
     private final CuentaCobrarJPARepository jpaRepository;
@@ -175,9 +182,18 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto debe ser mayor a 0");
         }
 
+        // Lo que el cliente retuvo también baja la cartera: el pago más las
+        // retenciones no puede superar el saldo.
+        java.util.List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto> retenciones =
+                retencionRecaudo.validar(dto.getRetenciones());
+        BigDecimal totalRetenciones = RetencionRecaudoService.total(retenciones);
+        BigDecimal totalAplicado = dto.getMonto().add(totalRetenciones);
+
         // Validar que el monto no exceda el saldo pendiente
-        if (dto.getMonto().compareTo(cuenta.getSaldoPendiente()) > 0) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto no puede ser mayor al saldo pendiente");
+        if (totalAplicado.compareTo(cuenta.getSaldoPendiente()) > 0) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, totalRetenciones.signum() > 0
+                    ? "El pago más las retenciones supera el saldo pendiente"
+                    : "El monto no puede ser mayor al saldo pendiente");
         }
 
         // Obtener usuario
@@ -217,10 +233,11 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                 .build();
 
         abono = abonoJpaRepository.save(abono);
+        retencionRecaudo.registrar(abono, retenciones);
 
         // Actualizar cuenta
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(dto.getMonto()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(totalAplicado));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(totalAplicado));
 
         if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
             cuenta.setSaldoPendiente(BigDecimal.ZERO);
@@ -228,11 +245,15 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         }
 
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
 
         // Asiento contable del recaudo tras el commit (evento único, ADR-003).
         eventPublisher.publishEvent(
                 new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
                         "ABONO_COBRAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+        if (cuenta.getTercero() != null)
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.CreditoMovimientoEvent(
+                    cuenta.getTercero().getId(), empresaId, "AL_PAGAR"));
 
         return toAbonoDto(abono);
     }
@@ -294,6 +315,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             cuenta.setEstado("parcial");
         }
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
         // Sin evento contable: el comprobante ya generó el asiento.
     }
 
@@ -323,6 +345,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
                 ? "parcial" : "pendiente");
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
     }
 
     @Override
@@ -366,6 +389,15 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         AbonoCobrarEntity abono = abonoJpaRepository.findByIdAndCuentaCobrarId(abonoId, cuentaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Abono no encontrado"));
 
+        if (abono.getReciboCajaId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Este abono hace parte de un recibo de caja: anule el recibo completo desde cartera");
+        }
+        if (abono.getAbonoOrigenId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Esta es la retención de un pago: elimine el pago y se eliminan sus retenciones");
+        }
+
         // Solo permitir anulación si el abono es del día actual
         if (!abono.getCreatedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Solo se pueden eliminar abonos del día actual");
@@ -376,13 +408,30 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede eliminar el abono de una cuenta pagada");
         }
 
-        // Reversar abono
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
+        // Reversar abono y sus retenciones: el asiento del principal las incluía.
+        BigDecimal devuelto = abono.getMonto().add(retencionRecaudo.eliminarDe(abono.getId()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(devuelto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(devuelto));
         cuenta.setEstado("activa");
 
         jpaRepository.save(cuenta);
         abonoJpaRepository.delete(abono);
+        evaluarAcuerdos(cuenta, empresaId);
+        // Sin esto el asiento RC del abono borrado quedaba vivo en contabilidad.
+        eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                "ABONO_COBRAR", abonoId, empresaId, null));
+    }
+
+    /**
+     * El abono puede pagar o despagar cuotas de un acuerdo. Flush antes: la
+     * evaluación lee el saldo por JDBC y mueve el vencimiento de la cuenta, que
+     * un flush posterior de la entidad pisaría.
+     */
+    private void evaluarAcuerdos(CuentaCobrarEntity cuenta, Integer empresaId) {
+        if (cuenta.getTercero() == null) return;
+        jpaRepository.flush();
+        abonoJpaRepository.flush();
+        acuerdoPagoService.evaluar(empresaId, cuenta.getTercero().getId(), null);
     }
 
     @Override
@@ -513,6 +562,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         if (entity.getTurnoCaja() != null) {
             dto.setTurnoCajaId(entity.getTurnoCaja().getId());
         }
+        dto.setAbonoOrigenId(entity.getAbonoOrigenId());
 
         return dto;
     }

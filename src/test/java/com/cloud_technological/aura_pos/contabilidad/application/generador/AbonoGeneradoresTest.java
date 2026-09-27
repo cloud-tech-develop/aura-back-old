@@ -72,6 +72,34 @@ class AbonoGeneradoresTest {
     }
 
     @Test
+    void recaudoConRetencionesSaldaLaFacturaPorElPagoMasLoRetenido() {
+        // Factura de 1.190.000: el cliente paga 1.139.000 y retiene 20.000 de
+        // renta, 26.180 de IVA y 4.820 de ICA.
+        when(abonos.cargarCobro(11L, EMPRESA)).thenReturn(new AbonoContable(
+                FECHA, new BigDecimal("1139000"), 55L, "TRANSFERENCIA", null, null,
+                java.util.List.of(
+                        new LectorAbonos.Retencion("RETEFUENTE", new BigDecimal("20000")),
+                        new LectorAbonos.Retencion("RETEIVA", new BigDecimal("26180")),
+                        new LectorAbonos.Retencion("RETEICA", new BigDecimal("4820")))));
+
+        Asiento asiento = new AbonoCobroGenerador(abonos, cuentas, cuentaPago)
+                .generar(new ContextoContabilizacion("ABONO_COBRAR", 11L, EMPRESA, 7));
+
+        java.util.Map<Long, BigDecimal> debitos = new java.util.HashMap<>();
+        java.util.Map<Long, BigDecimal> creditos = new java.util.HashMap<>();
+        asiento.partidas().forEach(p -> {
+            if (p.debito() != null) debitos.merge(p.cuentaId(), p.debito(), BigDecimal::add);
+            if (p.credito() != null) creditos.merge(p.cuentaId(), p.credito(), BigDecimal::add);
+        });
+        org.junit.jupiter.api.Assertions.assertEquals(0, new BigDecimal("1139000").compareTo(debitos.get(1110L)));
+        org.junit.jupiter.api.Assertions.assertEquals(0, new BigDecimal("20000").compareTo(debitos.get(135515L)));
+        org.junit.jupiter.api.Assertions.assertEquals(0, new BigDecimal("26180").compareTo(debitos.get(135517L)));
+        org.junit.jupiter.api.Assertions.assertEquals(0, new BigDecimal("4820").compareTo(debitos.get(135518L)));
+        // Clientes baja por todo: pago + retenciones
+        org.junit.jupiter.api.Assertions.assertEquals(0, new BigDecimal("1190000").compareTo(creditos.get(1305L)));
+    }
+
+    @Test
     void pagoProveedorPorTransferenciaBancaria() {
         when(abonos.cargarPago(20L, EMPRESA)).thenReturn(new AbonoContable(
                 FECHA, new BigDecimal("100000"), 77L, "TRANSFERENCIA", 9L, null));

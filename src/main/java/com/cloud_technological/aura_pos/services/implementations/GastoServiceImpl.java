@@ -99,6 +99,8 @@ public class GastoServiceImpl implements GastoService {
                             dto.getSucursalId(),
                             "gasto",
                             salidaOtroDia));
+            origenFondosService.exigirSaldoDisponible(empresaId, origen, dto.getMonto(),
+                    "gasto", null, null);
             gasto.setCuentaPagoId(origen.cuentaContableId());
             gasto.setSalidaCajaOtroDia(salidaOtroDia);
         }

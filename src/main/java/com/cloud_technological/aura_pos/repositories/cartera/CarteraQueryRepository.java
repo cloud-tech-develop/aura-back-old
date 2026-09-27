@@ -302,6 +302,26 @@ public class CarteraQueryRepository {
 
     // ─── Pagos consecutivos a tiempo (para motor de aumento) ─────────────────
 
+    public int promesasIncumplidasRecientes(Long terceroId, Integer empresaId) {
+        Integer n = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM gestion_cobro
+            WHERE empresa_id = :empresaId AND tercero_id = :terceroId
+              AND estado_promesa = 'INCUMPLIDA'
+              AND fecha_promesa_pago >= CURRENT_DATE - 180
+            """, new MapSqlParameterSource("empresaId", empresaId).addValue("terceroId", terceroId), Integer.class);
+        return n != null ? n : 0;
+    }
+
+    /** Acuerdos de pago que el cliente incumplió en el último año, aunque después se haya puesto al día. */
+    public int acuerdosIncumplidosRecientes(Long terceroId, Integer empresaId) {
+        Integer n = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM acuerdo_pago
+            WHERE empresa_id = :empresaId AND tercero_id = :terceroId
+              AND estado <> 'ANULADO' AND incumplido_at >= CURRENT_DATE - 365
+            """, new MapSqlParameterSource("empresaId", empresaId).addValue("terceroId", terceroId), Integer.class);
+        return n != null ? n : 0;
+    }
+
     public int pagosConsecutivosATiempo(Long terceroId, Integer empresaId) {
         String sql = """
             SELECT COUNT(*)

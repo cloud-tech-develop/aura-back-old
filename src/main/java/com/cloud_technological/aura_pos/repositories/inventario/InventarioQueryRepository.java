@@ -29,6 +29,8 @@ public class InventarioQueryRepository {
                 i.id,
                 i.sucursal_id,
                 s.nombre AS sucursal_nombre,
+                i.bodega_id,
+                b.nombre AS bodega_nombre,
                 i.producto_id,
                 p.nombre AS producto_nombre,
                 p.sku AS producto_sku,
@@ -38,6 +40,7 @@ public class InventarioQueryRepository {
                 COUNT(*) OVER() AS total_rows
             FROM inventario i
             INNER JOIN sucursal s ON i.sucursal_id = s.id
+            LEFT  JOIN bodega   b ON b.id = i.bodega_id
             INNER JOIN producto p ON i.producto_id = p.id
             WHERE s.empresa_id = :empresaId
             AND p.deleted_at IS NULL
@@ -49,7 +52,8 @@ public class InventarioQueryRepository {
             sql.append("""
                 AND (LOWER(p.nombre) LIKE :search
                 OR LOWER(p.sku) LIKE :search
-                OR LOWER(s.nombre) LIKE :search)
+                OR LOWER(s.nombre) LIKE :search
+                OR LOWER(COALESCE(b.nombre, '')) LIKE :search)
             """);
             params.addValue("search", "%" + search + "%");
         }

@@ -51,6 +51,31 @@ public class LoteController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Lote encontrado", false, result), HttpStatus.OK);
     }
 
+    @GetMapping("/reglas")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto>> obtenerReglas() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false,
+                loteService.obtenerReglas(empresaId)), HttpStatus.OK);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/reglas")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto>> guardarReglas(
+            @Valid @RequestBody com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Reglas de lotes guardadas", false,
+                loteService.guardarReglas(dto, empresaId)), HttpStatus.OK);
+    }
+
+    /** Lotes vencidos y por vencer, con su valor en costo y en venta. */
+    @GetMapping("/vencimientos")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.inventario.VencimientoLoteDto>>> vencimientos(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long sucursalId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Integer dias) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false,
+                loteService.vencimientos(empresaId, sucursalId, dias)), HttpStatus.OK);
+    }
+
     @GetMapping("/por-vencer")
     public ResponseEntity<ApiResponse<List<LoteTableDto>>> listarPorVencer() {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -62,7 +87,8 @@ public class LoteController {
     public ResponseEntity<ApiResponse<List<LoteTableDto>>> listarDisponibles(
             @PathVariable Long productoId,
             @PathVariable Long sucursalId) {
-        List<LoteTableDto> result = loteService.listarDisponiblesPorProducto(productoId, sucursalId);
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<LoteTableDto> result = loteService.listarDisponiblesPorProducto(productoId, sucursalId, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
     }
 
@@ -71,6 +97,14 @@ public class LoteController {
         Integer empresaId = securityUtils.getEmpresaId();
         LoteDto result = loteService.crear(dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Lote creado exitosamente", false, result), HttpStatus.CREATED);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<LoteDto>> actualizar(@PathVariable Long id,
+            @Valid @RequestBody com.cloud_technological.aura_pos.dto.inventario.UpdateLoteDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        LoteDto result = loteService.actualizar(id, dto, empresaId, securityUtils.getUsuarioId());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Lote corregido", false, result), HttpStatus.OK);
     }
 
     @DeleteMapping("/{id}")

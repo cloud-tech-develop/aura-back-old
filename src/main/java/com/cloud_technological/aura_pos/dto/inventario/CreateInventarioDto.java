@@ -14,6 +14,9 @@ public class CreateInventarioDto {
     private Long productoId;
     @NotNull(message = "La sucursal es obligatoria")
     private Long sucursalId;
+
+    /** Bodega de la que sale o a la que entra. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
     private BigDecimal stockMinimo = BigDecimal.ZERO;
     private BigDecimal stockActual = BigDecimal.ZERO;
     private String ubicacion;

@@ -12,6 +12,12 @@ public interface PeriodoContableJPARepository extends JpaRepository<PeriodoConta
 
     Optional<PeriodoContableEntity> findByEmpresaIdAndEstado(Integer empresaId, String estado);
 
+    /** El período de un mes concreto: es así como se resuelve desde V171. */
+    Optional<PeriodoContableEntity> findByEmpresaIdAndAnioAndMes(Integer empresaId, Short anio, Short mes);
+
+    java.util.List<PeriodoContableEntity> findByEmpresaIdAndEstadoOrderByAnioAscMesAsc(
+            Integer empresaId, String estado);
+
     boolean existsByEmpresaIdAndAnioAndMes(Integer empresaId, Short anio, Short mes);
 
     boolean existsByEmpresaIdAndEstado(Integer empresaId, String estado);

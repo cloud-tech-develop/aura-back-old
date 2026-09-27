@@ -57,6 +57,16 @@ public class PeriodoContableController {
                 HttpStatus.CREATED);
     }
 
+    @PutMapping("/{id}/reabrir")
+    public ResponseEntity<ApiResponse<PeriodoContableTableDto>> reabrir(
+            @PathVariable Long id,
+            @RequestBody CerrarPeriodoDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "Período reabierto", false,
+                service.reabrirPeriodo(id, dto, empresaId, usuarioId)));
+    }
+
     @PutMapping("/{id}/cerrar")
     public ResponseEntity<ApiResponse<PeriodoContableTableDto>> cerrar(
             @PathVariable Long id,

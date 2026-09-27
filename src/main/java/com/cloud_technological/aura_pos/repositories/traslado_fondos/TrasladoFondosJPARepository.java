@@ -17,4 +17,8 @@ public interface TrasladoFondosJPARepository extends JpaRepository<TrasladoFondo
 
     List<TrasladoFondosEntity> findByEmpresaIdAndConceptoAndFechaBetweenOrderByFechaDescIdDesc(
             Integer empresaId, String concepto, LocalDate desde, LocalDate hasta);
+
+    /** Las constituciones y reembolsos vigentes que alimentaron un fondo. */
+    List<TrasladoFondosEntity> findByEmpresaIdAndDestinoCuentaIdAndEstadoAndConceptoInOrderByCreatedAtDesc(
+            Integer empresaId, Long destinoCuentaId, String estado, List<String> conceptos);
 }

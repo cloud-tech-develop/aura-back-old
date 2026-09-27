@@ -29,6 +29,10 @@ public class CuentaBancariaEntity {
     @Column(name = "empresa_id", nullable = false)
     private Integer empresaId;
 
+    /** CB-001, CB-002… Único por empresa (V175). Se asigna solo si no se digita. */
+    @Column(length = 20)
+    private String codigo;
+
     @Column(nullable = false, length = 200)
     private String nombre;
 

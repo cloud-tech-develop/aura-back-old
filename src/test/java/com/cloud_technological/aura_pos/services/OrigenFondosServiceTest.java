@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago;
 import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.services.OrigenFondosService.OrigenFondos;
@@ -44,12 +46,14 @@ class OrigenFondosServiceTest {
     @Mock private TurnoCajaJPARepository turnoRepository;
     @Mock private PlanCuentaJPARepository planCuentaRepository;
     @Mock private ResolucionCuentaPago resolucionCuentaPago;
+    @Mock private AsientoContableQueryRepository asientoQueryRepository;
 
     private OrigenFondosServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new OrigenFondosServiceImpl(turnoRepository, planCuentaRepository, resolucionCuentaPago);
+        service = new OrigenFondosServiceImpl(turnoRepository, planCuentaRepository, resolucionCuentaPago,
+                asientoQueryRepository);
     }
 
     private Solicitud solicitud(String metodo, Long turnoId, Long bancariaId, Long contableId) {
@@ -67,8 +71,8 @@ class OrigenFondosServiceTest {
     private PlanCuentaEntity cuentaMedioPago(Long id) {
         PlanCuentaEntity c = new PlanCuentaEntity();
         c.setId(id);
-        c.setCodigo("110505");
-        c.setNombre("Caja Menor");
+        c.setCodigo("110510");
+        c.setNombre("Cajas menores");
         c.setActiva(true);
         c.setAuxiliar(true);
         c.setEsMedioPago(true);
@@ -283,5 +287,64 @@ class OrigenFondosServiceTest {
 
         assertTrue(ex.getMessage().contains("sucursal"));
         assertNull(sinSucursal.sucursalId());
+    }
+
+    // ── Saldo de la caja menor ──────────────────────────────────────────────
+
+    @Test
+    void cajaMenorSinSaldoSuficienteRechazaElPago() {
+        when(planCuentaRepository.findByIdAndEmpresaId(40L, EMPRESA))
+                .thenReturn(Optional.of(cuentaMedioPago(40L)));
+        when(asientoQueryRepository.saldoDisponible(EMPRESA, 40L, null, null))
+                .thenReturn(new BigDecimal("30000"));
+        OrigenFondos origen = new OrigenFondos(Tipo.CUENTA_CONTABLE, 40L, null);
+
+        GlobalException ex = assertThrows(GlobalException.class,
+                () -> service.exigirSaldoDisponible(EMPRESA, origen, new BigDecimal("50000"),
+                        "gasto", null, null));
+
+        // El mensaje dice cuánto hay y cómo salir: reponer o pagar desde otra cuenta.
+        assertTrue(ex.getMessage().contains("110510"));
+        assertTrue(ex.getMessage().contains("reembolso"));
+    }
+
+    @Test
+    void cajaMenorConSaldoJustoDejaPasar() {
+        when(planCuentaRepository.findByIdAndEmpresaId(40L, EMPRESA))
+                .thenReturn(Optional.of(cuentaMedioPago(40L)));
+        when(asientoQueryRepository.saldoDisponible(EMPRESA, 40L, null, null))
+                .thenReturn(new BigDecimal("50000"));
+
+        service.exigirSaldoDisponible(EMPRESA, new OrigenFondos(Tipo.CUENTA_CONTABLE, 40L, null),
+                new BigDecimal("50000"), "gasto", null, null);
+    }
+
+    @Test
+    void alEditarSeDescuentaLoQueElPropioDocumentoYaConsumio() {
+        when(planCuentaRepository.findByIdAndEmpresaId(40L, EMPRESA))
+                .thenReturn(Optional.of(cuentaMedioPago(40L)));
+        when(asientoQueryRepository.saldoDisponible(EMPRESA, 40L, "COMPRA", 9L))
+                .thenReturn(new BigDecimal("80000"));
+
+        service.exigirSaldoDisponible(EMPRESA, new OrigenFondos(Tipo.CUENTA_CONTABLE, 40L, null),
+                new BigDecimal("80000"), "pago de la compra", "COMPRA", 9L);
+
+        verify(asientoQueryRepository).saldoDisponible(EMPRESA, 40L, "COMPRA", 9L);
+    }
+
+    @Test
+    void bancosYCajaDelPuntoNoPasanPorElControlDeSaldo() {
+        PlanCuentaEntity banco = cuentaMedioPago(41L);
+        banco.setCodigo("111005");
+        when(planCuentaRepository.findByIdAndEmpresaId(41L, EMPRESA)).thenReturn(Optional.of(banco));
+
+        // Banco elegido a mano: tiene su propio control de sobregiro.
+        service.exigirSaldoDisponible(EMPRESA, new OrigenFondos(Tipo.CUENTA_CONTABLE, 41L, null),
+                new BigDecimal("999999"), "gasto", null, null);
+        // Caja del punto: la controla el arqueo, ni siquiera se consulta la cuenta.
+        service.exigirSaldoDisponible(EMPRESA, new OrigenFondos(Tipo.CAJA, 1105L, turno(1L, "ABIERTA")),
+                new BigDecimal("999999"), "gasto", null, null);
+
+        verify(asientoQueryRepository, never()).saldoDisponible(any(), any(), any(), any());
     }
 }

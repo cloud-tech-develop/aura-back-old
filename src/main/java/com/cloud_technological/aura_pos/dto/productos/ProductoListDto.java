@@ -17,4 +17,8 @@ public class ProductoListDto {
     private BigDecimal precio3;
     private BigDecimal ivaPorcentaje;
     private String tipoProducto;
+    private String usoProducto;
+    /** Lo usa la pantalla de etiquetas para saber si el producto ya tiene código impreso. */
+    private String codigoBarras;
+    private String categoriaNombre;
 }

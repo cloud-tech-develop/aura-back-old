@@ -39,6 +39,7 @@ import com.cloud_technological.aura_pos.repositories.productos_composicion.Produ
 import com.cloud_technological.aura_pos.repositories.unidad_medida.UnidadMedidaJPARepository;
 import com.cloud_technological.aura_pos.services.ProductoComposicionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.PresentacionConversion;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
@@ -468,9 +469,8 @@ public class ProductoComposicionServiceImpl implements ProductoComposicionServic
      * Resuelve el factor de conversión de la línea.
      *
      * Si viene una presentación del componente, el factor sale de ella con la
-     * misma convención que ya usa el motor de ventas: `factor_conversion` es
-     * cuántas unidades escritas caben en 1 unidad base de stock (bulto de 50 kg
-     * → 50), así que la equivalencia es su inverso.
+     * misma regla que la venta (V159): `factor_conversion` son las unidades
+     * base que contiene la presentación (bulto de 50 kg sobre base kg → 50).
      */
     private void aplicarUnidad(ProductoComposicionEntity entity, ProductoEntity hijo, Long unidadMedidaId,
             Long presentacionId, BigDecimal factorUnidad, Integer empresaId) {
@@ -499,7 +499,7 @@ public class ProductoComposicionServiceImpl implements ProductoComposicionServic
                         "La presentación '" + presentacion.getNombre() + "' no tiene factor de conversión válido");
 
             entity.setProductoPresentacion(presentacion);
-            entity.setFactorUnidad(BigDecimal.ONE.divide(factorConversion, SCALE_CANTIDAD, RoundingMode.HALF_UP));
+            entity.setFactorUnidad(PresentacionConversion.aBase(BigDecimal.ONE, factorConversion));
         } else {
             entity.setProductoPresentacion(null);
             entity.setFactorUnidad(factorUnidad != null ? factorUnidad : BigDecimal.ONE);

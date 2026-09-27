@@ -107,7 +107,10 @@ public class DashboardQueryRepository {
             WHERE s.empresa_id = :empresaId
             AND l.activo = true
             AND l.stock_actual > 0
-            AND l.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+            -- Los ya vencidos con stock también: son los que más urge sacar. La
+            -- ventana la define la empresa (V165), no un 30 fijo.
+            AND l.fecha_vencimiento <= CURRENT_DATE
+                + (SELECT COALESCE(e.lotes_dias_alerta, 30) FROM empresa e WHERE e.id = s.empresa_id)
             ORDER BY l.fecha_vencimiento ASC
             LIMIT 10
         """;

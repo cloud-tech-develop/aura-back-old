@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraDetalleDto;
+import com.cloud_technological.aura_pos.dto.compras.CompraDetalleLoteDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraTableDto;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -175,6 +176,7 @@ public class CompraQueryRepository {
                 base.producto_id,
                 p.nombre AS producto_nombre,
                 p.sku AS producto_sku,
+                COALESCE(p.maneja_serial, false) AS maneja_serial,
                 base.cantidad_disponible,
                 base.costo_unitario,
                 base.iva_pct,
@@ -223,12 +225,61 @@ public class CompraQueryRepository {
                 cd.descuento_valor,
                 cd.precio_venta1,
                 cd.precio_venta2,
-                cd.precio_venta3
+                cd.precio_venta3,
+                cd.producto_presentacion_id,
+                pp.nombre            AS presentacion_nombre,
+                pp.factor_conversion AS presentacion_factor,
+                cd.cantidad_presentacion,
+                cd.costo_presentacion,
+                COALESCE(p.maneja_lotes, false) AS maneja_lotes,
+                COALESCE(p.maneja_serial, false) AS maneja_serial,
+                um.abreviatura AS unidad_abreviatura
             FROM compra_detalle cd
             INNER JOIN producto p ON cd.producto_id = p.id
+            LEFT JOIN producto_presentacion pp ON pp.id = cd.producto_presentacion_id
+            LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
             WHERE cd.compra_id = :compraId
+            ORDER BY cd.id
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("compraId", compraId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(CompraDetalleDto.class));
+        List<CompraDetalleDto> detalles = jdbcTemplate.query(sql, params,
+                new BeanPropertyRowMapper<>(CompraDetalleDto.class));
+
+        // Lotes de cada línea, para mostrarlos y para volver a editar la compra.
+        List<CompraDetalleLoteDto> lotes = jdbcTemplate.query("""
+            SELECT cdl.compra_detalle_id, cdl.lote_id, l.codigo_lote, l.fecha_vencimiento,
+                   l.fecha_fabricacion, cdl.cantidad_base
+            FROM compra_detalle_lote cdl
+            INNER JOIN compra_detalle cd ON cd.id = cdl.compra_detalle_id
+            INNER JOIN lote l ON l.id = cdl.lote_id
+            WHERE cd.compra_id = :compraId
+            ORDER BY cdl.id
+        """, params, new BeanPropertyRowMapper<>(CompraDetalleLoteDto.class));
+        java.util.Map<Long, List<CompraDetalleLoteDto>> porDetalle = new java.util.HashMap<>();
+        for (CompraDetalleLoteDto l : lotes)
+            porDetalle.computeIfAbsent(l.getCompraDetalleId(), k -> new java.util.ArrayList<>()).add(l);
+        detalles.forEach(d -> d.setLotes(porDetalle.getOrDefault(d.getId(), new java.util.ArrayList<>())));
+
+        // Seriales de cada línea: los que creó la compra o sacó la nota crédito.
+        jdbcTemplate.query("""
+            SELECT ds.detalle_id, sp.id AS serial_id, sp.serial
+            FROM documento_serial ds
+            INNER JOIN compra_detalle cd ON cd.id = ds.detalle_id
+            INNER JOIN serial_producto sp ON sp.id = ds.serial_id
+            WHERE cd.compra_id = :compraId
+              AND ds.origen IN ('COMPRA', 'NOTA_CREDITO_COMPRA')
+            ORDER BY ds.id
+        """, params, rs -> {
+            Long detalleId = rs.getLong("detalle_id");
+            detalles.stream().filter(d -> d.getId().equals(detalleId)).findFirst().ifPresent(d -> {
+                try {
+                    d.getSeriales().add(rs.getString("serial"));
+                    d.getSerialIds().add(rs.getLong("serial_id"));
+                } catch (java.sql.SQLException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+        });
+        return detalles;
     }
 }

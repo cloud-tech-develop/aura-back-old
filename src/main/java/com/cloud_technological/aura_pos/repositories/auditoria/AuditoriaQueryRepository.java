@@ -212,7 +212,9 @@ public class AuditoriaQueryRepository {
                    SELECT m.saldo_nuevo, m.created_at
                      FROM movimiento_inventario m
                     WHERE m.producto_id = i.producto_id
-                      AND m.sucursal_id = i.sucursal_id
+                      -- Por bodega (V172): el saldo de una bodega solo lo
+                      -- explica el kardex de esa bodega.
+                      AND m.bodega_id = i.bodega_id
                     ORDER BY m.created_at DESC, m.id DESC
                     LIMIT 1
               ) ult ON TRUE
@@ -257,6 +259,8 @@ public class AuditoriaQueryRepository {
               FROM asiento_contable a
              WHERE a.empresa_id = :empresaId
                AND a.estado <> 'ANULADO'
+               -- La nota contable en borrador puede estar descuadrada: aún no cuenta.
+               AND NOT (a.estado = 'BORRADOR' AND a.tipo_origen = 'MANUAL')
                AND a.fecha BETWEEN :desde AND :hasta
                AND ABS(COALESCE(a.total_debito,0) - COALESCE(a.total_credito,0)) > 0.01
             """;

@@ -23,4 +23,14 @@ public interface TrasladoFondosService {
     /** @param concepto opcional; null lista todos los conceptos. */
     List<TrasladoFondosDto> listar(Integer empresaId, LocalDate desde, LocalDate hasta,
             String concepto);
+
+    /**
+     * Cuánto reponer a un fondo fijo (caja menor) y la relación de gastos que
+     * lo soporta desde la última reposición.
+     */
+    com.cloud_technological.aura_pos.dto.traslado_fondos.ReembolsoFondoDto reembolso(
+            Integer empresaId, Long cuentaId);
+
+    /** Anula el traslado: devuelve la plata a su origen y reversa el asiento. */
+    TrasladoFondosDto anular(Long id, Integer empresaId, Integer usuarioId, String motivo);
 }

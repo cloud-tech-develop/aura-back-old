@@ -44,6 +44,33 @@ public class SerialProductoController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
     }
 
+    /** POS: el texto escaneado es un serial disponible en la sucursal del usuario. */
+    @GetMapping("/buscar")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.inventario.SerialBuscadoDto>>> buscar(
+            @org.springframework.web.bind.annotation.RequestParam String codigo,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long sucursalId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long sucursal = sucursalId != null ? sucursalId : securityUtils.getSucursalId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false,
+                serialService.buscarDisponible(codigo, sucursal, empresaId)), HttpStatus.OK);
+    }
+
+    /** Devolución: los seriales de una línea vendida que se pueden devolver. */
+    @GetMapping("/venta-detalle/{ventaDetalleId}")
+    public ResponseEntity<ApiResponse<List<SerialProductoTableDto>>> vendidosEnLinea(@PathVariable Long ventaDetalleId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false,
+                serialService.vendidosEnLinea(ventaDetalleId, empresaId)), HttpStatus.OK);
+    }
+
+    @GetMapping("/trazabilidad")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.inventario.SerialTrazaDto>>> trazabilidad(
+            @org.springframework.web.bind.annotation.RequestParam String serial) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false,
+                serialService.trazabilidad(serial, empresaId)), HttpStatus.OK);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<SerialProductoDto>> obtenerPorId(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -55,7 +82,8 @@ public class SerialProductoController {
     public ResponseEntity<ApiResponse<List<SerialProductoTableDto>>> listarDisponibles(
             @PathVariable Long productoId,
             @PathVariable Long sucursalId) {
-        List<SerialProductoTableDto> result = serialService.listarDisponiblesPorProducto(productoId, sucursalId);
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<SerialProductoTableDto> result = serialService.listarDisponiblesPorProducto(productoId, sucursalId, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
     }
 

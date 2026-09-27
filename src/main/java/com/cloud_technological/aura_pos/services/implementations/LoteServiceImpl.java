@@ -32,6 +32,9 @@ public class LoteServiceImpl implements LoteService {
     private final LoteMapper loteMapper;
 
     @Autowired
+    private com.cloud_technological.aura_pos.repositories.inventario.LoteAjusteJPARepository loteAjusteRepository;
+
+    @Autowired
     public LoteServiceImpl(LoteQueryRepository loteRepository,
             LoteJPARepository loteJPARepository,
             ProductoJPARepository productoJPARepository,
@@ -62,29 +65,71 @@ public class LoteServiceImpl implements LoteService {
     }
 
     @Override
-    public List<LoteTableDto> listarDisponiblesPorProducto(Long productoId, Long sucursalId) {
-        return loteRepository.listarDisponiblesPorProducto(productoId, sucursalId);
+    public List<com.cloud_technological.aura_pos.dto.inventario.VencimientoLoteDto> vencimientos(Integer empresaId, Long sucursalId,
+            Integer dias) {
+        if (dias != null && (dias < 0 || dias > 3650))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Los días tienen que estar entre 0 y 3650");
+        return loteRepository.vencimientos(empresaId, sucursalId, dias);
+    }
+
+    @Override
+    public List<LoteTableDto> listarDisponiblesPorProducto(Long productoId, Long sucursalId, Integer empresaId) {
+        return loteRepository.listarDisponiblesPorProducto(productoId, sucursalId, empresaId);
     }
 
     @Override
     @Transactional
     public LoteDto crear(CreateLoteDto dto, Integer empresaId) {
-        // Validar que no exista el mismo código de lote para ese producto y sucursal
-        if (loteJPARepository.findByProductoIdAndSucursalIdAndCodigoLote(
-                dto.getProductoId(), dto.getSucursalId(), dto.getCodigoLote()).isPresent())
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe un lote con este código para este producto");
+        // Crear un lote con stock desde aquí dejaba un número que no estaba en el
+        // inventario ni en el kardex. Los lotes nacen con la compra.
+        throw new GlobalException(HttpStatus.BAD_REQUEST,
+                "Los lotes se crean al registrar la compra, con su código y vencimiento. "
+                        + "Aquí solo se corrigen.");
+    }
 
-        ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(dto.getProductoId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Producto no encontrado"));
+    @Override
+    @Transactional
+    public LoteDto actualizar(Long id, com.cloud_technological.aura_pos.dto.inventario.UpdateLoteDto dto,
+            Integer empresaId, Long usuarioId) {
+        LoteEntity lote = loteJPARepository.findByIdAndSucursalEmpresaId(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Lote no encontrado"));
 
-        SucursalEntity sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId().intValue(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
+        String codigo = dto.getCodigoLote().trim();
+        String motivo = dto.getMotivo().trim();
 
-        LoteEntity entity = loteMapper.toEntity(dto);
-        entity.setProducto(producto);
-        entity.setSucursal(sucursal);
+        if (!codigo.equalsIgnoreCase(lote.getCodigoLote() != null ? lote.getCodigoLote().trim() : "")) {
+            boolean repetido = loteJPARepository
+                    .buscarPorCodigo(lote.getProducto().getId(), lote.getBodega().getId(), codigo)
+                    .stream().anyMatch(o -> !o.getId().equals(lote.getId()));
+            if (repetido)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Ya existe el lote " + codigo + " para este producto en la bodega");
+        }
+        if (!codigo.equals(lote.getCodigoLote())) {
+            registrarAjuste(lote, empresaId, usuarioId, "codigo_lote", lote.getCodigoLote(), codigo, motivo);
+            lote.setCodigoLote(codigo);
+        }
+        if (!java.util.Objects.equals(dto.getFechaVencimiento(), lote.getFechaVencimiento())) {
+            registrarAjuste(lote, empresaId, usuarioId, "fecha_vencimiento",
+                    lote.getFechaVencimiento() != null ? lote.getFechaVencimiento().toString() : null,
+                    dto.getFechaVencimiento() != null ? dto.getFechaVencimiento().toString() : null, motivo);
+            lote.setFechaVencimiento(dto.getFechaVencimiento());
+        }
+        return loteMapper.toDto(loteJPARepository.save(lote));
+    }
 
-        return loteMapper.toDto(loteJPARepository.save(entity));
+    private void registrarAjuste(LoteEntity lote, Integer empresaId, Long usuarioId, String campo,
+            String anterior, String nuevo, String motivo) {
+        com.cloud_technological.aura_pos.entity.LoteAjusteEntity ajuste =
+                new com.cloud_technological.aura_pos.entity.LoteAjusteEntity();
+        ajuste.setLoteId(lote.getId());
+        ajuste.setEmpresaId(empresaId);
+        ajuste.setUsuarioId(usuarioId);
+        ajuste.setCampo(campo);
+        ajuste.setValorAnterior(anterior);
+        ajuste.setValorNuevo(nuevo);
+        ajuste.setMotivo(motivo);
+        loteAjusteRepository.save(ajuste);
     }
 
     @Override
@@ -93,7 +138,39 @@ public class LoteServiceImpl implements LoteService {
         LoteEntity entity = loteJPARepository.findByIdAndSucursalEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Lote no encontrado"));
 
+        // Desactivar un lote con stock sacaba ese stock de los lotes pero no del
+        // inventario: el cuadre se rompía.
+        if (entity.getStockActual() != null && entity.getStockActual().signum() != 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El lote " + entity.getCodigoLote() + " todavía tiene stock: sácalo con una merma, "
+                            + "un consumo interno o una nota crédito antes de desactivarlo.");
+
         entity.setActivo(false);
         loteJPARepository.save(entity);
+    }
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository empresaRepository;
+
+    @Override
+    public com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto obtenerReglas(Integer empresaId) {
+        var empresa = empresaRepository.findById(empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
+        var dto = new com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto();
+        dto.setBloquearVencidos(!Boolean.FALSE.equals(empresa.getLotesBloquearVencidos()));
+        dto.setDiasAlerta(empresa.getLotesDiasAlerta() != null ? empresa.getLotesDiasAlerta() : 30);
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto guardarReglas(
+            com.cloud_technological.aura_pos.dto.inventario.ReglasLoteDto dto, Integer empresaId) {
+        var empresa = empresaRepository.findById(empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
+        empresa.setLotesBloquearVencidos(dto.getBloquearVencidos());
+        empresa.setLotesDiasAlerta(dto.getDiasAlerta());
+        empresaRepository.save(empresa);
+        return obtenerReglas(empresaId);
     }
 }

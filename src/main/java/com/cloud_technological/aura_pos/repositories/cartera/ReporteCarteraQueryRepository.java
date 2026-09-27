@@ -306,4 +306,31 @@ public class ReporteCarteraQueryRepository {
                 + " WHEN " + DIAS_MORA + " > 0 THEN 'VENCIDA'"
                 + " ELSE 'PENDIENTE' END";
     }
+
+    /** Lo cobrado (CXC) o pagado (CXP) en el período, por medio de pago. */
+    public record MedioRecaudo(String medio, java.math.BigDecimal total, int cantidad) {
+    }
+
+    /**
+     * Abonos del período agrupados por medio. En cobros, las retenciones que
+     * practicó el cliente (V181) salen como sus propios medios —RETEFUENTE,
+     * RETEIVA, RETEICA— porque se guardan como abonos vinculados.
+     */
+    public java.util.List<MedioRecaudo> recaudoPorMedio(Integer empresaId, String tipo,
+            java.time.LocalDate desde, java.time.LocalDate hasta) {
+        Tablas t = Tablas.de(tipo);
+        String sql = "SELECT UPPER(COALESCE(a.metodo_pago, 'SIN MEDIO')) AS medio,"
+                + " SUM(a.monto) AS total, COUNT(*) AS cantidad"
+                + " FROM " + t.abonos() + " a"
+                + " JOIN " + t.cuentas() + " c ON c.id = a." + t.fk()
+                + " WHERE c.empresa_id = :empresaId AND a.deleted_at IS NULL"
+                + " AND DATE(a.fecha_pago) BETWEEN :desde AND :hasta"
+                + " GROUP BY 1 ORDER BY total DESC";
+        return jdbcTemplate.query(sql, new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                        .addValue("empresaId", empresaId)
+                        .addValue("desde", java.sql.Date.valueOf(desde))
+                        .addValue("hasta", java.sql.Date.valueOf(hasta)),
+                (rs, i) -> new MedioRecaudo(rs.getString("medio"), rs.getBigDecimal("total"),
+                        rs.getInt("cantidad")));
+    }
 }

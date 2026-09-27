@@ -12,6 +12,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.cierre_contable.CierreContableDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.GraficasCierreDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.ParteCierreDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.PuntoCierreDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.MovimientoCierreDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.ReporteIvaDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.SaldoDisponibleDto;
@@ -306,6 +309,101 @@ public class CierreContableQueryRepository {
             return BigDecimal.ZERO;
         return numerador.multiply(BigDecimal.valueOf(100))
                 .divide(denominador, 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Series para las gráficas del informe: qué se vendió y qué costó día por día
+     * (por mes si el rango es largo), con qué pagaron los clientes y en qué se fue
+     * el gasto.
+     */
+    public GraficasCierreDto graficas(Integer empresaId, String fechaDesde, String fechaHasta) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("fechaDesde", fechaDesde)
+                .addValue("fechaHasta", fechaHasta);
+
+        GraficasCierreDto dto = new GraficasCierreDto();
+        dto.setFechaDesde(fechaDesde);
+        dto.setFechaHasta(fechaHasta);
+
+        // Más de dos meses de rango: una barra por día no se lee, se agrupa por mes.
+        Integer dias = jdbc.queryForObject(
+                "SELECT (CAST(:fechaHasta AS DATE) - CAST(:fechaDesde AS DATE)) + 1", params, Integer.class);
+        boolean porMes = dias != null && dias > 62;
+        dto.setGranularidad(porMes ? "MES" : "DIA");
+        String paso = porMes ? "1 month" : "1 day";
+        String trunc = porMes ? "month" : "day";
+        String formato = porMes ? "YYYY-MM" : "YYYY-MM-DD";
+        params.addValue("paso", paso);
+
+        String sql = """
+            WITH periodos AS (
+                SELECT generate_series(date_trunc(:trunc, CAST(:fechaDesde AS DATE)),
+                                       date_trunc(:trunc, CAST(:fechaHasta AS DATE)),
+                                       CAST(:paso AS INTERVAL))::date AS p
+            ), ventas AS (
+                SELECT date_trunc(:trunc, v.fecha_emision)::date AS p,
+                       SUM(v.total_pagar - COALESCE(v.impuestos_total, 0)) AS ventas
+                FROM venta v
+                WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+                  AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+                GROUP BY 1
+            ), costos AS (
+                SELECT date_trunc(:trunc, v.fecha_emision)::date AS p,
+                       SUM(CASE WHEN p.costo IS NOT NULL AND p.costo > 0 THEN vd.cantidad * p.costo ELSE 0 END) AS costo
+                FROM venta_detalle vd
+                JOIN venta v    ON vd.venta_id = v.id
+                JOIN producto p ON vd.producto_id = p.id
+                WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+                  AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+                GROUP BY 1
+            )
+            SELECT to_char(periodos.p, :formato) AS etiqueta,
+                   COALESCE(ventas.ventas, 0)    AS ventas,
+                   COALESCE(costos.costo, 0)     AS costo
+            FROM periodos
+            LEFT JOIN ventas ON ventas.p = periodos.p
+            LEFT JOIN costos ON costos.p = periodos.p
+            ORDER BY periodos.p
+            """;
+        params.addValue("trunc", trunc).addValue("formato", formato);
+        dto.setSerie(jdbc.query(sql, params, (rs, i) -> {
+            PuntoCierreDto punto = new PuntoCierreDto();
+            punto.setEtiqueta(rs.getString("etiqueta"));
+            BigDecimal ventas = rs.getBigDecimal("ventas");
+            BigDecimal costo = rs.getBigDecimal("costo");
+            punto.setVentas(ventas);
+            punto.setCosto(costo);
+            punto.setUtilidadBruta(ventas.subtract(costo));
+            return punto;
+        }));
+
+        dto.setMediosPago(jdbc.query("""
+            SELECT COALESCE(NULLIF(vp.metodo_pago, ''), 'SIN MEDIO') AS etiqueta,
+                   SUM(vp.monto)   AS valor,
+                   COUNT(*)::INT   AS cantidad
+            FROM venta_pago vp
+            JOIN venta v ON v.id = vp.venta_id
+            WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+              AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            GROUP BY 1
+            ORDER BY 2 DESC
+            """, params, (rs, i) -> new ParteCierreDto(
+                rs.getString("etiqueta"), rs.getBigDecimal("valor"), rs.getInt("cantidad"))));
+
+        dto.setGastosCategoria(jdbc.query("""
+            SELECT COALESCE(NULLIF(g.categoria, ''), 'SIN CATEGORÍA') AS etiqueta,
+                   SUM(g.monto)  AS valor,
+                   COUNT(*)::INT AS cantidad
+            FROM gasto g
+            WHERE g.empresa_id = :empresaId AND g.estado = 'ACTIVO'
+              AND g.fecha BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            GROUP BY 1
+            ORDER BY 2 DESC
+            """, params, (rs, i) -> new ParteCierreDto(
+                rs.getString("etiqueta"), rs.getBigDecimal("valor"), rs.getInt("cantidad"))));
+
+        return dto;
     }
 
     public ReporteIvaDto reporteIva(Integer empresaId, String fechaDesde, String fechaHasta) {

@@ -44,4 +44,13 @@ public class AbonoCobrarDto {
 
     private LocalDateTime fechaPago;
     private LocalDateTime createdAt;
+
+    /**
+     * Retenciones que el cliente practicó sobre este pago (renta, IVA, ICA).
+     * El monto es lo que entregó; esto se suma para bajar la cartera.
+     */
+    private java.util.List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto> retenciones;
+
+    /** Si el abono es una retención: el tipo (RETEFUENTE | RETEIVA | RETEICA) está en metodoPago. */
+    private Long abonoOrigenId;
 }

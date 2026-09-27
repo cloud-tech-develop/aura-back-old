@@ -36,6 +36,7 @@ public class AperturaContableServiceImpl implements AperturaContableService {
     @Autowired private AsientoContableJPARepository asientoRepo;
     @Autowired private AsientoContableQueryRepository queryRepo;
     @Autowired private PeriodoContableJPARepository periodoRepo;
+    @Autowired private PeriodoContableResolver periodoResolver;
     @Autowired private PlanCuentaJPARepository planRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
     @Autowired private ConfiguracionContableService config;
@@ -90,9 +91,7 @@ public class AperturaContableServiceImpl implements AperturaContableService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un asiento de apertura. Elimínalo para volver a cargar los saldos iniciales.");
         }
-        PeriodoContableEntity periodo = periodoRepo.findByEmpresaIdAndEstado(empresaId, "ABIERTO")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "No hay un período contable ABIERTO. Abra un período antes de cargar los saldos iniciales."));
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId, dto.getFechaApertura());
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
         BigDecimal totalDb = BigDecimal.ZERO;

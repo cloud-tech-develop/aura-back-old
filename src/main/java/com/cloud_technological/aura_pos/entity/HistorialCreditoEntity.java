@@ -44,6 +44,10 @@ public class HistorialCreditoEntity {
     @Column(columnDefinition = "TEXT")
     private String motivo;
 
+    /** Regla automática que produjo el evento; null si fue manual (V169). */
+    @Column(name = "regla_id")
+    private Long reglaId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id")
     private UsuarioEntity usuario;

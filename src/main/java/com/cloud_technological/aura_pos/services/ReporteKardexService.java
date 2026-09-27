@@ -72,7 +72,7 @@ public class ReporteKardexService {
         "Producto", "SKU", "Categoría", "Marca", "Sucursal", "Lote",
         "Saldo inicial", "Entradas", "Salidas", "Variación", "Saldo final",
         "Valor entradas", "Valor salidas",
-        "Compras", "Ventas", "Devoluciones", "Mermas", "Obsequios",
+        "Compras", "Ventas", "Devoluciones", "Mermas", "Obsequios", "Consumo interno",
         "Traslados", "Anulaciones", "Reconteos", "Otros", "N° movs."
     };
 
@@ -150,6 +150,7 @@ public class ReporteKardexService {
                 e.numero(r, c++, l.getDevoluciones(), cant);
                 e.numero(r, c++, l.getMermas(), cant);
                 e.numero(r, c++, l.getObsequios(), cant);
+                e.numero(r, c++, l.getConsumosInternos(), cant);
                 e.numero(r, c++, l.getTraslados(), cant);
                 e.numero(r, c++, l.getAnulaciones(), cant);
                 e.numero(r, c++, l.getReconteos(), cant);

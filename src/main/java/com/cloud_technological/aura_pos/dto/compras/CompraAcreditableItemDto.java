@@ -15,6 +15,7 @@ public class CompraAcreditableItemDto {
     private Long productoId;
     private String productoNombre;
     private String productoSku;
+    private Boolean manejaSerial;
 
     /** Cantidad que aún se puede acreditar. */
     private BigDecimal cantidadDisponible;

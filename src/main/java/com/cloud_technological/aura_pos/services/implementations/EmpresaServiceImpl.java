@@ -3,6 +3,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.empresas.EmpresaDto;
+import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaContactoDto;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.SucursalEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
@@ -86,5 +87,54 @@ public class EmpresaServiceImpl implements IEmpresaService {
                 .sucursalCiudad(sucursal != null ? sucursal.getCiudad() : null)
                 .sucursalPrefijoFacturacion(sucursal != null ? sucursal.getPrefijoFacturacion() : null)
                 .build();
+    }
+
+    @Override
+    @jakarta.transaction.Transactional
+    public EmpresaDto actualizarContacto(UpdateEmpresaContactoDto dto, Integer empresaId,
+            Long sucursalId, Long usuarioId) {
+
+        EmpresaEntity empresa = empresaRepository.findById(empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
+
+        TerceroEntity tercero = terceroDeLaEmpresa(empresa, empresaId);
+        if (tercero == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La empresa no tiene un tercero con su NIT: no hay donde guardar el contacto");
+
+        if (dto.getTelefono() != null)  tercero.setTelefono(limpiar(dto.getTelefono()));
+        if (dto.getCorreo() != null)    tercero.setEmail(limpiar(dto.getCorreo()));
+        if (dto.getDireccion() != null) tercero.setDireccion(limpiar(dto.getDireccion()));
+        if (dto.getMunicipio() != null) tercero.setMunicipio(limpiar(dto.getMunicipio()));
+        terceroRepository.save(tercero);
+
+        // La tabla empresa guarda su propio telefono (lo usa el PDF de algunos
+        // documentos): se deja igual al del tercero para que no se contradigan.
+        if (dto.getTelefono() != null) {
+            empresa.setTelefono(limpiar(dto.getTelefono()));
+            empresaRepository.save(empresa);
+        }
+
+        return obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
+    }
+
+    /** El tercero con el NIT de la empresa; si no existe, el del SUPER_ADMIN. */
+    private TerceroEntity terceroDeLaEmpresa(EmpresaEntity empresa, Integer empresaId) {
+        TerceroEntity tercero = null;
+        if (empresa.getNit() != null) {
+            tercero = terceroRepository.findEmpresaTerceroByNit(empresaId, empresa.getNit())
+                    .orElse(null);
+        }
+        if (tercero == null) {
+            var superAdmin = usuarioRepository.findSuperAdminByEmpresaId(empresaId).orElse(null);
+            if (superAdmin != null) tercero = superAdmin.getTercero();
+        }
+        return tercero;
+    }
+
+    private String limpiar(String valor) {
+        if (valor == null) return null;
+        String v = valor.trim();
+        return v.isEmpty() ? null : v;
     }
 }

@@ -16,5 +16,8 @@ public interface PeriodoContableService {
 
     PeriodoContableTableDto cerrarPeriodo(Long id, CerrarPeriodoDto dto, Integer empresaId, Long usuarioId);
 
+    PeriodoContableTableDto reabrirPeriodo(Long id, CerrarPeriodoDto dto, Integer empresaId, Long usuarioId);
+
+    /** El período del mes en curso, si ya existe. */
     Optional<PeriodoContableEntity> getPeriodoAbierto(Integer empresaId);
 }
