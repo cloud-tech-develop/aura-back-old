@@ -39,6 +39,8 @@ public class ReciboCajaDto {
         private LocalDateTime fechaVencimiento;
         private BigDecimal saldoAnterior;
         private BigDecimal monto;
+        /** Lo que el cliente retuvo sobre esta factura (V181). */
+        private BigDecimal retenciones;
         private BigDecimal saldoDespues;
     }
 }

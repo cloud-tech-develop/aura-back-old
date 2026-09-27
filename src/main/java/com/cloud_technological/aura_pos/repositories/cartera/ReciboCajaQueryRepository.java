@@ -100,7 +100,8 @@ public class ReciboCajaQueryRepository {
         ReciboCajaDto dto = r.get(0);
         dto.setAplicaciones(jdbc.query("""
             SELECT a.cuenta_cobrar_id, cc.numero_cuenta, cc.fecha_vencimiento,
-                   a.saldo_anterior, a.monto, (a.saldo_anterior - a.monto) AS saldo_despues
+                   a.saldo_anterior, a.monto, a.retenciones,
+                   (a.saldo_anterior - a.monto - a.retenciones) AS saldo_despues
             FROM recibo_caja_aplicacion a
             JOIN cuentas_cobrar cc ON cc.id = a.cuenta_cobrar_id
             WHERE a.recibo_caja_id = :id

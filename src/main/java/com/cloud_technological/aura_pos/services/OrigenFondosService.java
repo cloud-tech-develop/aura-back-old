@@ -95,4 +95,19 @@ public interface OrigenFondosService {
     }
 
     OrigenFondos resolver(Integer empresaId, Solicitud solicitud);
+
+    /**
+     * Un fondo de efectivo elegido a mano —la caja menor— no puede entregar más
+     * de lo que tiene: el billete que no está en la caja no se puede pagar.
+     *
+     * <p>Solo aplica a la vía {@link Tipo#CUENTA_CONTABLE} sobre cuentas 1105:
+     * la caja del punto ya se controla con el arqueo, y los bancos tienen su
+     * propio control de sobregiro.
+     *
+     * @param origenTipo tipo de origen del asiento del propio documento, para
+     *                   no contar dos veces lo que ya consumió al editarlo;
+     *                   null en un documento nuevo.
+     */
+    void exigirSaldoDisponible(Integer empresaId, OrigenFondos origen,
+            java.math.BigDecimal monto, String documento, String origenTipo, Long origenId);
 }

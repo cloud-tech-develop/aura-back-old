@@ -28,6 +28,9 @@ public class CreateReciboCajaDto {
     @Setter
     public static class Aplicacion {
         private Long cuentaCobrarId;
+        /** Lo que se paga de la factura con el dinero recibido. */
         private BigDecimal monto;
+        /** Lo que el cliente retuvo sobre esta factura (se suma a monto para bajar el saldo). */
+        private java.util.List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto> retenciones;
     }
 }

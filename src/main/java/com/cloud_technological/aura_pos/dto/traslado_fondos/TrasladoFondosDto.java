@@ -36,4 +36,8 @@ public class TrasladoFondosDto {
     private Integer usuarioId;
     private String estado;
     private LocalDateTime createdAt;
+
+    private String motivoAnulacion;
+    private Integer anuladoPor;
+    private LocalDateTime anuladoAt;
 }

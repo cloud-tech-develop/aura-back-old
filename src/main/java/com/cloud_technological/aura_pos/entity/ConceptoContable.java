@@ -33,10 +33,14 @@ public enum ConceptoContable {
     RETEICA_PRACTICADA("2368", "ReteICA practicada", "23"),
 
     // ── Retenciones que le practican a la empresa (anticipo: activo) ──────
-    RETEFUENTE_ASUMIDA("1355", "Retención en la fuente que nos practican", "13"),
+    // Subcuentas de la 1355: cada declaración descuenta la suya.
+    RETEFUENTE_ASUMIDA("135515", "Retención en la fuente que nos practican", "13"),
+    RETEIVA_ASUMIDA("135517", "ReteIVA que nos practican", "13"),
+    RETEICA_ASUMIDA("135518", "ReteICA que nos practican", "13"),
 
     // ── Disponible / tesorería ────────────────────────────────────────────
-    CAJA("1105", "Caja", "11"),
+    // 110505 Caja general: la 1105 agrupa la caja general y las cajas menores.
+    CAJA("110505", "Caja general", "11"),
     BANCOS("1110", "Bancos", "11"),
 
     // ── Financiación ──────────────────────────────────────────────────────

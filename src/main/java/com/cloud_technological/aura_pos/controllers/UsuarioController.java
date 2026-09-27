@@ -39,6 +39,7 @@ public class UsuarioController {
     @PostMapping("/page")
     public ResponseEntity<ApiResponse<PageImpl<UsuarioTableDto>>> paginar(
             @RequestBody PageableDto<Object> pageable) {
+        exigirAdministrador();
         Integer empresaId = securityUtils.getEmpresaId();
         PageImpl<UsuarioTableDto> result = usuarioService.paginar(pageable, empresaId);
         if (result.isEmpty())
@@ -48,6 +49,7 @@ public class UsuarioController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UsuarioDto>> obtenerPorId(@PathVariable Integer id) {
+        if (!esAdministrador()) exigirPropio(id);
         Integer empresaId = securityUtils.getEmpresaId();
         UsuarioDto result = usuarioService.obtenerPorId(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Usuario encontrado", false, result), HttpStatus.OK);
@@ -55,6 +57,7 @@ public class UsuarioController {
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<UsuarioDto>> crear(@Valid @RequestBody CreateUsuarioDto dto) {
+        exigirAdministrador();
         Integer empresaId = securityUtils.getEmpresaId();
         UsuarioDto result = usuarioService.crear(dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Usuario creado exitosamente", false, result), HttpStatus.CREATED);
@@ -68,6 +71,7 @@ public class UsuarioController {
      */
     @PostMapping("/create-from-empleado")
     public ResponseEntity<ApiResponse<UsuarioDto>> crearDesdeEmpleado(@Valid @RequestBody CreateUsuarioFromEmpleadoDto dto) {
+        exigirAdministrador();
         Integer empresaId = securityUtils.getEmpresaId();
         UsuarioDto result = usuarioService.crearDesdeEmpleado(dto, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Usuario creado exitosamente desde empleado", false, result), HttpStatus.CREATED);
@@ -78,14 +82,40 @@ public class UsuarioController {
             @PathVariable Integer id,
             @Valid @RequestBody UpdateUsuarioDto dto) {
         Integer empresaId = securityUtils.getEmpresaId();
-        UsuarioDto result = usuarioService.actualizar(id, dto, empresaId);
+        UsuarioDto result;
+        if (esAdministrador()) {
+            result = usuarioService.actualizar(id, dto, empresaId);
+        } else {
+            exigirPropio(id);
+            result = usuarioService.actualizarPropio(id, dto, empresaId);
+        }
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Usuario actualizado correctamente", false, result), HttpStatus.OK);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Boolean>> desactivar(@PathVariable Integer id) {
+        exigirAdministrador();
         Integer empresaId = securityUtils.getEmpresaId();
         usuarioService.desactivar(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Usuario desactivado correctamente", false, true), HttpStatus.OK);
+    }
+
+    // Un cajero o vendedor no administra usuarios: con la API abierta podía
+    // cambiarle la clave o el rol a cualquiera (incluso subirse a ADMIN).
+
+    private boolean esAdministrador() {
+        String rol = securityUtils.getRol();
+        return rol != null && ("ADMIN".equalsIgnoreCase(rol) || "SUPER_ADMIN".equalsIgnoreCase(rol));
+    }
+
+    private void exigirAdministrador() {
+        if (!esAdministrador())
+            throw new GlobalException(HttpStatus.FORBIDDEN, "Solo un administrador puede gestionar usuarios");
+    }
+
+    private void exigirPropio(Integer id) {
+        Long propio = securityUtils.getUsuarioId();
+        if (propio == null || id == null || propio.longValue() != id.longValue())
+            throw new GlobalException(HttpStatus.FORBIDDEN, "Solo puede ver y modificar su propio usuario");
     }
 }

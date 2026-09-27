@@ -136,15 +136,21 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             // ── Clase 1 · Activo ──────────────────────────────────────────────
             { "11", "Disponible",                       "ACTIVO",  "DEBITO",  2, "1" },
             { "1105", "Caja",                           "ACTIVO",  "DEBITO",  3, "11" },
-            // La caja menor nace como subcuenta de Caja: es el fondo fijo que
-            // maneja el administrador para gastos menores. Al ser cuenta propia,
-            // sus pagos no pasan por el arqueo del cajero del punto de venta.
-            { "110505", "Caja Menor",                   "ACTIVO",  "DEBITO",  4, "1105" },
+            // 1105 agrupa; el movimiento va a sus subcuentas, con los códigos
+            // del PUC: 110505 el efectivo de las cajas del punto y 110510 el
+            // fondo fijo del administrador. La caja menor es cuenta propia, así
+            // que sus pagos no pasan por el arqueo del cajero.
+            { "110505", "Caja general",                 "ACTIVO",  "DEBITO",  4, "1105" },
+            { "110510", "Cajas menores",                "ACTIVO",  "DEBITO",  4, "1105" },
             { "1110", "Bancos",                         "ACTIVO",  "DEBITO",  3, "11" },
             { "1120", "Cuentas de Ahorro",              "ACTIVO",  "DEBITO",  3, "11" },
             { "13", "Deudores",                         "ACTIVO",  "DEBITO",  2, "1" },
             { "1305", "Clientes",                       "ACTIVO",  "DEBITO",  3, "13" },
             { "1355", "Anticipo de Impuestos y Retenciones","ACTIVO","DEBITO",3, "13" },
+            // Retenciones que los clientes le practican a la empresa, por tipo.
+            { "135515", "Retención en la fuente",       "ACTIVO",  "DEBITO",  4, "1355" },
+            { "135517", "Impuesto a las ventas retenido","ACTIVO", "DEBITO",  4, "1355" },
+            { "135518", "Impuesto de industria y comercio retenido","ACTIVO","DEBITO",4,"1355" },
             { "14", "Inventarios",                      "ACTIVO",  "DEBITO",  2, "1" },
             { "1435", "Mercancias no Fabricadas",       "ACTIVO",  "DEBITO",  3, "14" },
             { "15", "Propiedad Planta y Equipo",        "ACTIVO",  "DEBITO",  2, "1" },
@@ -242,6 +248,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             String codigo = (String) g[0];
             String codigoPadre = (String) g[5];
             Long padreId = idsByCodigo.get(codigoPadre);
+            boolean auxiliar = ((Integer) g[4]) >= 3 && !AGRUPADORAS.contains(codigo);
             PlanCuentaEntity e = PlanCuentaEntity.builder()
                     .empresaId(empresaId)
                     .codigo(codigo)
@@ -251,13 +258,20 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
                     .nivel(((Integer) g[4]).shortValue())
                     .padreId(padreId)
                     .activa(true)
-                    .auxiliar(((Integer) g[4]) >= 3)
-                    .esMedioPago(esDisponible(codigo))
+                    .auxiliar(auxiliar)
+                    .esMedioPago(auxiliar && esDisponible(codigo))
                     .build();
             PlanCuentaEntity saved = repo.save(e);
             idsByCodigo.put(codigo, saved.getId());
         }
     }
+
+    /**
+     * Cuentas de nivel 3 que se siembran con subcuentas y por eso no reciben
+     * movimientos. Solo la caja y el anticipo de impuestos: las demás con hijas
+     * (2408, 5305…) todavía son destino por defecto de algún concepto.
+     */
+    private static final java.util.Set<String> AGRUPADORAS = java.util.Set.of("1105", "1355");
 
     /**
      * El disponible del PUC con el que efectivamente se paga: caja (incluida la

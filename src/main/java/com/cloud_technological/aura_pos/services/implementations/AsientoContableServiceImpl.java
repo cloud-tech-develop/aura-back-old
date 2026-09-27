@@ -251,6 +251,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (montoContrapartida.signum() == 0) {
             montoContrapartida = totalDebito;
         }
+        if ("CE".equals(tipo)) {
+            origenFondosService.exigirSaldoDisponible(empresaId, origen, montoContrapartida,
+                    "comprobante de egreso", null, null);
+        }
 
         String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, tipo);
 

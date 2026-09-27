@@ -32,6 +32,10 @@ import com.cloud_technological.aura_pos.repositories.cartera.ReporteCarteraQuery
 import com.cloud_technological.aura_pos.repositories.gastos.ReporteGastosQueryRepository;
 import com.cloud_technological.aura_pos.repositories.kardex.KardexQueryRepository;
 import com.cloud_technological.aura_pos.repositories.kardex.KardexQueryRepository.MovimientoPorFamilia;
+import com.cloud_technological.aura_pos.dto.carrito.CarritoAbandonadoDtos;
+import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteCarteraTerceroDto;
+import com.cloud_technological.aura_pos.services.implementations.CarritoAbandonadoService;
 import com.cloud_technological.aura_pos.utils.GraficaPdf;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 import com.itextpdf.kernel.colors.ColorConstants;
@@ -63,7 +67,7 @@ import lombok.extern.slf4j.Slf4j;
  * <p>El semáforo va en la portada, no al final. Quien lo abre quiere saber si
  * tiene un problema, no leer doce páginas hasta encontrarlo.
  *
- * <p>Las secciones 1–6 hablan en lenguaje del dueño del negocio; los anexos son
+ * <p>Las secciones 1–9 hablan en lenguaje del dueño del negocio; los anexos son
  * densos a propósito, porque es donde el contador va a buscar el soporte.
  */
 @Slf4j
@@ -88,12 +92,15 @@ public class ReporteGerencialService {
     private final KardexQueryRepository kardexRepo;
     private final IEmpresaService empresaService;
     private final SecurityUtils securityUtils;
+    private final CarritoAbandonadoService carritos;
+    private final DeclaracionesService declaraciones;
 
     public ReporteGerencialService(AuditoriaService auditoriaService,
             AsientoContableService contabilidad, ReporteAvanzadoService avanzado,
             ReporteCarteraQueryRepository carteraRepo, ReporteGastosQueryRepository gastosRepo,
             KardexQueryRepository kardexRepo,
-            IEmpresaService empresaService, SecurityUtils securityUtils) {
+            IEmpresaService empresaService, SecurityUtils securityUtils,
+            CarritoAbandonadoService carritos, DeclaracionesService declaraciones) {
         this.auditoriaService = auditoriaService;
         this.contabilidad = contabilidad;
         this.avanzado = avanzado;
@@ -102,6 +109,8 @@ public class ReporteGerencialService {
         this.kardexRepo = kardexRepo;
         this.empresaService = empresaService;
         this.securityUtils = securityUtils;
+        this.carritos = carritos;
+        this.declaraciones = declaraciones;
     }
 
     @Transactional(readOnly = true)
@@ -122,11 +131,13 @@ public class ReporteGerencialService {
             doc.setMargins(28, 32, 28, 32);
 
             portada(doc, empresaId, desde, hasta, auditoria);
-            comoVaElNegocio(doc, empresaId, desde, hasta);
-            cartera(doc, empresaId, hasta);
+            ReporteResumenAvanzadoDto ventas = comoVaElNegocio(doc, empresaId, desde, hasta);
+            ventasPerdidas(doc, empresaId, desde, hasta, ventas);
+            cartera(doc, empresaId, desde, hasta);
             gastos(doc, empresaId, desde, hasta);
             inventario(doc, pdf, empresaId, desde, hasta);
             contabilidadSeccion(doc, empresaId, desde, hasta);
+            impuestos(doc, empresaId, desde, hasta);
             hallazgos(doc, auditoria);
             anexoMetodologia(doc, auditoria);
             anexoDetalle(doc, auditoria);
@@ -210,7 +221,8 @@ public class ReporteGerencialService {
 
     // ── 1. Cómo va el negocio ─────────────────────────────────────────
 
-    private void comoVaElNegocio(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta) {
+    private ReporteResumenAvanzadoDto comoVaElNegocio(Document doc, Integer empresaId,
+            LocalDate desde, LocalDate hasta) {
         titulo(doc, "1. Cómo va el negocio");
 
         ReporteResumenAvanzadoDto r = null;
@@ -221,7 +233,7 @@ public class ReporteGerencialService {
         }
         if (r == null) {
             doc.add(nota("No hay ventas registradas en el período."));
-            return;
+            return null;
         }
 
         // La comparación contra el período anterior se grafica: un "+12%"
@@ -249,12 +261,77 @@ public class ReporteGerencialService {
                     + (r.getTopCategoria() != null ? "  ·  Categoría: " + r.getTopCategoria() : "")
                     + (r.getTopVendedor() != null ? "  ·  Vendedor: " + r.getTopVendedor() : "")));
         }
+        return r;
+    }
+
+    // ── 2. Ventas que no se concretaron ───────────────────────────────
+
+    /**
+     * Carritos del POS que se armaron y se vaciaron sin vender. Es venta que
+     * estuvo a punto de pasar: si un producto se abandona seguido, el precio o
+     * la disponibilidad están espantando al cliente.
+     */
+    private void ventasPerdidas(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta,
+            ReporteResumenAvanzadoDto ventas) {
+        titulo(doc, "2. Ventas que no se concretaron");
+
+        CarritoAbandonadoDtos.Reporte r;
+        try {
+            r = carritos.reporte(empresaId, desde, hasta, CarritoAbandonadoService.MINUTOS_POR_DEFECTO, null);
+        } catch (RuntimeException e) {
+            log.warn("[Reporte gerencial] Sin carritos abandonados: {}", e.getMessage());
+            doc.add(nota("No se pudo leer el registro de carritos abandonados."));
+            return;
+        }
+        if (r == null || r.getCarritos() == 0) {
+            doc.add(nota("No hubo carritos abandonados de " + CarritoAbandonadoService.MINUTOS_POR_DEFECTO
+                    + " minutos o más en el período."
+                    + (r != null && r.getDescartadosPorTiempo() > 0
+                            ? " Se vaciaron " + r.getDescartadosPorTiempo()
+                                    + " más rápido: se toman como correcciones del cajero." : "")));
+            return;
+        }
+
+        Table t = tabla(new float[]{40, 25, 35}, "Indicador", "Valor", "Qué significa");
+        fila(t, 0, "Carritos abandonados", String.valueOf(r.getCarritos()),
+                r.getProductos() + " producto(s) que no se vendieron");
+        String pctVentas = "—";
+        if (ventas != null && nzBd(ventas.getTotalVentasPeriodo()).signum() > 0) {
+            pctVentas = r.getValor().multiply(BigDecimal.valueOf(100))
+                    .divide(ventas.getTotalVentasPeriodo(), 1, RoundingMode.HALF_UP) + "% de lo vendido";
+        }
+        fila(t, 1, "Valor sin vender", pesos(r.getValor()), pctVentas);
+        fila(t, 2, "Tiempo promedio armado", r.getMinutosPromedio() + " min",
+                "Lo que duró el carrito antes de vaciarse");
+        doc.add(t);
+
+        List<CarritoAbandonadoDtos.ProductoAbandonado> top = r.getTopProductos().stream().limit(6).toList();
+        if (!top.isEmpty()) {
+            doc.add(new Paragraph("Productos que más se abandonan").setFontSize(9).setBold().setMarginTop(8));
+            doc.add(GraficaPdf.barras(top.stream()
+                    .map(x -> new GraficaPdf.Barra(x.getNombre(), nzBd(x.getValor()),
+                            pesos(x.getValor()) + " · " + x.getCarritos() + " carrito(s)"))
+                    .toList(), AMBAR));
+        }
+
+        if (r.getPorCajero().size() > 1) {
+            Table c = tabla(new float[]{50, 20, 30}, "Cajero", "Carritos", "Valor");
+            for (int i = 0; i < r.getPorCajero().size(); i++) {
+                var pc = r.getPorCajero().get(i);
+                fila(c, i, txt(pc.getUsuario()), String.valueOf(pc.getCarritos()), pesos(pc.getValor()));
+            }
+            doc.add(c);
+        }
+        doc.add(nota("Se cuentan los carritos que estuvieron armados al menos "
+                + CarritoAbandonadoService.MINUTOS_POR_DEFECTO + " minutos antes de vaciarse. Un producto "
+                + "que se abandona seguido suele tener un precio que el cliente no acepta o no estar "
+                + "disponible en la cantidad pedida."));
     }
 
     // ── 3. Cartera ────────────────────────────────────────────────────
 
-    private void cartera(Document doc, Integer empresaId, LocalDate hasta) {
-        titulo(doc, "2. Lo que le deben y lo que debe");
+    private void cartera(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta) {
+        titulo(doc, "3. Lo que le deben y lo que debe");
 
         ReporteCarteraResumenDto cxc = carteraResumen(empresaId, ReporteCarteraFiltroDto.CXC);
         ReporteCarteraResumenDto cxp = carteraResumen(empresaId, ReporteCarteraFiltroDto.CXP);
@@ -297,6 +374,110 @@ public class ReporteGerencialService {
             doc.add(nota("De lo que le deben, " + pesos(cxc.getMoraMas90())
                     + " lleva más de 90 días vencido: es lo más difícil de recuperar."));
         }
+
+        // Estados de cuenta: el saldo total no dice a quién llamar primero.
+        estadosDeCuenta(doc, "Quién le debe más", "Cliente", cxc);
+        estadosDeCuenta(doc, "A quién le debe más", "Proveedor", cxp);
+
+        recaudo(doc, empresaId, desde, hasta);
+    }
+
+    /** Los cinco terceros con mayor saldo, con lo vencido separado. */
+    private void estadosDeCuenta(Document doc, String titulo, String columna, ReporteCarteraResumenDto r) {
+        if (r == null || r.getTerceros() == null || r.getTerceros().isEmpty()) {
+            return;
+        }
+        List<ReporteCarteraTerceroDto> top = r.getTerceros().stream()
+                .filter(x -> nzBd(x.getSaldoPendiente()).signum() > 0)
+                .limit(5).toList();
+        if (top.isEmpty()) {
+            return;
+        }
+        doc.add(new Paragraph(titulo).setFontSize(9).setBold().setMarginTop(10));
+        Table t = tabla(new float[]{38, 12, 18, 18, 14}, columna, "Facturas", "Saldo", "Vencido", "Mora máx.");
+        for (int i = 0; i < top.size(); i++) {
+            ReporteCarteraTerceroDto x = top.get(i);
+            BigDecimal vencido = nzBd(x.getSaldoPendiente()).subtract(nzBd(x.getCorriente()));
+            fila(t, i, txt(x.getTerceroNombre()), String.valueOf(x.getDocumentos() != null ? x.getDocumentos() : 0),
+                    pesos(x.getSaldoPendiente()), pesos(vencido),
+                    x.getDiasMoraMax() != null && x.getDiasMoraMax() > 0 ? x.getDiasMoraMax() + " días" : "Al día");
+        }
+        doc.add(t);
+        if (r.getTerceros().size() > top.size()) {
+            BigDecimal suma = top.stream().map(x -> nzBd(x.getSaldoPendiente())).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal total = nzBd(r.getSaldoPendiente());
+            if (total.signum() > 0) {
+                doc.add(nota("Estos " + top.size() + " concentran el "
+                        + suma.multiply(BigDecimal.valueOf(100)).divide(total, 0, RoundingMode.HALF_UP)
+                        + "% del saldo (" + r.getTerceros().size() + " terceros en total)."));
+            }
+        }
+    }
+
+    /**
+     * Lo que entró por cartera y lo que salió a proveedores en el período. Las
+     * retenciones que practicaron los clientes se muestran aparte: bajaron la
+     * cartera pero no son dinero, se recuperan en las declaraciones.
+     */
+    private void recaudo(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta) {
+        List<ReporteCarteraQueryRepository.MedioRecaudo> cobros;
+        List<ReporteCarteraQueryRepository.MedioRecaudo> pagos;
+        try {
+            cobros = carteraRepo.recaudoPorMedio(empresaId, ReporteCarteraFiltroDto.CXC, desde, hasta);
+            pagos = carteraRepo.recaudoPorMedio(empresaId, ReporteCarteraFiltroDto.CXP, desde, hasta);
+        } catch (RuntimeException e) {
+            log.warn("[Reporte gerencial] Sin recaudo: {}", e.getMessage());
+            return;
+        }
+        if ((cobros == null || cobros.isEmpty()) && (pagos == null || pagos.isEmpty())) {
+            return;
+        }
+        doc.add(new Paragraph("Lo que se cobró y se pagó en el período").setFontSize(9).setBold().setMarginTop(10));
+        Table t = tabla(new float[]{46, 14, 20, 20}, "Medio", "Abonos", "Cobrado a clientes", "Pagado a proveedores");
+        java.util.Map<String, BigDecimal[]> filas = new java.util.LinkedHashMap<>();
+        if (cobros != null) {
+            for (var m : cobros) {
+                filas.computeIfAbsent(m.medio(), k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                filas.get(m.medio())[0] = filas.get(m.medio())[0].add(BigDecimal.valueOf(m.cantidad()));
+                filas.get(m.medio())[1] = nzBd(m.total());
+            }
+        }
+        if (pagos != null) {
+            for (var m : pagos) {
+                filas.computeIfAbsent(m.medio(), k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                filas.get(m.medio())[0] = filas.get(m.medio())[0].add(BigDecimal.valueOf(m.cantidad()));
+                filas.get(m.medio())[2] = nzBd(m.total());
+            }
+        }
+        BigDecimal retenciones = BigDecimal.ZERO;
+        int i = 0;
+        for (var e : filas.entrySet()) {
+            boolean esRetencion = e.getKey().startsWith("RETE");
+            if (esRetencion) retenciones = retenciones.add(e.getValue()[1]);
+            fila(t, i++, etiquetaMedio(e.getKey()), e.getValue()[0].toPlainString(),
+                    e.getValue()[1].signum() > 0 ? pesos(e.getValue()[1]) : "—",
+                    e.getValue()[2].signum() > 0 ? pesos(e.getValue()[2]) : "—");
+        }
+        doc.add(t);
+        if (retenciones.signum() > 0) {
+            doc.add(nota("Los clientes le retuvieron " + pesos(retenciones) + ": bajó la cartera pero no "
+                    + "entró como dinero. Se descuenta en las declaraciones de renta, IVA e ICA."));
+        }
+    }
+
+    private String etiquetaMedio(String medio) {
+        return switch (medio != null ? medio : "") {
+            case "EFECTIVO" -> "Efectivo";
+            case "TRANSFERENCIA" -> "Transferencia";
+            case "TARJETA", "TARJETA_CREDITO", "TARJETA_DEBITO" -> "Tarjeta";
+            case "NEQUI" -> "Nequi";
+            case "DAVIPLATA" -> "Daviplata";
+            case "CHEQUE" -> "Cheque";
+            case "RETEFUENTE" -> "Retención en la fuente (se la practicaron)";
+            case "RETEIVA" -> "ReteIVA (se la practicaron)";
+            case "RETEICA" -> "ReteICA (se la practicaron)";
+            default -> medio != null ? medio.charAt(0) + medio.substring(1).toLowerCase() : "—";
+        };
     }
 
     private ReporteCarteraResumenDto carteraResumen(Integer empresaId, String tipo) {
@@ -321,7 +502,7 @@ public class ReporteGerencialService {
     // ── 5. Gastos ─────────────────────────────────────────────────────
 
     private void gastos(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta) {
-        titulo(doc, "3. En qué se fue la plata");
+        titulo(doc, "4. En qué se fue la plata");
 
         ReporteGastosResumenDto g;
         try {
@@ -380,7 +561,7 @@ public class ReporteGerencialService {
      */
     private void inventario(Document doc, PdfDocument pdf, Integer empresaId,
             LocalDate desde, LocalDate hasta) {
-        titulo(doc, "4. Cómo se movió el inventario");
+        titulo(doc, "5. Cómo se movió el inventario");
 
         List<MovimientoPorFamilia> familias;
         try {
@@ -473,7 +654,7 @@ public class ReporteGerencialService {
 
     private void contabilidadSeccion(Document doc, Integer empresaId, LocalDate desde,
             LocalDate hasta) {
-        titulo(doc, "4. Resultado y balance");
+        titulo(doc, "6. Resultado y balance");
 
         EstadoResultadosDto er = null;
         BalanceGeneralDto bg = null;
@@ -533,6 +714,67 @@ public class ReporteGerencialService {
                 ? "El balance cierra: el activo es igual al pasivo más el patrimonio más el resultado."
                 : "ATENCIÓN: el balance NO cierra por " + pesos(ec.abs())
                         + ". Ningún estado financiero que salga de él es confiable."));
+    }
+
+    // ── 7. Impuestos del período ──────────────────────────────────────
+
+    /**
+     * Lo que va a salir en las declaraciones, leído de la contabilidad. Es un
+     * borrador con el rango del reporte: el IVA se declara por bimestre o
+     * cuatrimestre, y la pantalla Declaraciones lo arma con el período exacto.
+     */
+    private void impuestos(Document doc, Integer empresaId, LocalDate desde, LocalDate hasta) {
+        titulo(doc, "7. Impuestos del período");
+
+        BorradorDeclaracionDto iva = null;
+        BorradorDeclaracionDto ret = null;
+        try {
+            iva = declaraciones.iva(empresaId, desde, hasta);
+        } catch (RuntimeException e) {
+            log.warn("[Reporte gerencial] Sin borrador de IVA: {}", e.getMessage());
+        }
+        try {
+            ret = declaraciones.retencion(empresaId, desde, hasta);
+        } catch (RuntimeException e) {
+            log.warn("[Reporte gerencial] Sin borrador de retención: {}", e.getMessage());
+        }
+        if (iva == null && ret == null) {
+            doc.add(nota("No se pudieron calcular los impuestos del período."));
+            return;
+        }
+
+        Table t = tabla(new float[]{60, 40}, "Concepto", "Valor");
+        int i = 0;
+        if (iva != null) {
+            fila(t, i++, "IVA generado en ventas", pesos(totalSeccion(iva, "IVA generado")));
+            fila(t, i++, "Menos: IVA descontable en compras y gastos", pesos(totalSeccion(iva, "IVA descontable")));
+            fila(t, i++, "Menos: ReteIVA que le practicaron", pesos(totalSeccion(iva, "Retenciones de IVA")));
+            fila(t, i++, "IVA: " + iva.getResultadoEtiqueta().toLowerCase(), pesos(iva.getResultado().abs()));
+        }
+        if (ret != null) {
+            fila(t, i++, "Retención en la fuente practicada (renta)", pesos(totalSeccion(ret, "Retención en la fuente")));
+            fila(t, i++, "Retención a título de IVA practicada", pesos(totalSeccion(ret, "Retención a título de IVA")));
+            fila(t, i++, "Retenciones a pagar (formulario 350)", pesos(ret.getResultado()));
+        }
+        doc.add(t);
+        doc.add(nota("Borrador leído de la contabilidad para el rango de este reporte. El IVA se declara "
+                + "por bimestre o cuatrimestre y la retención por mes: use Contabilidad → Declaraciones "
+                + "con el período exacto antes de presentar."));
+
+        // Las advertencias del borrador (asientos en borrador, INC mezclado con
+        // IVA, descuadres) valen igual aquí: sin ellas la cifra engaña.
+        java.util.LinkedHashSet<String> avisos = new java.util.LinkedHashSet<>();
+        if (iva != null) avisos.addAll(iva.getAdvertencias());
+        if (ret != null) avisos.addAll(ret.getAdvertencias());
+        avisos.stream().filter(a -> !a.startsWith("Las retenciones se agrupan")).limit(4)
+                .forEach(a -> doc.add(nota("Atención: " + a)));
+    }
+
+    private static BigDecimal totalSeccion(BorradorDeclaracionDto b, String prefijo) {
+        return b.getSecciones().stream()
+                .filter(s -> s.getTitulo() != null && s.getTitulo().startsWith(prefijo))
+                .map(BorradorDeclaracionDto.Seccion::getTotal)
+                .findFirst().orElse(BigDecimal.ZERO);
     }
 
     /** Las líneas de mayor peso del estado de resultados, graficadas. */
@@ -622,7 +864,7 @@ public class ReporteGerencialService {
 
     private void hallazgos(Document doc, AuditoriaResultadoDto a) {
         doc.add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-        titulo(doc, "5. Qué no cuadra");
+        titulo(doc, "8. Qué no cuadra");
 
         if (a.getHallazgos().isEmpty()) {
             doc.add(nota("No se encontró ningún descuadre en la operación del período."));
@@ -637,7 +879,7 @@ public class ReporteGerencialService {
         }
 
         if (!a.getHeredados().isEmpty()) {
-            titulo(doc, "6. Descuadres anteriores a las correcciones");
+            titulo(doc, "9. Descuadres anteriores a las correcciones");
             doc.add(nota("Estos vienen de antes del período y ya están diagnosticados. "
                     + "Se listan para que quede constancia, no porque sean de esta operación."));
             tablaHallazgos(doc, a.getHeredados());

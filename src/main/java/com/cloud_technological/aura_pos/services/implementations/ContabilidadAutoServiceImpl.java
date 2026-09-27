@@ -405,13 +405,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // Asiento VIGENTE del documento. Si no hay (nunca se generó, o ya se
         // reversó antes), no hay nada que reversar → no-op.
         //
-        // La idempotencia va por el estado del asiento y no por la existencia de
-        // una reversa previa: un documento puede editarse varias veces, y cada
-        // edición reversa el que estaba vigente y genera uno nuevo. Anclarla al
-        // par (ANULACION_X, origenId) bloqueaba la segunda edición.
-        AsientoContableEntity original = asientoRepo
-                .findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
-                        origenTipo, origenId, empresaId, ESTADO_CONTABILIZADO)
+        // Un documento puede editarse varias veces y cada edición reversa el
+        // asiento vigente y genera uno nuevo, así que la idempotencia no puede
+        // anclarse al par (ANULACION_X, origenId): bloquearía la segunda edición.
+        AsientoContableEntity original = asientoVigente(origenTipo, origenId, empresaId)
                 .orElse(null);
         if (original == null) {
             // Borrador de un documento que ya no existe: nunca tocó saldos, así
@@ -457,11 +454,11 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         AsientoContableEntity saved = asientoRepo.save(asiento);
 
-        // El original deja de estar vigente. Queda en la contabilidad con su
-        // número —no se borra— pero ya no representa al documento, y por eso
-        // otra generación puede tomar su lugar cuando el documento se edita.
-        original.setEstado(ESTADO_ANULADO);
-        asientoRepo.save(original);
+        // El original se queda CONTABILIZADO: es el contraasiento el que lo
+        // neutraliza. Marcarlo ANULADO lo sacaba de los reportes (que solo leen
+        // CONTABILIZADO) y dejaba viva únicamente la reversa: anular un gasto de
+        // 100 lo mostraba en -100. Que ya no representa al documento lo sabe
+        // asientoVigente() contando las reversas.
 
         AsientoContableTableDto result = toDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
@@ -913,8 +910,10 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // DB · salarios por pagar (cancela el pasivo)
         PlanCuentaEntity salarios = config.resolverCuenta(empresaId, ConceptoContable.SALARIOS_POR_PAGAR);
         detalles.add(linea(salarios.getId(), "Pago de nómina — salarios por pagar", neto, BigDecimal.ZERO));
-        // CR · banco o caja de donde salió el dinero
-        PlanCuentaEntity origen = resolverCuentaPago(empresaId, n.getMedioPago(), n.getCuentaBancariaId());
+        // CR · banco o caja de donde salió el dinero. La cuenta que resolvió el
+        // origen de fondos manda: distingue la caja general de la caja menor.
+        PlanCuentaEntity origen = resolverCuentaPago(empresaId, n.getMedioPago(),
+                n.getCuentaBancariaId(), n.getCuentaPagoId());
         detalles.add(linea(origen.getId(), "Pago de nómina", BigDecimal.ZERO, neto));
 
         java.time.LocalDate fecha = n.getFechaPago() != null
@@ -1361,12 +1360,36 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     /**
      * ¿El documento ya tiene asiento <b>vigente</b>?
      *
-     * <p>Ignora los ANULADOS a propósito: cuando un documento se edita, su
-     * asiento se reversa y queda anulado, y el documento tiene que poder
-     * generar el nuevo que refleja los valores corregidos.
+     * <p>Un asiento reversado no cuenta: cuando un documento se edita, su
+     * asiento se reversa y el documento tiene que poder generar el nuevo que
+     * refleja los valores corregidos.
      */
     private boolean yaContabilizado(String tipoOrigen, Long origenId, Integer empresaId) {
-        return asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+        return asientoVigente(tipoOrigen, origenId, empresaId).isPresent();
+    }
+
+    /**
+     * El asiento que hoy representa al documento.
+     *
+     * <p>Los originales reversados siguen CONTABILIZADOS (su reversa los
+     * neutraliza en los libros), así que la vigencia se deduce contando: cada
+     * reversa no anulada cancela un original, y si sobran originales el vigente
+     * es el más reciente. Una reversa en BORRADOR (modo revisión) ya cuenta: el
+     * documento dejó de estar representado aunque el contador no la apruebe aún.
+     */
+    private java.util.Optional<AsientoContableEntity> asientoVigente(String tipoOrigen,
+            Long origenId, Integer empresaId) {
+        long originales = asientoRepo.countByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+                tipoOrigen, origenId, empresaId, ESTADO_CONTABILIZADO);
+        if (originales == 0) {
+            return java.util.Optional.empty();
+        }
+        long reversas = asientoRepo.countByTipoOrigenAndOrigenIdAndEmpresaIdAndEstadoNot(
+                "ANULACION_" + tipoOrigen, origenId, empresaId, ESTADO_ANULADO);
+        if (originales <= reversas) {
+            return java.util.Optional.empty();
+        }
+        return asientoRepo.findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstadoOrderByIdDesc(
                 tipoOrigen, origenId, empresaId, ESTADO_CONTABILIZADO);
     }
 

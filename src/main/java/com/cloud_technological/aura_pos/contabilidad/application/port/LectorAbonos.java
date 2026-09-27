@@ -28,6 +28,17 @@ public interface LectorAbonos {
             Long terceroId,
             String metodoPago,
             Long cuentaBancariaId,
-            Long cuentaContableId) {
+            Long cuentaContableId,
+            java.util.List<Retencion> retenciones) {
+
+        public AbonoContable(LocalDate fecha, BigDecimal monto, Long terceroId, String metodoPago,
+                Long cuentaBancariaId, Long cuentaContableId) {
+            this(fecha, monto, terceroId, metodoPago, cuentaBancariaId, cuentaContableId,
+                    java.util.List.of());
+        }
+    }
+
+    /** Retención que el cliente practicó sobre el abono (RETEFUENTE | RETEIVA | RETEICA). */
+    record Retencion(String tipo, BigDecimal valor) {
     }
 }

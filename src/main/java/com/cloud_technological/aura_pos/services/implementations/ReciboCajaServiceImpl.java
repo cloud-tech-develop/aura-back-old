@@ -54,6 +54,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ReciboCajaServiceImpl implements ReciboCajaService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private RetencionRecaudoService retencionRecaudo;
+
     private static final String PREFIJO = "RCB";
 
     private final ReciboCajaJPARepository reciboRepo;
@@ -93,6 +96,8 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
 
         Set<Long> vistas = new HashSet<>();
         List<CuentaCobrarEntity> cuentas = new ArrayList<>();
+        List<List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto>> retencionesPorFactura =
+                new ArrayList<>();
         BigDecimal aplicado = BigDecimal.ZERO;
         for (CreateReciboCajaDto.Aplicacion a : pedidas) {
             if (a.getCuentaCobrarId() == null)
@@ -112,12 +117,21 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
             if (cuenta.getTercero() == null || !dto.getTerceroId().equals(cuenta.getTercero().getId()))
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "La cuenta " + cuenta.getNumeroCuenta() + " es de otro cliente");
-            if (monto.compareTo(cuenta.getSaldoPendiente()) > 0)
+            // Lo retenido por el cliente se suma a lo pagado para bajar la factura.
+            var retenciones = retencionRecaudo.validar(a.getRetenciones());
+            BigDecimal retenido = RetencionRecaudoService.total(retenciones);
+            if (retenido.signum() > 0 && monto.signum() == 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "A la cuenta " + cuenta.getNumeroCuenta() + " se le registran retenciones sin "
+                                + "pago: registre el valor pagado junto con lo retenido");
+            if (monto.add(retenido).compareTo(cuenta.getSaldoPendiente()) > 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "A la cuenta " + cuenta.getNumeroCuenta() + " se le aplica más de su saldo ("
-                                + cuenta.getSaldoPendiente().toPlainString() + ")");
+                                + cuenta.getSaldoPendiente().toPlainString() + ")"
+                                + (retenido.signum() > 0 ? " contando las retenciones" : ""));
             a.setMonto(monto);
             cuentas.add(cuenta);
+            retencionesPorFactura.add(retenciones);
             aplicado = aplicado.add(monto);
         }
         if (aplicado.compareTo(recibido) > 0)
@@ -184,9 +198,13 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
                     .reciboCajaId(recibo.getId())
                     .build());
             abonosCreados.add(abono.getId());
+            var retenciones = retencionesPorFactura.get(i);
+            retencionRecaudo.registrar(abono, retenciones);
+            BigDecimal retenido = RetencionRecaudoService.total(retenciones);
+            BigDecimal bajaDeSaldo = monto.add(retenido);
 
-            cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(monto));
-            cuenta.setSaldoPendiente(saldoAnterior.subtract(monto));
+            cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(bajaDeSaldo));
+            cuenta.setSaldoPendiente(saldoAnterior.subtract(bajaDeSaldo));
             if (cuenta.getSaldoPendiente().signum() <= 0) {
                 cuenta.setSaldoPendiente(BigDecimal.ZERO);
                 cuenta.setEstado("pagada");
@@ -198,6 +216,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
                     .cuentaCobrarId(cuenta.getId())
                     .abonoCobrarId(abono.getId())
                     .monto(monto)
+                    .retenciones(retenido)
                     .saldoAnterior(saldoAnterior)
                     .build());
         }
@@ -291,8 +310,11 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
 
             CuentaCobrarEntity cuenta = cuentaRepo.bloquear(ap.getCuentaCobrarId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.CONFLICT, "Cuenta por cobrar no encontrada"));
-            cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
-            cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
+            // El pago y sus retenciones vuelven juntos al saldo: el asiento del
+            // abono principal incluía las dos cosas.
+            BigDecimal devuelto = abono.getMonto().add(retencionRecaudo.eliminarDe(abono.getId()));
+            cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(devuelto));
+            cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(devuelto));
             if (cuenta.getDeletedAt() == null && !"anulada".equals(cuenta.getEstado()))
                 cuenta.setEstado("activa");
             cuentaRepo.save(cuenta);

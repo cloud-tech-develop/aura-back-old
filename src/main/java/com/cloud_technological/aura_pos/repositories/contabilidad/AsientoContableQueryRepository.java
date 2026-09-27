@@ -593,4 +593,80 @@ public class AsientoContableQueryRepository {
             return dto;
         });
     }
+
+    /**
+     * Lo que hay hoy en un fondo de efectivo, contando también los borradores:
+     * en modo revisión el gasto ya pagado nace BORRADOR, pero la plata ya salió.
+     *
+     * <p>Con {@code excluirTipo}/{@code excluirId} se descuenta el propio
+     * documento (su asiento vigente y sus reversas): al editarlo, lo que ya
+     * había consumido vuelve a estar disponible para el valor corregido.
+     */
+    public BigDecimal saldoDisponible(Integer empresaId, Long cuentaId,
+            String excluirTipo, Long excluirId) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT COALESCE(SUM(ad.debito - ad.credito), 0)
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            WHERE a.empresa_id = :empresaId
+              AND ad.cuenta_id = :cuentaId
+              AND a.estado <> 'ANULADO'
+            """);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("cuentaId", cuentaId);
+        if (excluirTipo != null && excluirId != null) {
+            sql.append(" AND NOT (a.origen_id = :excluirId AND a.tipo_origen IN (:tipo, :tipoReversa))");
+            params.addValue("excluirId", excluirId)
+                    .addValue("tipo", excluirTipo)
+                    .addValue("tipoReversa", "ANULACION_" + excluirTipo);
+        }
+        return jdbc.queryForObject(sql.toString(), params, BigDecimal.class);
+    }
+
+    /**
+     * Movimientos de un fondo registrados desde un instante, sin los traslados
+     * que lo alimentan: es la relación de gastos que se legaliza al reponer la
+     * caja menor. Se corta por {@code created_at} (cuándo se registró) y no por
+     * la fecha contable, porque una factura vieja traída hoy también se repone hoy.
+     */
+    public List<com.cloud_technological.aura_pos.dto.traslado_fondos.MovimientoFondoDto> movimientosFondoDesde(
+            Integer empresaId, Long cuentaId, java.time.LocalDateTime desde) {
+        String sql = """
+            SELECT a.fecha,
+                   a.numero_comprobante,
+                   a.tipo_origen,
+                   COALESCE(NULLIF(ad.descripcion, ''), a.descripcion) AS descripcion,
+                   COALESCE(NULLIF(TRIM(COALESCE(t.razon_social, '')), ''),
+                            TRIM(COALESCE(t.nombres, '') || ' ' || COALESCE(t.apellidos, ''))) AS tercero,
+                   ad.debito,
+                   ad.credito
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            LEFT JOIN tercero t ON t.id = ad.tercero_id
+            WHERE a.empresa_id = :empresaId
+              AND ad.cuenta_id = :cuentaId
+              AND a.estado <> 'ANULADO'
+              AND a.tipo_origen NOT IN ('TRASLADO_FONDOS', 'ANULACION_TRASLADO_FONDOS')
+              AND (CAST(:desde AS TIMESTAMP) IS NULL OR a.created_at > CAST(:desde AS TIMESTAMP))
+            ORDER BY a.fecha, a.id
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("cuentaId", cuentaId)
+                .addValue("desde", desde != null ? java.sql.Timestamp.valueOf(desde) : null,
+                        java.sql.Types.TIMESTAMP);
+        return jdbc.query(sql, params, (rs, i) -> {
+            var dto = new com.cloud_technological.aura_pos.dto.traslado_fondos.MovimientoFondoDto();
+            dto.setFecha(rs.getDate("fecha") != null ? rs.getDate("fecha").toLocalDate() : null);
+            dto.setNumeroComprobante(rs.getString("numero_comprobante"));
+            dto.setTipoOrigen(rs.getString("tipo_origen"));
+            dto.setDescripcion(rs.getString("descripcion"));
+            String tercero = rs.getString("tercero");
+            dto.setTercero(tercero != null && !tercero.isBlank() ? tercero.trim() : null);
+            dto.setDebito(rs.getBigDecimal("debito"));
+            dto.setCredito(rs.getBigDecimal("credito"));
+            return dto;
+        });
+    }
 }

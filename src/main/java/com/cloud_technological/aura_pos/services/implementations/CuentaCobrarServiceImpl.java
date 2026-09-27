@@ -42,6 +42,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
     @org.springframework.beans.factory.annotation.Autowired
+    private RetencionRecaudoService retencionRecaudo;
+
+    @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -179,9 +182,18 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto debe ser mayor a 0");
         }
 
+        // Lo que el cliente retuvo también baja la cartera: el pago más las
+        // retenciones no puede superar el saldo.
+        java.util.List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto> retenciones =
+                retencionRecaudo.validar(dto.getRetenciones());
+        BigDecimal totalRetenciones = RetencionRecaudoService.total(retenciones);
+        BigDecimal totalAplicado = dto.getMonto().add(totalRetenciones);
+
         // Validar que el monto no exceda el saldo pendiente
-        if (dto.getMonto().compareTo(cuenta.getSaldoPendiente()) > 0) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto no puede ser mayor al saldo pendiente");
+        if (totalAplicado.compareTo(cuenta.getSaldoPendiente()) > 0) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, totalRetenciones.signum() > 0
+                    ? "El pago más las retenciones supera el saldo pendiente"
+                    : "El monto no puede ser mayor al saldo pendiente");
         }
 
         // Obtener usuario
@@ -221,10 +233,11 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                 .build();
 
         abono = abonoJpaRepository.save(abono);
+        retencionRecaudo.registrar(abono, retenciones);
 
         // Actualizar cuenta
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(dto.getMonto()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(totalAplicado));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(totalAplicado));
 
         if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
             cuenta.setSaldoPendiente(BigDecimal.ZERO);
@@ -380,6 +393,10 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Este abono hace parte de un recibo de caja: anule el recibo completo desde cartera");
         }
+        if (abono.getAbonoOrigenId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Esta es la retención de un pago: elimine el pago y se eliminan sus retenciones");
+        }
 
         // Solo permitir anulación si el abono es del día actual
         if (!abono.getCreatedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate())) {
@@ -391,9 +408,10 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede eliminar el abono de una cuenta pagada");
         }
 
-        // Reversar abono
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
+        // Reversar abono y sus retenciones: el asiento del principal las incluía.
+        BigDecimal devuelto = abono.getMonto().add(retencionRecaudo.eliminarDe(abono.getId()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(devuelto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(devuelto));
         cuenta.setEstado("activa");
 
         jpaRepository.save(cuenta);
@@ -544,6 +562,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         if (entity.getTurnoCaja() != null) {
             dto.setTurnoCajaId(entity.getTurnoCaja().getId());
         }
+        dto.setAbonoOrigenId(entity.getAbonoOrigenId());
 
         return dto;
     }

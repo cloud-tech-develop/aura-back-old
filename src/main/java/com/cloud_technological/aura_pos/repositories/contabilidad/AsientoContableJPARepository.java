@@ -25,6 +25,16 @@ public interface AsientoContableJPARepository extends JpaRepository<AsientoConta
     boolean existsByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
             String tipoOrigen, Long origenId, Integer empresaId, String estado);
 
+    /** El más reciente: un documento editado deja varios originales CONTABILIZADOS. */
+    Optional<AsientoContableEntity> findFirstByTipoOrigenAndOrigenIdAndEmpresaIdAndEstadoOrderByIdDesc(
+            String tipoOrigen, Long origenId, Integer empresaId, String estado);
+
+    long countByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
+            String tipoOrigen, Long origenId, Integer empresaId, String estado);
+
+    long countByTipoOrigenAndOrigenIdAndEmpresaIdAndEstadoNot(
+            String tipoOrigen, Long origenId, Integer empresaId, String estado);
+
     Optional<AsientoContableEntity> findFirstByEmpresaIdAndTipoOrigen(Integer empresaId, String tipoOrigen);
 
     long countByEmpresaIdAndTipoOrigenNot(Integer empresaId, String tipoOrigen);

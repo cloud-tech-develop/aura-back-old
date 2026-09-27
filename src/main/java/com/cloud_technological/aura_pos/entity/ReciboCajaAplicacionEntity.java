@@ -35,6 +35,11 @@ public class ReciboCajaAplicacionEntity {
     @Column(name = "saldo_anterior", nullable = false, precision = 15, scale = 2)
     private BigDecimal saldoAnterior;
 
+    /** Lo que el cliente retuvo sobre esta factura, además de {@link #monto} (V181). */
+    @Column(nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal retenciones = BigDecimal.ZERO;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

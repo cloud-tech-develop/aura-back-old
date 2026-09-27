@@ -774,6 +774,11 @@ public class CompraServiceImpl implements CompraService {
                                 // así que ese camino no cambia.
                                 Boolean.TRUE.equals(compra.getSalidaCajaOtroDia())));
 
+                // Al editar, el asiento anterior de la compra todavía está vigente
+                // (se reversa tras el commit): se descuenta para no cobrarlo dos veces.
+                origenFondosService.exigirSaldoDisponible(empresaId, origen, pago.monto(),
+                        "pago de la compra", "COMPRA", compra.getId());
+
                 if (!origen.generaMovimientoCaja()) {
                     continue;
                 }
