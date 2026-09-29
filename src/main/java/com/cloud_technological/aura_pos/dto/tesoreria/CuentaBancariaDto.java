@@ -13,12 +13,19 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CuentaBancariaDto {
     private Long id;
+    private String codigo;
     private String nombre;
     private String tipo;
     private String banco;
     private String numeroCuenta;
     private String titular;
+    private Long terceroId;
+    private String terceroNombre;
+    private Long cuentaContableId;
+    private String cuentaContableNombre;
     private BigDecimal saldoInicial;
     private BigDecimal saldoActual;
     private Boolean activa;
+    private Boolean permiteSobregiro;
+    private BigDecimal cupoSobregiro;
 }

@@ -54,6 +54,13 @@ public class ProductoEntity {
     @Column(name = "tipo_producto")
     private String tipoProducto;
 
+    /**
+     * VENTA | INSUMO | AMBOS. Eje distinto de {@link #tipoProducto}: la harina
+     * es PESABLE e INSUMO. Un INSUMO nunca se muestra en el POS. Ver V158.
+     */
+    @Column(name = "uso_producto")
+    private String usoProducto = "VENTA";
+
     @Column(name = "maneja_inventario")
     private Boolean manejaInventario;
 
@@ -62,6 +69,10 @@ public class ProductoEntity {
 
     @Column(name = "maneja_serial")
     private Boolean manejaSerial;
+
+    /** Meses de garantía al cliente; al vender queda en serial.garantia_cliente_hasta. */
+    @Column(name = "meses_garantia")
+    private Integer mesesGarantia;
 
     @Column(name = "permitir_stock_negativo")
     private Boolean permitirStockNegativo = false;
@@ -78,10 +89,44 @@ public class ProductoEntity {
     @Column(name = "iva_porcentaje")
     private BigDecimal ivaPorcentaje;
 
+    @Column(name = "iva_incluido")
+    private Boolean ivaIncluido = false;
+
+    /** Impuesto parametrizable (E5); null → se usa iva_porcentaje legacy. */
+    @Column(name = "impuesto_id")
+    private Long impuestoId;
+
+    // ── Contabilidad por categoría (E4) ──────────────────────────────────
+    /** Categoría contable; null → categoría "General" de la empresa. */
+    @Column(name = "categoria_contable_id")
+    private Long categoriaContableId;
+
+    /** Overrides excepcionales por producto (normalmente NULL). */
+    @Column(name = "cuenta_ingreso_id")
+    private Long cuentaIngresoId;
+
+    @Column(name = "cuenta_costo_id")
+    private Long cuentaCostoId;
+
+    @Column(name = "cuenta_inventario_id")
+    private Long cuentaInventarioId;
+
     private BigDecimal impoconsumo;
+
+    /**
+     * Unidades que salen de un lote de la receta de este producto (ej: 40 panes).
+     * 1 = la receta se escribe por unidad. Ver V138.
+     */
+    @Column(name = "rendimiento_receta")
+    private BigDecimal rendimientoReceta = BigDecimal.ONE;
+
     private Boolean activo;
     @Column(name = "visible_en_pos")
     private Boolean visibleEnPos = true;
+
+    /** false = el POS solo ofrece sus presentaciones (V162). */
+    @Column(name = "vende_por_unidad")
+    private Boolean vendePorUnidad = true;
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

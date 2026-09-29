@@ -75,4 +75,20 @@ public class FacturaEntity {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    // ── Desglose IVA por tarifa (V53) ──────────────────────────
+    @Column(name = "iva_base0")
+    private BigDecimal ivaBase0 = BigDecimal.ZERO;
+
+    @Column(name = "iva_base5")
+    private BigDecimal ivaBase5 = BigDecimal.ZERO;
+
+    @Column(name = "iva_valor5")
+    private BigDecimal ivaValor5 = BigDecimal.ZERO;
+
+    @Column(name = "iva_base19")
+    private BigDecimal ivaBase19 = BigDecimal.ZERO;
+
+    @Column(name = "iva_valor19")
+    private BigDecimal ivaValor19 = BigDecimal.ZERO;
 }

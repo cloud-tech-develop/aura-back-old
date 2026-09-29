@@ -17,4 +17,17 @@ public class FactusConfig {
         factory.setReadTimeout(8_000);
         return new RestTemplate(factory);
     }
+
+    /**
+     * RestTemplate exclusivo para nómina electrónica: la validación DIAN de la
+     * nómina tarda bastante más que una factura, así que necesita más tiempo de
+     * lectura sin afectar los demás llamados a Factus.
+     */
+    @Bean("factusNominaRestTemplate")
+    public RestTemplate factusNominaRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        factory.setReadTimeout(45_000);
+        return new RestTemplate(factory);
+    }
 }

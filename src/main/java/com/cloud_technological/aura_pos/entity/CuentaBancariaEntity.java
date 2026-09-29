@@ -29,6 +29,10 @@ public class CuentaBancariaEntity {
     @Column(name = "empresa_id", nullable = false)
     private Integer empresaId;
 
+    /** CB-001, CB-002… Único por empresa (V175). Se asigna solo si no se digita. */
+    @Column(length = 20)
+    private String codigo;
+
     @Column(nullable = false, length = 200)
     private String nombre;
 
@@ -45,6 +49,14 @@ public class CuentaBancariaEntity {
     @Column(length = 300)
     private String titular;
 
+    /** El banco como tercero (persona jurídica). Opcional. */
+    @Column(name = "tercero_id")
+    private Long terceroId;
+
+    /** Cuenta contable del PUC (1110xx) que representa esta cuenta bancaria. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     @Column(name = "saldo_inicial", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal saldoInicial = BigDecimal.ZERO;
@@ -52,6 +64,16 @@ public class CuentaBancariaEntity {
     @Column(name = "saldo_actual", nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal saldoActual = BigDecimal.ZERO;
+
+    // ── Sobregiro (E2 · pieza 5) ─────────────────────────────────────────
+    /** Si es true, el saldo puede quedar negativo hasta el cupo. */
+    @Column(name = "permite_sobregiro", nullable = false)
+    @Builder.Default
+    private Boolean permiteSobregiro = Boolean.FALSE;
+
+    /** Cupo máximo de sobregiro (positivo); null = sin límite. */
+    @Column(name = "cupo_sobregiro", precision = 18, scale = 2)
+    private BigDecimal cupoSobregiro;
 
     @Column(nullable = false)
     @Builder.Default

@@ -1,0 +1,14 @@
+{
+  "descripcion": "Venta #500 — FE-200",
+  "partidas": [
+    { "cuenta": 1105, "debito": 238000.00, "credito": 0, "tercero": null },
+    { "cuenta": 413505, "debito": 0, "credito": 100000.00, "tercero": null },
+    { "cuenta": 413510, "debito": 0, "credito": 60000.00, "tercero": null },
+    { "cuenta": 4145, "debito": 0, "credito": 40000.00, "tercero": null },
+    { "cuenta": 240801, "debito": 0, "credito": 38000.00, "tercero": null },
+    { "cuenta": 613505, "debito": 55000.00, "credito": 0, "tercero": null },
+    { "cuenta": 143505, "debito": 0, "credito": 55000.00, "tercero": null },
+    { "cuenta": 613510, "debito": 30000.00, "credito": 0, "tercero": null },
+    { "cuenta": 143510, "debito": 0, "credito": 30000.00, "tercero": null }
+  ]
+}

@@ -8,4 +8,5 @@ import com.cloud_technological.aura_pos.entity.CotizacionDetalleEntity;
 
 public interface CotizacionDetalleJPARepository extends JpaRepository<CotizacionDetalleEntity, Long> {
     List<CotizacionDetalleEntity> findByCotizacionId(Long cotizacionId);
+    void deleteByCotizacionId(Long cotizacionId);
 }

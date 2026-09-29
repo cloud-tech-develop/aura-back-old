@@ -13,8 +13,27 @@ import com.cloud_technological.aura_pos.entity.AbonoCobrarEntity;
 public interface AbonoCobrarJPARepository extends JpaRepository<AbonoCobrarEntity, Long> {
     Optional<AbonoCobrarEntity> findByIdAndCuentaCobrarId(Long id, Long cuentaCobrarId);
     List<AbonoCobrarEntity> findByCuentaCobrarId(Long cuentaCobrarId);
+
+    /** Los abonos que dejó un documento concreto; los busca su reversa. */
+    List<AbonoCobrarEntity> findByCuentaCobrarIdAndReferencia(Long cuentaCobrarId, String referencia);
+
+    /**
+     * Todos los abonos que dejó un documento, sin saber de antemano a qué
+     * cuentas se aplicó. Lo usa la anulación de un comprobante: un mismo CE/RC
+     * puede cruzar la cartera de varias facturas del mismo tercero.
+     */
+    List<AbonoCobrarEntity> findByReferencia(String referencia);
+
     List<AbonoCobrarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
-    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoCobrarEntity a WHERE a.turnoCaja.id = :turnoCajaId")
+    /** Las retenciones que acompañan a un abono principal (V181). */
+    List<AbonoCobrarEntity> findByAbonoOrigenId(Long abonoOrigenId);
+
+    // Solo el efectivo cuenta para el arqueo: un abono con datáfono o
+    // transferencia queda atado al turno para trazabilidad, pero si se sumara
+    // aquí el cajero cerraría con un faltante que nunca existió.
+    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoCobrarEntity a "
+            + "WHERE a.turnoCaja.id = :turnoCajaId "
+            + "AND (a.metodoPago IS NULL OR UPPER(a.metodoPago) LIKE '%EFECTIVO%')")
     BigDecimal sumMontoByTurnoCajaId(@Param("turnoCajaId") Long turnoCajaId);
 }

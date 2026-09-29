@@ -20,4 +20,6 @@ public class UpdateEmpresaPlataformaDto {
     private String municipio;
     private Integer municipioId;
     private Boolean activa;
+    /** AUTOMATICO | REVISION */
+    private String modoContabilizacion;
 }

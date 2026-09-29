@@ -8,5 +8,9 @@ import com.cloud_technological.aura_pos.entity.ReglaCreditoEntity;
 
 public interface ReglaCreditoJPARepository extends JpaRepository<ReglaCreditoEntity, Long> {
     List<ReglaCreditoEntity> findByEmpresaIdAndActivoTrueOrderByOrdenAsc(Integer empresaId);
+
+    List<ReglaCreditoEntity> findByEmpresaIdOrderByOrdenAscIdAsc(Integer empresaId);
+
+    java.util.Optional<ReglaCreditoEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
     List<ReglaCreditoEntity> findByEmpresaIdAndActivoTrueAndEventoOrderByOrdenAsc(Integer empresaId, String evento);
 }

@@ -55,6 +55,109 @@ public class GastoEntity {
     @Column(nullable = false, length = 20)
     private String estado;
 
+
+    /**
+     * Por qué un documento de fecha anterior se cargó a la caja de hoy, y quién
+     * lo autorizó. Sin esto la autorización no sirve: el objetivo no es solo
+     * frenar, es poder preguntar después qué pasó ese día.
+     */
+    @Column(name = "motivo_retroactivo", length = 500)
+    private String motivoRetroactivo;
+
+    @Column(name = "autorizado_por")
+    private Integer autorizadoPor;
+
+    /**
+     * La plata ya había salido del cajón otro día cuando se registró este
+     * documento. No genera movimiento de caja — ni en la de hoy ni en la de
+     * aquel día, que ya cerró cuadrada contra el conteo físico.
+     */
+    @Column(name = "salida_caja_otro_dia", nullable = false)
+    private Boolean salidaCajaOtroDia = Boolean.FALSE;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    // ── Origen de fondos (V142) ─────────────────────────────────
+    /** CONTADO paga de una vez; CREDITO deja una cuenta por pagar. */
+    @Column(name = "forma_pago", nullable = false, length = 20)
+    private String formaPago = "CONTADO";
+
+    /** EFECTIVO exige caja abierta; el resto no toca el arqueo. */
+    @Column(name = "metodo_pago", nullable = false, length = 30)
+    private String metodoPago = "EFECTIVO";
+
+    /** Cuenta bancaria DE DONDE sale el dinero. */
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
+    /**
+     * Cuenta contable de la que sale la plata: el CRÉDITO del asiento. No
+     * confundir con {@link #cuentaContableId}, que es el DÉBITO — a qué gasto
+     * se imputa. Invertirlas da vuelta el asiento entero.
+     */
+    @Column(name = "cuenta_pago_id")
+    private Long cuentaPagoId;
+
+    // ── Campos tributarios (V54) ────────────────────────────────
+    @Column(name = "tercero_id")
+    private Long terceroId;
+
+    /** Cuenta de DÉBITO: a qué cuenta de gasto se imputa. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
+    // ── Dimensiones proyecto/frente (E7) ────────────────────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
+
+    // ── Diferidos (E6) ──────────────────────────────────────────
+    /** true → el pago va a 1705 y se amortiza mes a mes. */
+    @Column(name = "es_diferido", nullable = false)
+    private Boolean esDiferido = Boolean.FALSE;
+
+    @Column(name = "meses_diferido")
+    private Integer mesesDiferido;
+
+    @Column(name = "base_iva", precision = 18, scale = 2)
+    private BigDecimal baseIva = BigDecimal.ZERO;
+
+    @Column(name = "tarifa_iva", precision = 5, scale = 2)
+    private BigDecimal tarifaIva = BigDecimal.ZERO;
+
+    @Column(name = "valor_iva", precision = 18, scale = 2)
+    private BigDecimal valorIva = BigDecimal.ZERO;
+
+    @Column(name = "base_retefuente", precision = 18, scale = 2)
+    private BigDecimal baseRetefuente = BigDecimal.ZERO;
+
+    @Column(name = "tarifa_retefuente", precision = 5, scale = 2)
+    private BigDecimal tarifaRetefuente = BigDecimal.ZERO;
+
+    @Column(name = "valor_retefuente", precision = 18, scale = 2)
+    private BigDecimal valorRetefuente = BigDecimal.ZERO;
+
+    @Column(name = "base_reteica", precision = 18, scale = 2)
+    private BigDecimal baseReteica = BigDecimal.ZERO;
+
+    @Column(name = "tarifa_reteica", precision = 5, scale = 2)
+    private BigDecimal tarifaReteica = BigDecimal.ZERO;
+
+    @Column(name = "valor_reteica", precision = 18, scale = 2)
+    private BigDecimal valorReteica = BigDecimal.ZERO;
+
+    @Column(name = "tipo_doc_soporte", length = 20)
+    private String tipoDocSoporte;
+
+    @Column(name = "numero_doc_soporte", length = 50)
+    private String numeroDocSoporte;
+
+    @Column(name = "periodo_contable_id")
+    private Long periodoContableId;
 }

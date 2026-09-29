@@ -1,0 +1,7 @@
+{
+  "descripcion": "Pago de dividendos #90",
+  "partidas": [
+    { "cuenta": 2360, "debito": 4000000, "credito": 0, "tercero": 55 },
+    { "cuenta": 1110, "debito": 0, "credito": 4000000, "tercero": null }
+  ]
+}

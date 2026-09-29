@@ -47,6 +47,17 @@ public class PlanCuentaEntity {
     @Builder.Default
     private Boolean auxiliar = Boolean.FALSE;
 
+    /**
+     * La cuenta puede usarse como origen de un pago: representa dinero
+     * disponible (caja, caja menor, bancos) o fondos entregados a alguien que
+     * aún no los legaliza. Es lo que alimenta el combo "¿de dónde sale la
+     * plata?" y lo que se exige antes de aceptarla como contrapartida — sin
+     * esto se podía pagar un gasto acreditando una cuenta de ingresos.
+     */
+    @Column(name = "es_medio_pago", nullable = false)
+    @Builder.Default
+    private Boolean esMedioPago = Boolean.FALSE;
+
     /** Código de homologación DIAN para integración fiscal futura (nullable) */
     @Column(name = "codigo_dian", length = 20)
     private String codigoDian;
@@ -57,5 +68,6 @@ public class PlanCuentaEntity {
     @PrePersist
     void prePersist() {
         if (this.createdAt == null) this.createdAt = LocalDateTime.now();
+        if (this.esMedioPago == null) this.esMedioPago = Boolean.FALSE;
     }
 }

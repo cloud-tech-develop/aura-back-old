@@ -47,5 +47,9 @@ public class CompraPagoEntity {
     @Column(name = "cuenta_bancaria_id")
     private Long cuentaBancariaId;
 
+    /** Cuenta contable de la que sale el pago, elegida a mano (V142). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
     private Boolean activo = true;
 }

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,6 +66,20 @@ public class CotizacionController {
                 HttpStatus.CREATED);
     }
 
+    /**
+     * Revive una cotización vencida conservando sus precios, para no tener que
+     * pedirle a nadie que la habilite cuando el cliente vuelve tarde.
+     */
+    @PatchMapping("/{id}/reactivar")
+    public ResponseEntity<ApiResponse<CotizacionDto>> reactivar(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        CotizacionDto result = cotizacionService.reactivar(id, empresaId, usuarioId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Cotización reactivada", false, result),
+                HttpStatus.OK);
+    }
+
     @PatchMapping("/{id}/anular")
     public ResponseEntity<ApiResponse<Boolean>> anular(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -80,6 +95,17 @@ public class CotizacionController {
         CotizacionDto result = cotizacionService.convertirAVenta(id, empresaId);
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Cotización lista para convertir", false, result),
+                HttpStatus.OK);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<CotizacionDto>> actualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateCotizacionDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        CotizacionDto result = cotizacionService.actualizar(id, dto, empresaId);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Cotización actualizada correctamente", false, result),
                 HttpStatus.OK);
     }
 }

@@ -1,0 +1,7 @@
+{
+  "descripcion": "Pago a proveedor — abono #20",
+  "partidas": [
+    { "cuenta": 2205, "debito": 100000.00, "credito": 0, "tercero": 77 },
+    { "cuenta": 111005, "debito": 0, "credito": 100000.00, "tercero": null }
+  ]
+}

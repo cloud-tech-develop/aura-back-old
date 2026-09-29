@@ -1,0 +1,67 @@
+package com.cloud_technological.aura_pos.controllers;
+
+import javax.validation.Valid;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cloud_technological.aura_pos.dto.obsequio.CreateObsequioDto;
+import com.cloud_technological.aura_pos.dto.obsequio.ObsequioDto;
+import com.cloud_technological.aura_pos.dto.obsequio.ObsequioTableDto;
+import com.cloud_technological.aura_pos.services.ObsequioService;
+import com.cloud_technological.aura_pos.utils.ApiResponse;
+import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
+
+@RestController
+@RequestMapping("/api/obsequios")
+public class ObsequioController {
+
+    @Autowired
+    private ObsequioService obsequioService;
+
+    @Autowired
+    private SecurityUtils securityUtils;
+
+    @PostMapping("/page")
+    public ResponseEntity<ApiResponse<PageImpl<ObsequioTableDto>>> listar(
+            @RequestBody PageableDto<Object> pageable) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        PageImpl<ObsequioTableDto> result = obsequioService.listar(pageable, empresaId);
+        if (result.isEmpty())
+            throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron registros");
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ObsequioDto>> obtenerPorId(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        ObsequioDto result = obsequioService.obtenerPorId(id, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Obsequio encontrado", false, result), HttpStatus.OK);
+    }
+
+    @PostMapping("/create")
+    public ResponseEntity<ApiResponse<ObsequioDto>> crear(@Valid @RequestBody CreateObsequioDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        ObsequioDto result = obsequioService.crear(dto, empresaId, usuarioId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Obsequio registrado exitosamente", false, result), HttpStatus.CREATED);
+    }
+
+    @PatchMapping("/{id}/anular")
+    public ResponseEntity<ApiResponse<Boolean>> anular(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        obsequioService.anular(id, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Obsequio anulado correctamente", false, true), HttpStatus.OK);
+    }
+}

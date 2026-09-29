@@ -31,9 +31,15 @@ public class ComisionLiquidacionEntity {
     @JoinColumn(name = "empresa_id")
     private EmpresaEntity empresa;
 
+    // Para TECNICO: usuario técnico
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tecnico_id")
+    @JoinColumn(name = "tecnico_id", nullable = true)
     private UsuarioEntity tecnico;
+
+    // Para VENDEDOR: empleado vendedor
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendedor_id", nullable = true)
+    private EmpleadoEntity vendedor;
 
     @Column(name = "fecha_desde")
     private LocalDate fechaDesde;
@@ -48,6 +54,9 @@ public class ComisionLiquidacionEntity {
     private BigDecimal valorTotal;
 
     private String estado = "PENDIENTE"; // PENDIENTE | PAGADA
+
+    // TECNICO (comisiones de servicio) | VENDEDOR (comisiones de venta)
+    private String tipo = "TECNICO";
 
     private String observaciones;
 

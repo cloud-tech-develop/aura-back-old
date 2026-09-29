@@ -1,0 +1,7 @@
+{
+  "descripcion": "Cruce anticipo de cliente — cruce #71",
+  "partidas": [
+    { "cuenta": 2805, "debito": 200000.00, "credito": 0, "tercero": 55 },
+    { "cuenta": 1305, "debito": 0, "credito": 200000.00, "tercero": 55 }
+  ]
+}

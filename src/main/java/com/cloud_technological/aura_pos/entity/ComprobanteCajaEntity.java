@@ -55,6 +55,21 @@ public class ComprobanteCajaEntity {
     @Column(name = "usuario_id")
     private Integer usuarioId;
 
+    /**
+     * Un comprobante no se borra: su consecutivo ya circuló. Cuando el pago que
+     * soportaba deja de existir (la compra pasó a crédito o se anuló), se marca
+     * anulado y conserva su número (V143).
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean anulado = false;
+
+    @Column(name = "motivo_anulacion", length = 300)
+    private String motivoAnulacion;
+
+    @Column(name = "anulado_at")
+    private LocalDateTime anuladoAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

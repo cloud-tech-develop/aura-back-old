@@ -19,4 +19,9 @@ public class CreateCompraPagoDto {
     private String referencia;
     /** ID de la cuenta bancaria — requerido cuando metodoPago es TRANSFERENCIA, NEQUI, TARJETA o CHEQUE */
     private Long cuentaBancariaId;
+    /**
+     * Cuenta contable de la que sale el pago. La salida para pagar sin caja
+     * abierta y sin banco: manda sobre cualquier otra vía si viene informada.
+     */
+    private Long cuentaContableId;
 }

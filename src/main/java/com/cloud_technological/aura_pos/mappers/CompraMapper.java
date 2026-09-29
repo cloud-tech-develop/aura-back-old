@@ -43,6 +43,9 @@ public interface CompraMapper {
         @Mapping(target = "proveedorNombre", expression = "java(resolverNombreProveedor(entity))"),
         @Mapping(target = "usuarioId", source = "entity.usuario.id"),
         @Mapping(target = "detalles", ignore = true),
+        // Lo llena el servicio: la compra origen es LAZY y el número se resuelve
+        // aparte para no cargar la factura completa en cada listado.
+        @Mapping(target = "compraOrigenNumero", ignore = true),
     })
     CompraDto toDto(CompraEntity entity);
 

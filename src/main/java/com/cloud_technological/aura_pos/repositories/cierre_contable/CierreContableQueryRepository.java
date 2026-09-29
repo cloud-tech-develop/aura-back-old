@@ -12,8 +12,12 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.cierre_contable.CierreContableDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.GraficasCierreDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.ParteCierreDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.PuntoCierreDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.MovimientoCierreDto;
 import com.cloud_technological.aura_pos.dto.cierre_contable.ReporteIvaDto;
+import com.cloud_technological.aura_pos.dto.cierre_contable.SaldoDisponibleDto;
 
 @Repository
 public class CierreContableQueryRepository {
@@ -29,14 +33,43 @@ public class CierreContableQueryRepository {
                 .addValue("fechaHasta", fechaHasta);
 
         // ── Ventas ────────────────────────────────────────────
+        // OJO con la base gravable: `venta.subtotal` se guarda como
+        // Σ(precio × cantidad − descuento de línea), o sea SIN IVA y con el
+        // descuento de línea YA restado (VentaServiceImpl), mientras que
+        // `venta.descuento_total` acumula descuentos de línea + descuento
+        // general. Restar `subtotal − descuento_total` descontaba dos veces el
+        // descuento de línea y subestimaba la base — y con ella las tres
+        // utilidades y los tres márgenes.
+        //
+        // `total_pagar − impuestos_total` da exactamente `subtotal − descuento
+        // general`, que es la base gravable real.
         Map<String, Object> ventas = jdbc.queryForMap("""
             SELECT
-                COUNT(v.id)                              AS cantidad_ventas,
-                COALESCE(SUM(v.subtotal),        0)      AS total_ventas_bruto,
-                COALESCE(SUM(v.descuento_total), 0)      AS total_descuentos,
-                COALESCE(SUM(v.impuestos_total), 0)      AS total_impuestos,
-                COALESCE(SUM(v.total_pagar),     0)      AS total_ventas_neto
+                COUNT(v.id)                                                AS cantidad_ventas,
+                COALESCE(SUM(v.subtotal),        0)                        AS total_ventas_bruto,
+                COALESCE(SUM(v.descuento_total), 0)                        AS total_descuentos,
+                COALESCE(SUM(v.impuestos_total), 0)                        AS total_impuestos,
+                COALESCE(SUM(v.total_pagar),     0)                        AS total_ventas_neto,
+                COALESCE(SUM(v.total_pagar - COALESCE(v.impuestos_total,0)),0) AS total_ventas_sin_iva
             FROM venta v
+            WHERE v.empresa_id   = :empresaId
+              AND v.estado_venta = 'COMPLETADA'
+              AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            """, params);
+
+        // ── COGS: costo real de lo vendido en el período ──────
+        Map<String, Object> cogs = jdbc.queryForMap("""
+            SELECT
+                COALESCE(SUM(CASE WHEN p.costo IS NOT NULL AND p.costo > 0
+                                  THEN vd.cantidad * p.costo
+                                  ELSE 0 END), 0)                          AS costo_ventas,
+                COUNT(CASE WHEN p.costo IS NULL OR p.costo = 0 THEN 1 END) AS productos_sin_costo,
+                COALESCE(SUM(CASE WHEN p.costo IS NULL OR p.costo = 0
+                                  THEN COALESCE(vd.subtotal_linea, vd.cantidad * vd.precio_unitario)
+                                  ELSE 0 END), 0)                          AS valor_ventas_sin_costo
+            FROM venta_detalle vd
+            JOIN venta    v ON vd.venta_id    = v.id
+            JOIN producto p ON vd.producto_id = p.id
             WHERE v.empresa_id   = :empresaId
               AND v.estado_venta = 'COMPLETADA'
               AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
@@ -45,8 +78,10 @@ public class CierreContableQueryRepository {
         // ── Compras (solo RECIBIDA) ───────────────────────────
         Map<String, Object> compras = jdbc.queryForMap("""
             SELECT
-                COUNT(c.id)                    AS cantidad_compras,
-                COALESCE(SUM(c.total), 0)      AS total_compras_neto
+                COUNT(c.id)                                                AS cantidad_compras,
+                COALESCE(SUM(c.total), 0)                                  AS total_compras_neto,
+                COALESCE(SUM(c.subtotal - COALESCE(c.descuento_total,0)),0) AS total_compras_sin_iva,
+                COALESCE(SUM(c.impuestos_total), 0)                        AS total_iva_compras
             FROM compra c
             WHERE c.empresa_id = :empresaId
               AND c.estado      = 'RECIBIDA'
@@ -153,10 +188,37 @@ public class CierreContableQueryRepository {
               AND cp.saldo_pendiente > 0
             """, params);
 
+        // ── Posición de efectivo: saldo del mayor de las cuentas del disponible ─
+        // (11xx: caja/bancos) hasta la fecha de corte. Refleja el saldo contable
+        // real de cada banco/caja según los asientos contabilizados.
+        List<SaldoDisponibleDto> disponible = jdbc.query("""
+            SELECT
+                pc.codigo,
+                pc.nombre,
+                COALESCE(SUM(ad.debito - ad.credito), 0) AS saldo
+            FROM asiento_detalle ad
+            JOIN asiento_contable a ON a.id = ad.asiento_id
+            JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+            WHERE a.empresa_id = :empresaId
+              AND a.estado = 'CONTABILIZADO'
+              AND a.fecha <= CAST(:fechaHasta AS DATE)
+              AND pc.codigo LIKE '11%'
+            GROUP BY pc.codigo, pc.nombre
+            HAVING COALESCE(SUM(ad.debito - ad.credito), 0) <> 0
+            ORDER BY pc.codigo
+            """, params, (rs, i) -> new SaldoDisponibleDto(
+                rs.getString("codigo"),
+                rs.getString("nombre"),
+                rs.getBigDecimal("saldo")));
+
         // ── Armar DTO ─────────────────────────────────────────
         CierreContableDto dto = new CierreContableDto();
         dto.setFechaDesde(fechaDesde);
         dto.setFechaHasta(fechaHasta);
+        dto.setDisponible(disponible);
+        dto.setTotalDisponible(disponible.stream()
+                .map(SaldoDisponibleDto::getSaldo)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         // Ventas
         dto.setCantidadVentas(toInt(ventas.get("cantidad_ventas")));
@@ -164,31 +226,26 @@ public class CierreContableQueryRepository {
         dto.setTotalDescuentos(toBD(ventas.get("total_descuentos")));
         dto.setTotalImpuestos(toBD(ventas.get("total_impuestos")));
         dto.setTotalVentasNeto(toBD(ventas.get("total_ventas_neto")));
+        dto.setTotalVentasSinIva(toBD(ventas.get("total_ventas_sin_iva")));
+
+        // Ventas brutas + disponible de caja/bancos (activos del período)
+        dto.setVentasBrutasConDisponible(
+                dto.getTotalVentasBruto().add(dto.getTotalDisponible()));
 
         // Compras
         dto.setCantidadCompras(toInt(compras.get("cantidad_compras")));
         dto.setTotalComprasNeto(toBD(compras.get("total_compras_neto")));
+        dto.setTotalComprasSinIva(toBD(compras.get("total_compras_sin_iva")));
+        dto.setTotalIvaCompras(toBD(compras.get("total_iva_compras")));
+
+        // COGS
+        dto.setCostoVentas(toBD(cogs.get("costo_ventas")));
+        dto.setProductosSinCosto(toInt(cogs.get("productos_sin_costo")));
+        dto.setValorVentasSinCosto(toBD(cogs.get("valor_ventas_sin_costo")));
 
         // Comisiones
         dto.setCantidadComisiones(toInt(comisiones.get("cantidad_comisiones")));
         dto.setTotalComisionesTecnicos(toBD(comisiones.get("total_comisiones_tecnicos")));
-
-        // Resultados
-        BigDecimal ventasNeto     = dto.getTotalVentasNeto();
-        BigDecimal comprasNeto    = dto.getTotalComprasNeto();
-        BigDecimal comisionesTec  = dto.getTotalComisionesTecnicos();
-        BigDecimal mermasTotal    = toBD(mermas.get("total_mermas"));
-        BigDecimal utilBruta      = ventasNeto.subtract(comprasNeto);
-        BigDecimal utilNeta       = utilBruta.subtract(comisionesTec).subtract(mermasTotal);
-
-        dto.setUtilidadBruta(utilBruta);
-        dto.setUtilidadNeta(utilNeta);
-        dto.setMargenBruto(ventasNeto.compareTo(BigDecimal.ZERO) > 0
-                ? utilBruta.multiply(BigDecimal.valueOf(100)).divide(ventasNeto, 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO);
-        dto.setMargenNeto(ventasNeto.compareTo(BigDecimal.ZERO) > 0
-                ? utilNeta.multiply(BigDecimal.valueOf(100)).divide(ventasNeto, 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO);
 
         // CxC
         dto.setCxcTotalDeuda(toBD(cxc.get("cxc_total_deuda")));
@@ -221,6 +278,130 @@ public class CierreContableQueryRepository {
         dto.setTotalGastosDeducibles(toBD(gastos.get("total_gastos_deducibles")));
         dto.setTotalGastosNoDeducibles(toBD(gastos.get("total_gastos_no_deducibles")));
         dto.setTotalGastos(toBD(gastos.get("total_gastos")));
+
+        // ── Resultados (P&L sin IVA con COGS real) ────────────
+        // Utilidad bruta  = Ventas sin IVA − COGS − Mermas
+        // Utilidad operat.= Bruta − Comisiones − Gastos deducibles
+        // Utilidad neta   = Operativa − Gastos no deducibles
+        BigDecimal base            = dto.getTotalVentasSinIva();
+        BigDecimal cogsVal         = dto.getCostoVentas();
+        BigDecimal mermasTotal     = dto.getTotalMermas();
+        BigDecimal comisionesTec   = dto.getTotalComisionesTecnicos();
+        BigDecimal gastosDeduc     = dto.getTotalGastosDeducibles();
+        BigDecimal gastosNoDeduc   = dto.getTotalGastosNoDeducibles();
+
+        BigDecimal utilBruta       = base.subtract(cogsVal).subtract(mermasTotal);
+        BigDecimal utilOperativa   = utilBruta.subtract(comisionesTec).subtract(gastosDeduc);
+        BigDecimal utilNeta        = utilOperativa.subtract(gastosNoDeduc);
+
+        dto.setUtilidadBruta(utilBruta);
+        dto.setUtilidadOperativa(utilOperativa);
+        dto.setUtilidadNeta(utilNeta);
+        dto.setMargenBruto(pct(utilBruta, base));
+        dto.setMargenOperativo(pct(utilOperativa, base));
+        dto.setMargenNeto(pct(utilNeta, base));
+
+        return dto;
+    }
+
+    private BigDecimal pct(BigDecimal numerador, BigDecimal denominador) {
+        if (denominador == null || denominador.compareTo(BigDecimal.ZERO) <= 0)
+            return BigDecimal.ZERO;
+        return numerador.multiply(BigDecimal.valueOf(100))
+                .divide(denominador, 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Series para las gráficas del informe: qué se vendió y qué costó día por día
+     * (por mes si el rango es largo), con qué pagaron los clientes y en qué se fue
+     * el gasto.
+     */
+    public GraficasCierreDto graficas(Integer empresaId, String fechaDesde, String fechaHasta) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("empresaId", empresaId)
+                .addValue("fechaDesde", fechaDesde)
+                .addValue("fechaHasta", fechaHasta);
+
+        GraficasCierreDto dto = new GraficasCierreDto();
+        dto.setFechaDesde(fechaDesde);
+        dto.setFechaHasta(fechaHasta);
+
+        // Más de dos meses de rango: una barra por día no se lee, se agrupa por mes.
+        Integer dias = jdbc.queryForObject(
+                "SELECT (CAST(:fechaHasta AS DATE) - CAST(:fechaDesde AS DATE)) + 1", params, Integer.class);
+        boolean porMes = dias != null && dias > 62;
+        dto.setGranularidad(porMes ? "MES" : "DIA");
+        String paso = porMes ? "1 month" : "1 day";
+        String trunc = porMes ? "month" : "day";
+        String formato = porMes ? "YYYY-MM" : "YYYY-MM-DD";
+        params.addValue("paso", paso);
+
+        String sql = """
+            WITH periodos AS (
+                SELECT generate_series(date_trunc(:trunc, CAST(:fechaDesde AS DATE)),
+                                       date_trunc(:trunc, CAST(:fechaHasta AS DATE)),
+                                       CAST(:paso AS INTERVAL))::date AS p
+            ), ventas AS (
+                SELECT date_trunc(:trunc, v.fecha_emision)::date AS p,
+                       SUM(v.total_pagar - COALESCE(v.impuestos_total, 0)) AS ventas
+                FROM venta v
+                WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+                  AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+                GROUP BY 1
+            ), costos AS (
+                SELECT date_trunc(:trunc, v.fecha_emision)::date AS p,
+                       SUM(CASE WHEN p.costo IS NOT NULL AND p.costo > 0 THEN vd.cantidad * p.costo ELSE 0 END) AS costo
+                FROM venta_detalle vd
+                JOIN venta v    ON vd.venta_id = v.id
+                JOIN producto p ON vd.producto_id = p.id
+                WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+                  AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+                GROUP BY 1
+            )
+            SELECT to_char(periodos.p, :formato) AS etiqueta,
+                   COALESCE(ventas.ventas, 0)    AS ventas,
+                   COALESCE(costos.costo, 0)     AS costo
+            FROM periodos
+            LEFT JOIN ventas ON ventas.p = periodos.p
+            LEFT JOIN costos ON costos.p = periodos.p
+            ORDER BY periodos.p
+            """;
+        params.addValue("trunc", trunc).addValue("formato", formato);
+        dto.setSerie(jdbc.query(sql, params, (rs, i) -> {
+            PuntoCierreDto punto = new PuntoCierreDto();
+            punto.setEtiqueta(rs.getString("etiqueta"));
+            BigDecimal ventas = rs.getBigDecimal("ventas");
+            BigDecimal costo = rs.getBigDecimal("costo");
+            punto.setVentas(ventas);
+            punto.setCosto(costo);
+            punto.setUtilidadBruta(ventas.subtract(costo));
+            return punto;
+        }));
+
+        dto.setMediosPago(jdbc.query("""
+            SELECT COALESCE(NULLIF(vp.metodo_pago, ''), 'SIN MEDIO') AS etiqueta,
+                   SUM(vp.monto)   AS valor,
+                   COUNT(*)::INT   AS cantidad
+            FROM venta_pago vp
+            JOIN venta v ON v.id = vp.venta_id
+            WHERE v.empresa_id = :empresaId AND v.estado_venta = 'COMPLETADA'
+              AND DATE(v.fecha_emision) BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            GROUP BY 1
+            ORDER BY 2 DESC
+            """, params, (rs, i) -> new ParteCierreDto(
+                rs.getString("etiqueta"), rs.getBigDecimal("valor"), rs.getInt("cantidad"))));
+
+        dto.setGastosCategoria(jdbc.query("""
+            SELECT COALESCE(NULLIF(g.categoria, ''), 'SIN CATEGORÍA') AS etiqueta,
+                   SUM(g.monto)  AS valor,
+                   COUNT(*)::INT AS cantidad
+            FROM gasto g
+            WHERE g.empresa_id = :empresaId AND g.estado = 'ACTIVO'
+              AND g.fecha BETWEEN CAST(:fechaDesde AS DATE) AND CAST(:fechaHasta AS DATE)
+            GROUP BY 1
+            ORDER BY 2 DESC
+            """, params, (rs, i) -> new ParteCierreDto(
+                rs.getString("etiqueta"), rs.getBigDecimal("valor"), rs.getInt("cantidad"))));
 
         return dto;
     }

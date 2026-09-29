@@ -29,11 +29,17 @@ public class ProductoPresentacionEntity {
 
     private String nombre;
 
-    @Column(name = "codigo_barras", unique = true)
+    /** Único dentro de la empresa, no en todo el sistema (V159); lo valida el servicio. */
+    @Column(name = "codigo_barras")
     private String codigoBarras;
 
+    /** Unidades base que contiene la presentación: Caja ×10 → 10 (V159). */
     @Column(name = "factor_conversion")
     private BigDecimal factorConversion;
+
+    /** false = solo para comprar: el POS no la ofrece (V161). */
+    @Column(name = "se_vende")
+    private Boolean seVende = true;
 
     @Column(name = "es_default_compra")
     private Boolean esDefaultCompra;

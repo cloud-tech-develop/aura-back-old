@@ -54,10 +54,47 @@ public class EmpresaEntity {
     @Column(columnDefinition = "jsonb")
     private Object configuracion;
 
+    @lombok.Builder.Default
     private Boolean activa = true;
+
+    /**
+     * Modo de contabilización (E3): AUTOMATICO → asientos nacen
+     * CONTABILIZADO; REVISION → nacen BORRADOR y el contador aprueba.
+     */
+    @Column(name = "modo_contabilizacion", nullable = false, length = 15)
+    @lombok.Builder.Default
+    private String modoContabilizacion = "AUTOMATICO";
 
     @Column(name = "factura_electronica", nullable = false)
     private boolean facturaElectronica = false;
+
+    // ── Control de documentos con fecha retroactiva (V149) ──────────────────
+    // Solo afecta a la vía CAJA: las demás no descuadran el arqueo de nadie.
+
+    /** Días hacia atrás que se aceptan sin explicación. */
+    @Column(name = "dias_gracia_documento_retroactivo", nullable = false)
+    @lombok.Builder.Default
+    private Integer diasGraciaDocumentoRetroactivo = 3;
+
+    /** Pasada la ventana, la vía CAJA queda cerrada salvo autorización. */
+    @Column(name = "bloquear_caja_retroactiva", nullable = false)
+    @lombok.Builder.Default
+    private Boolean bloquearCajaRetroactiva = Boolean.TRUE;
+
+    /** La venta, el obsequio y el consumo interno no sacan de un lote vencido. */
+    @Column(name = "lotes_bloquear_vencidos", nullable = false)
+    @lombok.Builder.Default
+    private Boolean lotesBloquearVencidos = Boolean.TRUE;
+
+    /** Días antes del vencimiento en que el POS y el dashboard avisan. */
+    @Column(name = "lotes_dias_alerta", nullable = false)
+    @lombok.Builder.Default
+    private Integer lotesDiasAlerta = 30;
+
+    /** Rol que puede saltarse la ventana, comparado contra el rol del token. */
+    @Column(name = "rol_autoriza_retroactivo", nullable = false, length = 40)
+    @lombok.Builder.Default
+    private String rolAutorizaRetroactivo = "ADMIN";
 
     @Column(name = "factus_client_id", length = 255)
     private String factusClientId;
@@ -91,6 +128,10 @@ public class EmpresaEntity {
 
     @Column(name = "factus_numbering_range_id")
     private Integer factusNumberingRangeId;
+
+    /** Rango de numeración de nómina electrónica (ULID, documento tipo 26). */
+    @Column(name = "factus_nomina_numbering_range_id", length = 40)
+    private String factusNominaNumberingRangeId;
 
     @Column(name = "factus_prefijo", length = 20)
     private String factusPrefijo;

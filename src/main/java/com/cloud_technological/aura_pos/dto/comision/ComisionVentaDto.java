@@ -11,6 +11,8 @@ public class ComisionVentaDto {
     private Long id;
     private Long ventaId;
     private Long ventaDetalleId;
+    private Long ventaConsecutivo;
+    private String ventaFecha;
     private String productoNombre;
     private String tecnicoNombre;
     private BigDecimal valorTotal;

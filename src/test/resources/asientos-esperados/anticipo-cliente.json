@@ -1,0 +1,7 @@
+{
+  "descripcion": "Anticipo de cliente #70",
+  "partidas": [
+    { "cuenta": 1110, "debito": 500000.00, "credito": 0, "tercero": null },
+    { "cuenta": 2805, "debito": 0, "credito": 500000.00, "tercero": 55 }
+  ]
+}

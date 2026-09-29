@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.facturacion.FacturaDto;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.FacturaEntity;
@@ -119,7 +120,7 @@ public class FacturaServiceImpl implements FacturaService {
         factura.setConsecutivo(consecutivo);
         factura.setValor(venta.getTotalPagar());
         factura.setDescuento(venta.getDescuentoTotal() != null ? venta.getDescuentoTotal() : BigDecimal.ZERO);
-        factura.setDescripcion("Factura generada automáticamente desde venta #" + venta.getId());
+        factura.setDescripcion("Factura generada automáticamente desde venta " + Documentos.numeroVenta(venta));
         factura.setCufe(cufe);
         factura.setFechaHoraEmision(fechaEmision);
         factura.setEstadoDian("PENDIENTE");
@@ -128,6 +129,12 @@ public class FacturaServiceImpl implements FacturaService {
         factura.setUsuario(usuario);
         factura.setVenta(venta);
         factura.setCreatedAt(LocalDateTime.now());
+        // Propagar desglose IVA desde la venta (V53)
+        factura.setIvaBase0(venta.getIvaBase0() != null ? venta.getIvaBase0() : BigDecimal.ZERO);
+        factura.setIvaBase5(venta.getIvaBase5() != null ? venta.getIvaBase5() : BigDecimal.ZERO);
+        factura.setIvaValor5(venta.getIvaValor5() != null ? venta.getIvaValor5() : BigDecimal.ZERO);
+        factura.setIvaBase19(venta.getIvaBase19() != null ? venta.getIvaBase19() : BigDecimal.ZERO);
+        factura.setIvaValor19(venta.getIvaValor19() != null ? venta.getIvaValor19() : BigDecimal.ZERO);
 
         // Determinar método de pago principal desde los pagos de la venta
         List<VentaPagoEntity> pagosVenta = ventaPagoJPARepository.findByVentaId(ventaId);
@@ -140,13 +147,11 @@ public class FacturaServiceImpl implements FacturaService {
 
         factura = facturaJPARepository.save(factura);
 
-        // Registrar evento de creación de factura (Post-Commit)
-        java.util.Map<String, Object> retryPayload = new java.util.HashMap<>();
-        retryPayload.put("action", "crearDesdeVenta");
-        retryPayload.put("ventaId", ventaId);
-        retryPayload.put("empresaId", empresaId);
-        retryPayload.put("usuarioId", usuarioId);
-
+        // Registrar evento de creación de factura (Post-Commit).
+        // NO se adjunta retryPayload: una factura ya creada nunca debe reintentar
+        // "crearDesdeVenta" (el guard de duplicado la rechazaría). Adjuntar el payload
+        // aquí provocaba que el scheduler reintentara indefinidamente cada factura sana
+        // en estado PENDIENTE y fallara con "Ya existe una factura para esta venta".
         eventPublisher.publishEvent(new FacturaLogEvent(
             factura.getId(),
             FacturaLogEvento.CREACION,
@@ -155,7 +160,7 @@ public class FacturaServiceImpl implements FacturaService {
             buildFacturaData(factura),
             usuarioId,
             "Factura creada automáticamente desde venta #" + ventaId,
-            retryPayload
+            null
         ));
 
         // Copiar pagos de VentaPago a ReciboPago

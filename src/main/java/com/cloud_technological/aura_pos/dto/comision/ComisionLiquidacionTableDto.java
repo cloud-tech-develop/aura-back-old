@@ -15,6 +15,7 @@ public class ComisionLiquidacionTableDto {
     private Integer totalServicios;
     private BigDecimal valorTotal;
     private String estado;
+    private String tipo;
     private String fechaPago;
     private Long totalRows;
 }

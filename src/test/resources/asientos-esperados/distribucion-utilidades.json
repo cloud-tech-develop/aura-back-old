@@ -1,0 +1,8 @@
+{
+  "descripcion": "Distribución de utilidades 2025",
+  "partidas": [
+    { "cuenta": 3705, "debito": 15000000, "credito": 0, "tercero": null },
+    { "cuenta": 330505, "debito": 0, "credito": 5000000, "tercero": null },
+    { "cuenta": 2360, "debito": 0, "credito": 10000000, "tercero": null }
+  ]
+}

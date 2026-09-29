@@ -3,7 +3,6 @@ package com.cloud_technological.aura_pos.services.implementations;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,8 +10,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.cuentas_cobrar.CreateCuentaCobrarDto;
-import com.cloud_technological.aura_pos.dto.facturacion.FacturaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDetalleDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaDto;
 import com.cloud_technological.aura_pos.dto.ventas.CreateVentaPagoDto;
@@ -55,19 +54,29 @@ import com.cloud_technological.aura_pos.repositories.venta_detalle_serial.VentaD
 import com.cloud_technological.aura_pos.repositories.venta_pago.VentaPagoJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository;
+import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorJPARepository;
+import com.cloud_technological.aura_pos.repositories.pedidos_vendedor.PedidoVendedorDetalleJPARepository;
+import com.cloud_technological.aura_pos.entity.PedidoVendedorEntity;
+import com.cloud_technological.aura_pos.entity.PedidoVendedorDetalleEntity;
 import com.cloud_technological.aura_pos.dto.cartera.ValidacionCreditoDto;
 import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
-import com.cloud_technological.aura_pos.services.FacturaService;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.PresentacionConversion;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 import jakarta.transaction.Transactional;
+import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class VentaServiceImpl implements VentaService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
 
     private final VentaQueryRepository ventaRepository;
     private final VentaJPARepository ventaJPARepository;
@@ -79,6 +88,12 @@ public class VentaServiceImpl implements VentaService {
     private final InventarioJPARepository inventarioJPARepository;
     private final LoteJPARepository loteJPARepository;
     private final SerialProductoJPARepository serialJPARepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.SerialStockService serialStock;
     private final TerceroJPARepository terceroJPARepository;
     private final UsuarioJPARepository usuarioJPARepository;
     private final EmpresaJPARepository empresaRepository;
@@ -89,11 +104,26 @@ public class VentaServiceImpl implements VentaService {
     private final VentaPagoMapper pagoMapper;
     private final ProductoComposicionJPARepository composicionJPARepository;
     private final ProductoPresentacionJPARepository presentacionJPARepository;
-    private final FacturaService facturaService;
     private final CuentaCobrarService cuentaCobrarService;
     private final ComisionService comisionService;
     private final CarteraService carteraService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private SolicitudCreditoService solicitudCreditoService;
     private final CuentaBancariaJPARepository cuentaBancariaJPARepository;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
+
+    @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    private PedidoVendedorJPARepository pedidoVendedorJPARepository;
+
+    @Autowired
+    private PedidoVendedorDetalleJPARepository pedidoVendedorDetalleJPARepository;
 
     @Autowired
     public VentaServiceImpl(VentaQueryRepository ventaRepository,
@@ -116,7 +146,6 @@ public class VentaServiceImpl implements VentaService {
             ProductoPresentacionJPARepository presentacionJPARepository,
             VentaDetalleMapper detalleMapper,
             VentaPagoMapper pagoMapper,
-            FacturaService facturaService,
             CuentaCobrarService cuentaCobrarService,
             ComisionService comisionService,
             CarteraService carteraService,
@@ -141,7 +170,6 @@ public class VentaServiceImpl implements VentaService {
         this.ventaMapper = ventaMapper;
         this.detalleMapper = detalleMapper;
         this.pagoMapper = pagoMapper;
-        this.facturaService = facturaService;
         this.cuentaCobrarService = cuentaCobrarService;
         this.comisionService = comisionService;
         this.carteraService = carteraService;
@@ -168,15 +196,34 @@ public class VentaServiceImpl implements VentaService {
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
 
-        // 1. Validar turno abierto
-        TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+        // 1. Validar turno. Sigue siendo opcional para vendedores sin caja, pero
+        // el efectivo obliga: sin turno no hay dónde registrar el dinero físico
+        // y el cierre nunca lo vería. El front ya lo exige al abrir el punto de
+        // venta; esta validación cierra la puerta de atrás por API.
+        boolean hayEfectivo = dto.getPagos() != null && dto.getPagos().stream()
+                .anyMatch(p -> MediosPago.esEfectivo(p.getMetodoPago()));
 
-        if (!turno.getEstado().equals("ABIERTA")) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+        TurnoCajaEntity turno = null;
+        SucursalEntity sucursal;
+
+        if (dto.getTurnoCajaId() != null) {
+            turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
+            if (!turno.getEstado().equals("ABIERTA")) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
+            }
+            sucursal = turno.getCaja().getSucursal();
+        } else {
+            if (hayEfectivo) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Debe abrir un turno de caja para registrar ventas en efectivo");
+            }
+            if (dto.getSucursalId() == null) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe indicar la sucursal para realizar la venta");
+            }
+            sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
         }
-
-        SucursalEntity sucursal = turno.getCaja().getSucursal();
 
         EmpresaEntity empresa = empresaRepository.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
@@ -206,6 +253,7 @@ public class VentaServiceImpl implements VentaService {
         }
 
         // 2.3. Validar cupo de crédito disponible
+        Long solicitudAutorizadaId = null;
         if (tienePagoCredito && cliente != null) {
             BigDecimal montoCredito = dto.getPagos().stream()
                     .filter(p -> "CREDITO".equalsIgnoreCase(p.getMetodoPago()))
@@ -219,14 +267,18 @@ public class VentaServiceImpl implements VentaService {
                         : "Crédito no permitido para este cliente";
                 throw new GlobalException(HttpStatus.BAD_REQUEST, motivo);
             }
+            solicitudAutorizadaId = validacion.getSolicitudAutorizadaId();
         }
 
         // 3. Crear cabecera
         VentaEntity venta = new VentaEntity();
         venta.setEmpresa(empresa);
         venta.setSucursal(sucursal);
+        com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
+                bodegaService.resolverParaVenta(dto.getBodegaId(), sucursal.getId(), empresaId);
+        venta.setBodega(bodega);
         venta.setUsuario(usuario);
-        venta.setTurnoCaja(turno);
+        if (turno != null) venta.setTurnoCaja(turno);
         venta.setTipoDocumento(dto.getTipoDocumento());
         venta.setPrefijo(sucursal.getPrefijoFacturacion());
         /**
@@ -235,7 +287,19 @@ public class VentaServiceImpl implements VentaService {
          * mismo * consecutivo
          */
         venta.setConsecutivo(ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
-        venta.setFechaEmision(LocalDateTime.now(ZoneId.of("America/Bogota")));
+        // Sin zona explícita: la JVM ya corre en America/Bogota (ver
+        // AuraPosApplication).
+        //
+        // Este era el ÚNICO punto de todo el sistema que guardaba hora real de
+        // Colombia mientras el servidor corría en UTC: el resto de las fechas
+        // quedaban cinco horas adelante. Forzar la zona aquí tapaba el síntoma
+        // en la pantalla que más se mira, pero dejaba a `fecha_emision`
+        // desalineada con `factura.created_at`, escrita en el mismo instante.
+        //
+        // Con la zona de la JVM ya fijada, el parche sobra y volverlo a poner
+        // solo reintroduciría esa discrepancia. Los dos cambios van juntos: sin
+        // la zona de la JVM, quitar esto manda las ventas cinco horas adelante.
+        venta.setFechaEmision(LocalDateTime.now());
         venta.setObservaciones(dto.getObservaciones());
         venta.setEstadoVenta("COMPLETADA");
 
@@ -249,8 +313,20 @@ public class VentaServiceImpl implements VentaService {
         BigDecimal subtotalAcumulado = BigDecimal.ZERO;
         BigDecimal descuentoAcumulado = BigDecimal.ZERO;
         BigDecimal impuestosAcumulado = BigDecimal.ZERO;
+        // Acumuladores desglose IVA (V53)
+        BigDecimal ivaBase0Acum  = BigDecimal.ZERO;
+        BigDecimal ivaBase5Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor5Acum = BigDecimal.ZERO;
+        BigDecimal ivaBase19Acum  = BigDecimal.ZERO;
+        BigDecimal ivaValor19Acum = BigDecimal.ZERO;
 
         BigDecimal descGral = dto.getDescuentoGeneral() != null ? dto.getDescuentoGeneral() : BigDecimal.ZERO;
+
+        // Vender de un lote vencido lo decide la empresa (por defecto no).
+        final boolean permitirVencidos = !loteStock.bloqueaVencidos(empresaId);
+        final VentaEntity ventaFinal = venta;
+        final SucursalEntity sucursalVenta = sucursal;
+        final com.cloud_technological.aura_pos.entity.BodegaEntity bodegaVenta = bodega;
 
         // 4. Procesar cada detalle
         for (CreateVentaDetalleDto item : dto.getDetalles()) {
@@ -265,12 +341,16 @@ public class VentaServiceImpl implements VentaService {
             if (item.getProductoPresentacionId() != null) {
                 presentacion = presentacionJPARepository
                         .findByIdAndProductoEmpresaId(item.getProductoPresentacionId(), empresaId)
+                        .filter(p -> p.getProducto().getId().equals(producto.getId()))
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                        "Presentación no encontrada: " + item.getProductoPresentacionId()));
-                // factorConversion = unidades base por presentación (ej: 1 caja = 12 unidades)
-                // ó unidades base que contiene 1 presentación (ej: 1 kg = 1/50 bulto → factor=50 → divide)
-                cantidadBase = item.getCantidad().divide(
-                        presentacion.getFactorConversion(), 6, java.math.RoundingMode.HALF_UP);
+                        "Presentación no encontrada para " + producto.getNombre() + ": " + item.getProductoPresentacionId()));
+                if (Boolean.FALSE.equals(presentacion.getSeVende()))
+                    throw new GlobalException(HttpStatus.BAD_REQUEST,
+                            "'" + presentacion.getNombre() + "' de " + producto.getNombre() + " no está a la venta");
+                cantidadBase = PresentacionConversion.aBase(item.getCantidad(), presentacion);
+            } else if (Boolean.FALSE.equals(producto.getVendePorUnidad())) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        producto.getNombre() + " no se vende por unidad: elige una presentación");
             }
 
             // Validación de stock (4.1)
@@ -287,9 +367,10 @@ public class VentaServiceImpl implements VentaService {
                     BigDecimal cantidadRequerida = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
-                            .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
+                            .findByBodegaIdAndProductoId(bodega.getId(), hijo.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "El componente '" + hijo.getNombre() + "' no tiene inventario en esta sucursal"));
+                            "El componente '" + hijo.getNombre() + "' no tiene inventario en la bodega "
+                            + bodega.getNombre()));
 
                     if (!Boolean.TRUE.equals(hijo.getPermitirStockNegativo())
                             && invHijo.getStockActual().compareTo(cantidadRequerida) < 0) {
@@ -301,16 +382,19 @@ public class VentaServiceImpl implements VentaService {
                 }
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
                 InventarioEntity inventario = inventarioJPARepository
-                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId())
+                        .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                        "El producto " + producto.getNombre() + " no tiene inventario en esta sucursal"));
+                        "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
+                        + bodega.getNombre()));
 
                 if (!Boolean.TRUE.equals(producto.getPermitirStockNegativo())
                         && inventario.getStockActual().compareTo(cantidadBase) < 0) {
                     throw new GlobalException(HttpStatus.BAD_REQUEST,
                             "Stock insuficiente para: " + producto.getNombre()
                             + ". Disponible: " + inventario.getStockActual()
-                            + (presentacion != null ? " bultos (solicitado: " + cantidadBase + " bultos)" : ""));
+                            + (presentacion != null
+                                    ? " | Solicitado: " + cantidadBase + " (" + item.getCantidad() + " " + presentacion.getNombre() + ")"
+                                    : ""));
                 }
             }
 
@@ -332,20 +416,13 @@ public class VentaServiceImpl implements VentaService {
 
             detalle.setSubtotalLinea(subtotalLinea);
 
+            // Costo de la línea en unidades base (para el asiento de costo de venta).
+            // Se captura el costo vigente al momento de la venta.
+            detalle.setCostoLinea(calcularCostoBase(producto, cantidadBase));
+
             // Asignar presentación al detalle si aplica
             if (presentacion != null) {
                 detalle.setProductoPresentacion(presentacion);
-            }
-
-            // Lote opcional
-            if (item.getLoteId() != null) {
-                LoteEntity lote = loteJPARepository.findById(item.getLoteId())
-                        .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Lote no encontrado"));
-                detalle.setLote(lote);
-
-                // Descontar del lote
-                lote.setStockActual(lote.getStockActual().subtract(item.getCantidad()));
-                loteJPARepository.save(lote);
             }
 
             detalleJPARepository.save(detalle);
@@ -353,27 +430,9 @@ public class VentaServiceImpl implements VentaService {
             // 4.4.1 Registrar comisión si el producto es SERVICIO
             comisionService.procesarComisionVenta(detalle, empresaId);
 
-            // 4.5 Manejar seriales
-            if (Boolean.TRUE.equals(producto.getManejaSerial()) && item.getSerialIds() != null) {
-                for (Long serialId : item.getSerialIds()) {
-                    SerialProductoEntity serial = serialJPARepository.findById(serialId)
-                            .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "Serial no encontrado: " + serialId));
-
-                    if (!serial.getEstado().equals("DISPONIBLE")) {
-                        throw new GlobalException(HttpStatus.BAD_REQUEST,
-                                "El serial " + serial.getSerial() + " no está disponible");
-                    }
-
-                    serial.setEstado("VENDIDO");
-                    serialJPARepository.save(serial);
-
-                    VentaDetalleSerialEntity ds = new VentaDetalleSerialEntity();
-                    ds.setVentaDetalle(detalle);
-                    ds.setSerialProducto(serial);
-                    serialVentaJPARepository.save(ds);
-                }
-            }
+            // 4.5 Seriales: uno por unidad, DISPONIBLES en la sucursal; quedan
+            //     VENDIDOS con la garantía del producto.
+            serialStock.venta(detalle, producto, bodegaVenta, empresaId, cantidadBase, item.getSerialIds());
 
             // 4.6 Descontar inventario (usa cantidadBase ya convertida por factorConversion)
             List<ProductoComposicionEntity> componentes
@@ -390,9 +449,10 @@ public class VentaServiceImpl implements VentaService {
                     BigDecimal cantidadDescontar = cantidadBase.multiply(comp.getCantidad());
 
                     InventarioEntity invHijo = inventarioJPARepository
-                            .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), hijo.getId())
+                            .findByBodegaIdAndProductoId(bodega.getId(), hijo.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                            "El componente '" + hijo.getNombre() + "' no tiene inventario en esta sucursal"));
+                            "El componente '" + hijo.getNombre() + "' no tiene inventario en la bodega "
+                            + bodega.getNombre()));
 
                     BigDecimal saldoAnt = invHijo.getStockActual();
                     BigDecimal saldoNuevo = saldoAnt.subtract(cantidadDescontar);
@@ -401,16 +461,22 @@ public class VentaServiceImpl implements VentaService {
                     invHijo.setUpdatedAt(LocalDateTime.now());
                     inventarioJPARepository.save(invHijo);
 
-                    registrarMovimiento(sucursal, hijo, null,
-                            cantidadDescontar.negate(), saldoAnt, saldoNuevo,
-                            item.getPrecioUnitario(), "VENTA",
-                            "Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                    // El componente con lotes sale del que vence primero.
+                    List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesHijo = loteStock.salidaDocumento(
+                            com.cloud_technological.aura_pos.services.LoteStockService.VENTA_COMPONENTE, detalle.getId(), hijo, bodegaVenta, empresaId,
+                            cantidadDescontar, null, permitirVencidos,
+                            Boolean.TRUE.equals(hijo.getPermitirStockNegativo()));
+                    final String refHijo = "Venta " + Documentos.numeroVenta(ventaFinal)
+                            + " [componente de " + producto.getNombre() + "]";
+                    loteStock.kardex(lotesHijo, cantidadDescontar.negate(), saldoAnt,
+                            (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaVenta, hijo, lote, cant, ant, nuevo,
+                                    hijo.getCosto(), TipoMovimientoInventario.VENTA.codigo(), refHijo));
                 }
 
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
                 // Producto simple → descontar cantidadBase (ya dividida por factorConversion si hay presentación)
                 InventarioEntity inventario = inventarioJPARepository
-                        .findBySucursalIdAndProductoId(Long.valueOf(sucursal.getId()), producto.getId()).get();
+                        .findByBodegaIdAndProductoId(bodega.getId(), producto.getId()).get();
 
                 BigDecimal saldoAnterior = inventario.getStockActual();
                 BigDecimal saldoNuevo = saldoAnterior.subtract(cantidadBase);
@@ -419,17 +485,42 @@ public class VentaServiceImpl implements VentaService {
                 inventario.setUpdatedAt(LocalDateTime.now());
                 inventarioJPARepository.save(inventario);
 
-                String refMovimiento = presentacion != null
-                        ? "Venta #" + venta.getId() + " [presentación: " + presentacion.getNombre() + "]"
-                        : "Venta #" + venta.getId();
+                String numeroVenta = Documentos.numeroVenta(venta);
+                final String refMovimiento = presentacion != null
+                        ? "Venta " + numeroVenta + " [presentación: " + presentacion.getNombre() + "]"
+                        : "Venta " + numeroVenta;
 
-                registrarMovimiento(sucursal, producto, detalle.getLote(),
-                        cantidadBase.negate(), saldoAnterior, saldoNuevo,
-                        item.getPrecioUnitario(), "VENTA", refMovimiento);
+                // Lote: el que eligió el cajero o el que vence primero.
+                List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.VENTA,
+                        detalle.getId(), producto, bodegaVenta, empresaId, cantidadBase, item.getLoteId(),
+                        permitirVencidos, Boolean.TRUE.equals(producto.getPermitirStockNegativo()));
+                if (lotes.size() == 1) {
+                    detalle.setLote(lotes.get(0).lote());
+                    detalleJPARepository.save(detalle);
+                }
+
+                loteStock.kardex(lotes, cantidadBase.negate(), saldoAnterior,
+                        (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaVenta, producto, lote, cant, ant, nuevo,
+                                producto.getCosto(), TipoMovimientoInventario.VENTA.codigo(), refMovimiento));
             }
             subtotalAcumulado = subtotalAcumulado.add(baseNetaOriginal);
             descuentoAcumulado = descuentoAcumulado.add(item.getDescuentoValor());
             impuestosAcumulado = impuestosAcumulado.add(impuestoLinea);
+
+            // Desglose IVA por tarifa (V53)
+            BigDecimal tarifa = producto.getIvaPorcentaje() != null
+                    ? producto.getIvaPorcentaje()
+                    : BigDecimal.ZERO;
+            int tarifaInt = tarifa.setScale(0, RoundingMode.HALF_UP).intValue();
+            if (tarifaInt == 5) {
+                ivaBase5Acum  = ivaBase5Acum.add(baseNetaOriginal);
+                ivaValor5Acum = ivaValor5Acum.add(impuestoLinea);
+            } else if (tarifaInt == 19) {
+                ivaBase19Acum  = ivaBase19Acum.add(baseNetaOriginal);
+                ivaValor19Acum = ivaValor19Acum.add(impuestoLinea);
+            } else {
+                ivaBase0Acum = ivaBase0Acum.add(baseNetaOriginal);
+            }
         }
 
         // 5. Validar que el pago cubra el total (excepto si hay método CREDITO)
@@ -458,6 +549,10 @@ public class VentaServiceImpl implements VentaService {
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             VentaPagoEntity pagoEntity = pagoMapper.toEntity(pago);
             pagoEntity.setVenta(venta);
+            // El cierre de caja compara metodo_pago = 'EFECTIVO' en SQL exacto:
+            // si se guarda en minúscula el dinero no entra al efectivo esperado
+            // y el cajero cierra con un sobrante que no existe.
+            pagoEntity.setMetodoPago(MediosPago.normalizar(pago.getMetodoPago()));
             pagoEntity.setMontoRecibido(pago.getMonto());                         // guarda lo tendido
             BigDecimal montoEfectivo = pago.getMonto().min(saldo);               // cap al saldo restante
             pagoEntity.setMonto(montoEfectivo);
@@ -465,17 +560,28 @@ public class VentaServiceImpl implements VentaService {
             saldo = saldo.subtract(montoEfectivo);
             pagoJPARepository.save(pagoEntity);
 
-            // Acreditar saldo en cuenta bancaria si el pago va a una cuenta específica
-            if (pago.getCuentaBancariaId() != null) {
-                cuentaBancariaJPARepository.findByIdAndEmpresaId(pago.getCuentaBancariaId(), empresaId)
-                        .ifPresent(cuenta -> {
-                            cuenta.setSaldoActual(cuenta.getSaldoActual().add(montoEfectivo));
-                            cuentaBancariaJPARepository.save(cuenta);
-                        });
-            }
+            // Entrada a la cuenta bancaria: sube el saldo y deja el movimiento
+            // en el extracto, que antes no se registraba.
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            pago.getCuentaBancariaId(), false, montoEfectivo,
+                            "Venta " + Documentos.numeroVenta(venta) + " - Recaudo",
+                            com.cloud_technological.aura_pos.utils.Terceros.nombreVisible(venta.getCliente()),
+                            pago.getReferencia() != null && !pago.getReferencia().isBlank()
+                                    ? pago.getReferencia().trim()
+                                    : "VENTA-" + venta.getId(),
+                            "VENTA"));
         }
 
         // 7. Actualizar totales y calcular pagos parciales (HU-004)
+        // Pago real recibido al momento de la venta. Excluye la línea de CRÉDITO:
+        // esa no es dinero entregado sino el monto que queda financiado, y el
+        // frontend la envía con el total de la venta como monto.
+        BigDecimal totalPagadoContado = dto.getPagos().stream()
+                .filter(p -> !"CREDITO".equalsIgnoreCase(p.getMetodoPago()))
+                .map(CreateVentaPagoDto::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         // Detectar si es venta a crédito
         boolean esCredito = false;
         BigDecimal saldoPendiente = BigDecimal.ZERO;
@@ -483,7 +589,10 @@ public class VentaServiceImpl implements VentaService {
         for (CreateVentaPagoDto pago : dto.getPagos()) {
             if ("CREDITO".equalsIgnoreCase(pago.getMetodoPago())) {
                 esCredito = true;
-                saldoPendiente = totalFinal.subtract(totalPagado);
+                // Lo que queda debiendo = total − lo pagado de contado.
+                // Crédito puro: contado = 0 → saldo = total.
+                // Mixto (efectivo + crédito): saldo = total − efectivo.
+                saldoPendiente = totalFinal.subtract(totalPagadoContado);
                 break;
             }
         }
@@ -498,6 +607,13 @@ public class VentaServiceImpl implements VentaService {
         venta.setDescuentoTotal(descuentoAcumulado.add(descGral));
         venta.setImpuestosTotal(impuestosAcumulado);
         venta.setTotalPagar(totalFinal);
+        // Desglose IVA (V53)
+        venta.setIvaBase0(ivaBase0Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase5(ivaBase5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor5(ivaValor5Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaBase19(ivaBase19Acum.setScale(2, RoundingMode.HALF_UP));
+        venta.setIvaValor19(ivaValor19Acum.setScale(2, RoundingMode.HALF_UP));
+        
 
         // Campos de pago parcial
         venta.setPagoParcial(esPagoParcial || esCredito);
@@ -511,29 +627,102 @@ public class VentaServiceImpl implements VentaService {
         ventaJPARepository.save(venta);
 
         // 8. Crear cuenta por cobrar si es crédito o pago parcial (HU-014)
-        if ((esCredito || esPagoParcial) && dto.getClienteId() != null) {
+        if ((esCredito || esPagoParcial) && dto.getClienteId() != null
+                && saldoPendiente.compareTo(BigDecimal.ZERO) > 0) {
             CreateCuentaCobrarDto cuentaCobrarDto = new CreateCuentaCobrarDto();
             cuentaCobrarDto.setClienteId(dto.getClienteId());
             cuentaCobrarDto.setVentaId(venta.getId());
-            cuentaCobrarDto.setTotalDeuda(totalFinal);
+            // La deuda es solo el saldo pendiente: lo pagado de contado al momento
+            // de la venta (efectivo/transferencia) ya no se debe. En crédito puro,
+            // saldoPendiente == totalFinal.
+            cuentaCobrarDto.setTotalDeuda(saldoPendiente);
             cuentaCobrarDto.setFechaEmision(venta.getFechaEmision());
             cuentaCobrarDto.setFechaVencimiento(dto.getFechaVencimiento() != null
                     ? dto.getFechaVencimiento() : venta.getFechaEmision().plusDays(30));
+            String numeroVenta = Documentos.numeroVenta(venta);
             cuentaCobrarDto.setObservaciones(esCredito
-                    ? "Venta #" + venta.getId() + " - Venta a crédito"
-                    : "Venta #" + venta.getId() + " - Pago parcial");
+                    ? "Venta " + numeroVenta + " - Venta a crédito"
+                    : "Venta " + numeroVenta + " - Pago parcial");
 
             cuentaCobrarService.crear(cuentaCobrarDto, empresaId, usuarioId);
+            // La autorización para pasar el cupo sirve para esta venta y nada más.
+            if (solicitudAutorizadaId != null) solicitudCreditoService.consumir(solicitudAutorizadaId, venta.getId());
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.CreditoMovimientoEvent(
+                    dto.getClienteId(), empresaId, "AL_VENDER"));
         }
 
-        // 9. Crear factura automáticamente desde la venta
-        FacturaDto facturaDto = facturaService.crearDesdeVenta(venta.getId(), empresaId, usuarioId.intValue());
-
-        // 9. Obtener venta con factura asignada
+        // 9. La factura interna NO se crea automáticamente. Se genera on-demand
+        //    cuando el usuario la solicite (FacturaController POST /facturas/desde-venta).
+        //    Así solo se factura la venta que se elija, no todas.
         VentaDto ventaDto = obtenerPorId(venta.getId(), empresaId);
-        ventaDto.setFacturaId(facturaDto.getId());
+
+        // 10. Enlazar con el pedido de vendedor.
+        //     Si la venta nace del despacho de un pedido ya existente, se enlaza
+        //     a ese; crear el espejo aquí duplicaría el documento. Si nace en el
+        //     POS y el usuario tiene empleado vinculado, se crea el espejo.
+        if (dto.getPedidoVendedorId() != null) {
+            PedidoVendedorEntity pedido = pedidoVendedorJPARepository
+                    .findByIdAndEmpresaId(dto.getPedidoVendedorId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                            "Pedido de vendedor no encontrado"));
+            pedido.setVenta(venta);
+            pedidoVendedorJPARepository.save(pedido);
+        } else if (usuario.getEmpleado() != null) {
+            crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
+        }
+
+        // 11. Disparar la generación del asiento contable tras el commit de la venta.
+        //     Si la contabilización falla, la venta NO se revierte (queda en PostingLog/ErrorLog).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                        "VENTA", venta.getId(), empresaId, usuarioId.intValue()));
 
         return ventaDto;
+    }
+
+    /**
+     * Crea un pedido_vendedor en estado COBRADA asociado a la venta recién creada.
+     * Solo se ejecuta cuando el usuario que realiza la venta tiene un empleado vinculado.
+     */
+    private void crearPedidoVendedorDesdeVenta(
+            VentaEntity venta,
+            UsuarioEntity vendedor,
+            EmpresaEntity empresa,
+            SucursalEntity sucursal,
+            TerceroEntity cliente) {
+
+        PedidoVendedorEntity pedido = new PedidoVendedorEntity();
+        pedido.setEmpresa(empresa);
+        pedido.setSucursal(sucursal);
+        pedido.setVendedor(vendedor);
+        pedido.setCliente(cliente);
+        pedido.setVenta(venta);
+        pedido.setEstado("CREADA");
+        pedido.setSubtotal(venta.getSubtotal());
+        pedido.setDescuentoTotal(venta.getDescuentoTotal() != null ? venta.getDescuentoTotal() : BigDecimal.ZERO);
+        pedido.setImpuestoTotal(venta.getImpuestosTotal() != null ? venta.getImpuestosTotal() : BigDecimal.ZERO);
+        pedido.setTotal(venta.getTotalPagar());
+        pedido.setMetodoPago(null); // pagado vía venta
+        pedido.setFechaCobro(venta.getFechaEmision());
+        pedido.setCreatedAt(venta.getFechaEmision());
+
+        PedidoVendedorEntity saved = pedidoVendedorJPARepository.save(pedido);
+        saved.setNumeroPedido("PV-" + String.format("%06d", saved.getId()));
+        pedidoVendedorJPARepository.save(saved);
+
+        // Copiar detalles desde venta_detalle
+        List<VentaDetalleEntity> detallesVenta = detalleJPARepository.findByVentaId(venta.getId());
+        for (VentaDetalleEntity vd : detallesVenta) {
+            PedidoVendedorDetalleEntity det = new PedidoVendedorDetalleEntity();
+            det.setPedidoVendedor(saved);
+            det.setProducto(vd.getProducto());
+            det.setCantidad(vd.getCantidad());
+            det.setPrecioUnitario(vd.getPrecioUnitario());
+            det.setDescuentoValor(vd.getMontoDescuento() != null ? vd.getMontoDescuento() : BigDecimal.ZERO);
+            det.setImpuestoValor(vd.getImpuestoValor() != null ? vd.getImpuestoValor() : BigDecimal.ZERO);
+            det.setSubtotalLinea(vd.getSubtotalLinea());
+            pedidoVendedorDetalleJPARepository.save(det);
+        }
     }
 
     @Override
@@ -546,10 +735,16 @@ public class VentaServiceImpl implements VentaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La venta ya está anulada");
         }
 
+        // Anular la cuenta por cobrar asociada (ventas a crédito).
+        // Falla si la cuenta ya tiene abonos, abortando la anulación de la venta.
+        cuentaCobrarService.anularPorVenta(id, empresaId);
+
         List<VentaDetalleEntity> detalles = detalleJPARepository.findByVentaId(id);
 
         for (VentaDetalleEntity detalle : detalles) {
             ProductoEntity producto = detalle.getProducto();
+            // detalle.cantidad está en la presentación vendida; el stock, en unidades base.
+            BigDecimal cantidadBase = PresentacionConversion.aBase(detalle.getCantidad(), detalle.getProductoPresentacion());
 
             // En anular(), reemplazar el bloque if (Boolean.TRUE.equals(producto.getManejaInventario()))
             if (Boolean.TRUE.equals(producto.getManejaInventario())) {
@@ -558,6 +753,9 @@ public class VentaServiceImpl implements VentaService {
                         = composicionJPARepository.findByProductoPadreId(producto.getId());
 
                 if (!componentes.isEmpty()) {
+                    // Los lotes de los componentes vuelven a donde salieron.
+                    List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesComponentes = loteStock.revertirDocumento(
+                            com.cloud_technological.aura_pos.services.LoteStockService.VENTA_COMPONENTE, detalle.getId(), true, "anular la venta");
                     // Devolver cada componente al inventario
                     for (ProductoComposicionEntity comp : componentes) {
                         ProductoEntity hijo = comp.getProductoHijo();
@@ -565,10 +763,10 @@ public class VentaServiceImpl implements VentaService {
                             continue;
                         }
 
-                        BigDecimal cantidadDevolver = detalle.getCantidad().multiply(comp.getCantidad());
+                        BigDecimal cantidadDevolver = cantidadBase.multiply(comp.getCantidad());
 
                         InventarioEntity invHijo = inventarioJPARepository
-                                .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), hijo.getId())
+                                .findByBodegaIdAndProductoId(bodegaDeVenta(venta, empresaId).getId(), hijo.getId())
                                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                                 "Inventario no encontrado para componente: " + hijo.getNombre()));
 
@@ -579,58 +777,94 @@ public class VentaServiceImpl implements VentaService {
                         invHijo.setUpdatedAt(LocalDateTime.now());
                         inventarioJPARepository.save(invHijo);
 
-                        registrarMovimiento(venta.getSucursal(), hijo, null,
-                                cantidadDevolver, saldoAnt, saldoNuevo,
-                                detalle.getPrecioUnitario(), "ANULACION_VENTA",
-                                "Anulación Venta #" + venta.getId() + " [componente de " + producto.getNombre() + "]");
+                        List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesHijo = lotesComponentes.stream()
+                                .filter(a -> a.lote().getProducto().getId().equals(hijo.getId()))
+                                .toList();
+                        final String refHijo = "Anulación Venta " + Documentos.numeroVenta(venta)
+                                + " [componente de " + producto.getNombre() + "]";
+                        loteStock.kardex(lotesHijo, cantidadDevolver, saldoAnt,
+                                (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaDeVenta(venta, empresaId), hijo, lote, cant,
+                                        ant, nuevo, hijo.getCosto(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
+                                        refHijo));
                     }
                 } else {
                     // Producto simple — lógica actual sin cambios
                     InventarioEntity inventario = inventarioJPARepository
-                            .findBySucursalIdAndProductoId(Long.valueOf(venta.getSucursal().getId()), producto.getId())
+                            .findByBodegaIdAndProductoId(bodegaDeVenta(venta, empresaId).getId(), producto.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + producto.getNombre()));
 
                     BigDecimal saldoAnterior = inventario.getStockActual();
-                    BigDecimal saldoNuevo = saldoAnterior.add(detalle.getCantidad());
+                    BigDecimal saldoNuevo = saldoAnterior.add(cantidadBase);
 
                     inventario.setStockActual(saldoNuevo);
                     inventario.setUpdatedAt(LocalDateTime.now());
                     inventarioJPARepository.save(inventario);
 
-                    if (detalle.getLote() != null) {
+                    List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.revertirDocumento(com.cloud_technological.aura_pos.services.LoteStockService.VENTA,
+                            detalle.getId(), true, "anular la venta");
+                    if (lotes.isEmpty() && detalle.getLote() != null) {
                         LoteEntity lote = detalle.getLote();
-                        lote.setStockActual(lote.getStockActual().add(detalle.getCantidad()));
+                        lote.setStockActual(lote.getStockActual().add(cantidadBase));
                         loteJPARepository.save(lote);
                     }
 
-                    registrarMovimiento(venta.getSucursal(), producto, detalle.getLote(),
-                            detalle.getCantidad(), saldoAnterior, saldoNuevo,
-                            detalle.getPrecioUnitario(), "ANULACION_VENTA",
-                            "Anulación Venta #" + venta.getId());
+                    final String refAnulacion = "Anulación Venta " + Documentos.numeroVenta(venta);
+                    loteStock.kardex(lotes, cantidadBase, saldoAnterior,
+                            (lote, cant, ant, nuevo) -> registrarMovimiento(bodegaDeVenta(venta, empresaId), producto,
+                                    lote != null ? lote : detalle.getLote(), cant, ant, nuevo,
+                                    producto.getCosto(), TipoMovimientoInventario.ANULACION_VENTA.codigo(),
+                                    refAnulacion));
                 }
             }
-            // Devolver seriales a DISPONIBLE
-            if (Boolean.TRUE.equals(producto.getManejaSerial())) {
-                serialJPARepository.findAll().stream()
-                        .filter(s -> s.getEstado().equals("VENDIDO"))
-                        .forEach(s -> {
-                            s.setEstado("DISPONIBLE");
-                            serialJPARepository.save(s);
-                        });
-            }
+            // Solo los seriales de esta línea que sigan VENDIDOS vuelven a DISPONIBLE.
+            serialStock.anularVenta(detalle.getId());
         }
 
         venta.setEstadoVenta("ANULADA");
         ventaJPARepository.save(venta);
+
+        // Reversar el asiento contable de la venta tras el commit de la anulación.
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                        "VENTA", venta.getId(), empresaId, null));
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
-    private void registrarMovimiento(SucursalEntity sucursal, ProductoEntity producto,
+
+    /**
+     * Costo total de una línea en unidades base. Para productos compuestos suma
+     * el costo de cada componente; para simples usa el costo del producto.
+     */
+    private BigDecimal calcularCostoBase(ProductoEntity producto, BigDecimal cantidadBase) {
+        List<ProductoComposicionEntity> componentes
+                = composicionJPARepository.findByProductoPadreId(producto.getId());
+        if (!componentes.isEmpty()) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (ProductoComposicionEntity comp : componentes) {
+                ProductoEntity hijo = comp.getProductoHijo();
+                BigDecimal costoHijo = hijo.getCosto() != null ? hijo.getCosto() : BigDecimal.ZERO;
+                total = total.add(cantidadBase.multiply(comp.getCantidad()).multiply(costoHijo));
+            }
+            return total.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal costo = producto.getCosto() != null ? producto.getCosto() : BigDecimal.ZERO;
+        return cantidadBase.multiply(costo).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Bodega de la venta; las ventas anteriores a V172 quedaron en la principal. */
+    private com.cloud_technological.aura_pos.entity.BodegaEntity bodegaDeVenta(VentaEntity venta, Integer empresaId) {
+        return bodegaService.resolver(
+                venta.getBodega() != null ? venta.getBodega().getId() : null,
+                venta.getSucursal() != null ? venta.getSucursal().getId() : null, empresaId);
+    }
+
+    private void registrarMovimiento(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto,
             LoteEntity lote, BigDecimal cantidad, BigDecimal saldoAnterior,
             BigDecimal saldoNuevo, BigDecimal costo, String tipo, String referencia) {
         MovimientoInventarioEntity movimiento = new MovimientoInventarioEntity();
-        movimiento.setSucursal(sucursal);
+        movimiento.setBodega(bodega);
+        movimiento.setSucursal(bodega.getSucursal());
         movimiento.setProducto(producto);
         movimiento.setLote(lote);
         movimiento.setTipoMovimiento(tipo);

@@ -14,4 +14,8 @@ public class AsientoDetalleDto {
     private String descripcion;
     private BigDecimal debito;
     private BigDecimal credito;
+    private Long terceroId;
+    private String terceroNombre;
+    private Long centroCostoId;
+    private String centroCostoNombre;
 }

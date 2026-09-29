@@ -22,16 +22,24 @@ public class ProductoDto {
     private String descripcion;
     private String imagenUrl;
     private String tipoProducto;
+    private String usoProducto;
     private Boolean manejaInventario;
     private Boolean manejaLotes;
     private Boolean manejaSerial;
+    private Integer mesesGarantia;
     private Boolean permitirStockNegativo;
     private BigDecimal costo;
     private BigDecimal precio;
     private BigDecimal precio2;
     private BigDecimal precio3;
     private BigDecimal ivaPorcentaje;
+    private Boolean ivaIncluido;
     private BigDecimal impoconsumo;
     private Boolean activo;
     private Boolean visibleEnPos;
+    private Boolean vendePorUnidad;
+    private Long categoriaContableId;
+    private Long cuentaIngresoId;
+    private Long cuentaCostoId;
+    private Long cuentaInventarioId;
 }

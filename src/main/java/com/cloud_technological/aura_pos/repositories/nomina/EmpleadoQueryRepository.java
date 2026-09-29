@@ -34,6 +34,10 @@ public class EmpleadoQueryRepository {
             }
         }
 
+        // El cargo, el salario y el tipo de contrato se muestran desde el CONTRATO
+        // activo/principal, no desde el empleado: con el alta nueva esos campos
+        // quedan vacíos en `empleados` (el real vive en el contrato). Se cae al
+        // dato del empleado solo si no hay contrato (empleados legacy).
         StringBuilder sql = new StringBuilder("""
             SELECT
                 e.id,
@@ -42,15 +46,25 @@ public class EmpleadoQueryRepository {
                 CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
                 e.tipo_documento,
                 e.numero_documento,
-                e.cargo,
+                COALESCE(ct.cargo, e.cargo) AS cargo,
                 e.fecha_ingreso,
-                e.salario_base,
-                e.tipo_contrato,
+                COALESCE(ct.salario_base, e.salario_base) AS salario_base,
+                COALESCE(ct.tipo_contrato, e.tipo_contrato) AS tipo_contrato,
                 e.activo,
+                e.requiere_control_asistencia,
                 COUNT(*) OVER() AS total_rows,
                 u.id AS usuario_id
             FROM empleados e
             LEFT JOIN usuario u ON u.empleado_id = e.id
+            LEFT JOIN LATERAL (
+                SELECT c.cargo, c.salario_base, c.tipo_contrato
+                FROM contrato_laboral c
+                WHERE c.empleado_id = e.id
+                  AND c.deleted_at IS NULL
+                  AND c.estado = 'ACTIVO'
+                ORDER BY c.es_principal DESC, c.fecha_inicio DESC
+                LIMIT 1
+            ) ct ON true
             WHERE e.empresa_id = :empresaId
         """);
 
@@ -62,14 +76,14 @@ public class EmpleadoQueryRepository {
                     LOWER(e.nombres) LIKE :search
                     OR LOWER(e.apellidos) LIKE :search
                     OR LOWER(e.numero_documento) LIKE :search
-                    OR LOWER(e.cargo) LIKE :search
+                    OR LOWER(COALESCE(ct.cargo, e.cargo)) LIKE :search
                 )
             """);
             params.addValue("search", "%" + search + "%");
         }
 
         if (cargo != null && !cargo.isEmpty()) {
-            sql.append(" AND LOWER(e.cargo) LIKE :cargo");
+            sql.append(" AND LOWER(COALESCE(ct.cargo, e.cargo)) LIKE :cargo");
             params.addValue("cargo", "%" + cargo + "%");
         }
 

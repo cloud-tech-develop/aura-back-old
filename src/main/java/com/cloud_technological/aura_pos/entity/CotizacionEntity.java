@@ -67,6 +67,21 @@ public class CotizacionEntity {
     @Column(name = "dias_vigencia")
     private Integer diasVigencia = 3;
 
+    // ── Reactivación (V144) ─────────────────────────────────────
+    /**
+     * Cuántas veces se ha revivido tras vencerse. Se permite una sola: revivir
+     * un precio viejo es una decisión comercial, y a la segunda alguien del
+     * negocio tiene que volver a mirarlo.
+     */
+    @Column(name = "veces_reactivada", nullable = false)
+    private Integer vecesReactivada = 0;
+
+    @Column(name = "reactivada_at")
+    private LocalDateTime reactivadaAt;
+
+    @Column(name = "reactivada_por")
+    private Integer reactivadaPor;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

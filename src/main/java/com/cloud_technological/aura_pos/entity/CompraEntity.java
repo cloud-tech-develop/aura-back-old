@@ -32,6 +32,12 @@ public class CompraEntity {
     @JoinColumn(name = "sucursal_id")
     private SucursalEntity sucursal;
 
+    /** Dónde vive el stock (V172). Si el documento no la dice, es la
+     *  bodega principal de la sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_id")
+    private BodegaEntity bodega;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "proveedor_id")
     private TerceroEntity proveedor;
@@ -89,6 +95,60 @@ public class CompraEntity {
 
     @Column(name = "fletes")
     private BigDecimal fletes;
+
+    // ── Nota crédito de compra ───────────────────────────────────────────
+    /**
+     * Factura de compra que esta nota crédito corrige. Solo aplica cuando
+     * {@link #tipoDocumento} es {@code NOTA_CREDITO}: sin ella no se puede
+     * validar que no se acredite más de lo comprado ni saber contra qué cuenta
+     * por pagar cruzarla.
+     */
+    @Column(name = "compra_origen_id")
+    private Long compraOrigenId;
+
+    /**
+     * Qué pasa con la plata de la nota crédito:
+     * {@code CRUCE_CXP} baja la deuda de la factura origen,
+     * {@code DEVOLUCION_DINERO} la devuelve el proveedor a caja/banco y
+     * {@code SALDO_A_FAVOR} la deja como crédito para compras futuras.
+     */
+    @Column(name = "destino_nota_credito", length = 20)
+    private String destinoNotaCredito;
+
+    // ── Destino contable (E2 · pieza 4) ─────────────────────────────────
+    /** Centro de costo que se propaga a todas las líneas del asiento. */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
+    /** Cuenta débito de la compra (gasto/activo); null → inventario. */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    // ── Dimensiones proyecto/frente (E7) ─────────────────────────────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
+
+    /**
+     * Por qué una compra de fecha anterior se cargó a la caja de hoy, y quién lo
+     * autorizó. Sin esto la autorización no sirve: el objetivo no es solo
+     * frenar, es poder preguntar después qué pasó ese día.
+     */
+    @Column(name = "motivo_retroactivo", length = 500)
+    private String motivoRetroactivo;
+
+    @Column(name = "autorizado_por")
+    private Integer autorizadoPor;
+
+    /**
+     * La plata ya había salido del cajón otro día cuando se registró este
+     * documento. No genera movimiento de caja — ni en la de hoy ni en la de
+     * aquel día, que ya cerró cuadrada contra el conteo físico.
+     */
+    @Column(name = "salida_caja_otro_dia", nullable = false)
+    private Boolean salidaCajaOtroDia = Boolean.FALSE;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

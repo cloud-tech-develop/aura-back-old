@@ -22,7 +22,7 @@ public interface FacturaLogJPARepository extends JpaRepository<FacturaLogEntity,
         FROM factura_log
         WHERE estado_nuevo = 'PENDIENTE'
           AND metadata IS NOT NULL
-          AND metadata::jsonb ? 'action'
+          AND jsonb_exists(metadata::jsonb, 'action')
         ORDER BY factura_id, created_at DESC
         """, nativeQuery = true)
     List<FacturaLogEntity> findPendingWithRetryPayload();

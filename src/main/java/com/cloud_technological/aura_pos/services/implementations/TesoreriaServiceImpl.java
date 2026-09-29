@@ -6,10 +6,14 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.cloud_technological.aura_pos.event.ContabilidadReversaEvent;
+import com.cloud_technological.aura_pos.event.OperacionContabilizableEvent;
 
 import com.cloud_technological.aura_pos.dto.tesoreria.ConciliacionResumenDto;
 import com.cloud_technological.aura_pos.dto.tesoreria.CreateMovimientoDto;
@@ -29,6 +33,9 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     @Autowired
     private CuentaBancariaJPARepository cuentaRepo;
 
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     @Override
     public List<TesoreriaMovimientoDto> listarEgresos(Integer empresaId, Long cuentaId, LocalDate desde, LocalDate hasta) {
         return movRepo.findByFiltros(empresaId, "EGRESO", cuentaId, desde, hasta)
@@ -45,6 +52,7 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     @Transactional
     public TesoreriaMovimientoDto crearEgreso(Integer empresaId, Integer usuarioId, CreateMovimientoDto dto) {
         CuentaBancariaEntity cuenta = getCuenta(dto.getCuentaBancariaId(), empresaId);
+        validarSaldoConSobregiro(cuenta, dto.getMonto());
         cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(dto.getMonto()));
         cuentaRepo.save(cuenta);
 
@@ -58,9 +66,45 @@ public class TesoreriaServiceImpl implements TesoreriaService {
                 .referencia(dto.getReferencia())
                 .fecha(dto.getFecha())
                 .categoria(dto.getCategoria())
+                .contrapartidaCuentaId(dto.getContrapartidaCuentaId())
                 .usuarioId(usuarioId)
                 .build();
-        return toDto(movRepo.save(mov));
+        TesoreriaMovimientoEntity saved = movRepo.save(mov);
+        publicarContabilizacion(saved, empresaId, usuarioId);
+        return toDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public void registrarMovimientoDeDocumento(Integer empresaId, Integer usuarioId,
+            MovimientoDocumento mov) {
+        if (mov == null || mov.cuentaBancariaId() == null
+                || mov.monto() == null || mov.monto().signum() <= 0) {
+            return;
+        }
+        CuentaBancariaEntity cuenta = getCuenta(mov.cuentaBancariaId(), empresaId);
+        if (mov.egreso()) {
+            validarSaldoConSobregiro(cuenta, mov.monto());
+            cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(mov.monto()));
+        } else {
+            cuenta.setSaldoActual(cuenta.getSaldoActual().add(mov.monto()));
+        }
+        cuentaRepo.save(cuenta);
+
+        // contrapartidaCuentaId queda null a propósito: el documento de origen
+        // ya contabiliza la línea del banco en su propio asiento.
+        movRepo.save(TesoreriaMovimientoEntity.builder()
+                .empresaId(empresaId)
+                .cuentaBancariaId(cuenta.getId())
+                .tipo(mov.egreso() ? "EGRESO" : "RECAUDO")
+                .monto(mov.monto())
+                .concepto(mov.concepto())
+                .beneficiario(mov.beneficiario())
+                .referencia(mov.referencia())
+                .categoria(mov.categoria())
+                .fecha(java.time.LocalDate.now())
+                .usuarioId(usuarioId)
+                .build());
     }
 
     @Override
@@ -80,9 +124,12 @@ public class TesoreriaServiceImpl implements TesoreriaService {
                 .referencia(dto.getReferencia())
                 .fecha(dto.getFecha())
                 .categoria(dto.getCategoria())
+                .contrapartidaCuentaId(dto.getContrapartidaCuentaId())
                 .usuarioId(usuarioId)
                 .build();
-        return toDto(movRepo.save(mov));
+        TesoreriaMovimientoEntity saved = movRepo.save(mov);
+        publicarContabilizacion(saved, empresaId, usuarioId);
+        return toDto(saved);
     }
 
     @Override
@@ -106,6 +153,24 @@ public class TesoreriaServiceImpl implements TesoreriaService {
         cuentaRepo.save(cuenta);
         mov.setAnulado(true);
         movRepo.save(mov);
+
+        // Reversar el asiento contable si el movimiento se había contabilizado.
+        if (mov.getContrapartidaCuentaId() != null) {
+            eventPublisher.publishEvent(new ContabilidadReversaEvent(
+                    "TESORERIA", mov.getId(), empresaId, mov.getUsuarioId()));
+        }
+    }
+
+    /**
+     * Publica el evento de contabilización del movimiento (AFTER_COMMIT). Solo se
+     * contabiliza si el movimiento trae cuenta de contrapartida; si no, queda solo
+     * registrado en tesorería.
+     */
+    private void publicarContabilizacion(TesoreriaMovimientoEntity mov, Integer empresaId, Integer usuarioId) {
+        if (mov.getContrapartidaCuentaId() != null) {
+            eventPublisher.publishEvent(new OperacionContabilizableEvent(
+                    "TESORERIA", mov.getId(), empresaId, usuarioId));
+        }
     }
 
     @Override
@@ -185,6 +250,29 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     private CuentaBancariaEntity getCuenta(Long cuentaId, Integer empresaId) {
         return cuentaRepo.findByIdAndEmpresaId(cuentaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cuenta bancaria no encontrada"));
+    }
+
+    /**
+     * Sobregiro (E2): un egreso puede dejar la cuenta en negativo SOLO si
+     * la cuenta permite sobregiro y el nuevo saldo no excede el cupo.
+     */
+    private void validarSaldoConSobregiro(CuentaBancariaEntity cuenta, java.math.BigDecimal monto) {
+        java.math.BigDecimal nuevoSaldo = cuenta.getSaldoActual().subtract(monto);
+        if (nuevoSaldo.signum() >= 0) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(cuenta.getPermiteSobregiro())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Saldo insuficiente en " + cuenta.getNombre() + " (saldo "
+                            + cuenta.getSaldoActual() + "). La cuenta no permite sobregiro.");
+        }
+        if (cuenta.getCupoSobregiro() != null
+                && nuevoSaldo.negate().compareTo(cuenta.getCupoSobregiro()) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El egreso excede el cupo de sobregiro de " + cuenta.getNombre()
+                            + " (cupo " + cuenta.getCupoSobregiro() + ", saldo resultante "
+                            + nuevoSaldo + ").");
+        }
     }
 
     private TesoreriaMovimientoDto toDto(TesoreriaMovimientoEntity e) {

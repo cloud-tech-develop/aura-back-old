@@ -49,6 +49,7 @@ public class CuentaPagarQueryRepository {
                 cp.id,
                 cp.numero_cuenta,
                 cp.numero_factura_externo,
+                cp.tercero_id AS proveedor_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS proveedor_nombre,
                 t.numero_documento AS proveedor_documento,
                 cp.fecha_emision,
@@ -58,6 +59,7 @@ public class CuentaPagarQueryRepository {
                 cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cp.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,
@@ -124,6 +126,7 @@ public class CuentaPagarQueryRepository {
                 cp.id,
                 cp.numero_cuenta,
                 cp.numero_factura_externo,
+                cp.tercero_id AS proveedor_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS proveedor_nombre,
                 t.numero_documento AS proveedor_documento,
                 cp.fecha_emision,
@@ -133,6 +136,7 @@ public class CuentaPagarQueryRepository {
                 cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cp.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,
@@ -180,6 +184,11 @@ public class CuentaPagarQueryRepository {
                 sql.append(" AND cp.fecha_vencimiento < NOW() AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
             } else if ("activa".equals(estado)) {
                 sql.append(" AND (cp.fecha_vencimiento IS NULL OR cp.fecha_vencimiento >= NOW()) AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
+            } else if ("pendiente".equals(estado)) {
+                // Todo lo que todavía se debe: activa + vencida. Lo pide la
+                // pantalla de pago, donde filtrar por "activa" escondería justo
+                // las facturas vencidas, que son las que más se pagan.
+                sql.append(" AND (cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0)) > 0");
             }
         }
 
@@ -275,6 +284,7 @@ public class CuentaPagarQueryRepository {
                 cp.id,
                 cp.numero_cuenta,
                 cp.numero_factura_externo,
+                cp.tercero_id AS proveedor_id,
                 COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos), 'Consumidor Final') AS proveedor_nombre,
                 t.numero_documento AS proveedor_documento,
                 cp.fecha_emision,
@@ -284,6 +294,7 @@ public class CuentaPagarQueryRepository {
                 cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
                 CASE 
                     WHEN cp.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN COALESCE((SELECT SUM(monto) FROM abonos_pagar WHERE cuenta_pagar_id = cp.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cp.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
                 END AS estado,

@@ -18,8 +18,9 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 public interface ComisionService {
 
-    // ── Técnicos ──────────────────────────────────────────────
+    // ── Técnicos y vendedores (usuarios de la empresa) ───────
     List<TecnicoDto> listarTecnicos(Integer empresaId);
+    List<TecnicoDto> listarVendedores(Integer empresaId);
 
     // ── Configuración ─────────────────────────────────────────
     PageImpl<ComisionConfigTableDto> listarConfig(PageableDto<Object> pageable, Integer empresaId);
@@ -35,7 +36,8 @@ public interface ComisionService {
     void marcarPagada(Long id, MarcarPagadaDto dto, Integer empresaId);
 
     // ── Pendientes ────────────────────────────────────────────
-    List<ComisionVentaDto> listarPendientesTecnico(Integer tecnicoId, Integer empresaId);
+    List<ComisionVentaDto> listarPendientesTecnico(Integer tecnicoId, Integer empresaId, String modalidad, String fechaDesde, String fechaHasta);
+    List<ComisionVentaDto> listarPendientesVendedor(Long vendedorId, Integer empresaId, String fechaDesde, String fechaHasta);
 
     // ── Hook desde VentaService ───────────────────────────────
     void procesarComisionVenta(VentaDetalleEntity detalle, Integer empresaId);

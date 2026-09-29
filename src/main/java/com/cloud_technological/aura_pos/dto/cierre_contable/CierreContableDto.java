@@ -16,14 +16,23 @@ public class CierreContableDto {
 
     // ── Ventas del período ─────────────────────────────────
     private Integer    cantidadVentas;
-    private BigDecimal totalVentasBruto;
-    private BigDecimal totalDescuentos;
-    private BigDecimal totalImpuestos;
-    private BigDecimal totalVentasNeto;
+    private BigDecimal totalVentasBruto;       // Σ venta.subtotal — sin IVA, ya neto de descuentos de línea
+    private BigDecimal totalDescuentos;        // descuentos de línea + descuento general
+    private BigDecimal totalImpuestos;         // IVA cobrado
+    private BigDecimal totalVentasNeto;        // total_pagar (lo cobrado al cliente, con IVA)
+    private BigDecimal totalVentasSinIva;      // base gravable = total_pagar − IVA
+    private BigDecimal ventasBrutasConDisponible; // totalVentasBruto + totalDisponible (caja/bancos)
 
     // ── Compras del período ────────────────────────────────
     private Integer    cantidadCompras;
-    private BigDecimal totalComprasNeto;
+    private BigDecimal totalComprasNeto;       // total con IVA (legacy)
+    private BigDecimal totalComprasSinIva;     // subtotal − descuentos (base real)
+    private BigDecimal totalIvaCompras;        // IVA pagado en compras
+
+    // ── COGS (costo real de lo vendido) ────────────────────
+    private BigDecimal costoVentas;            // Σ (cantidad × producto.costo)
+    private Integer    productosSinCosto;      // items vendidos sin costo cargado
+    private BigDecimal valorVentasSinCosto;    // monto vendido sin costo configurado
 
     // ── Comisiones del período ─────────────────────────────
     private Integer    cantidadComisiones;
@@ -33,11 +42,13 @@ public class CierreContableDto {
     private Integer    cantidadMermas;
     private BigDecimal totalMermas;
 
-    // ── Resultados ─────────────────────────────────────────
-    private BigDecimal utilidadBruta;      // ventas neto − compras
-    private BigDecimal utilidadNeta;       // utilidad bruta − comisiones
-    private BigDecimal margenBruto;        // %
-    private BigDecimal margenNeto;         // %
+    // ── Resultados (modelo P&L corregido sin IVA) ──────────
+    private BigDecimal utilidadBruta;          // ventas sin IVA − COGS − mermas
+    private BigDecimal utilidadOperativa;      // bruta − comisiones − gastos deducibles
+    private BigDecimal utilidadNeta;           // operativa − gastos no deducibles
+    private BigDecimal margenBruto;            // %
+    private BigDecimal margenOperativo;        // %
+    private BigDecimal margenNeto;             // %
 
     // ── Cuentas por cobrar (snapshot) ─────────────────────
     private BigDecimal cxcTotalDeuda;
@@ -66,4 +77,8 @@ public class CierreContableDto {
     private BigDecimal totalGastosDeducibles;
     private BigDecimal totalGastosNoDeducibles;
     private BigDecimal totalGastos;
+
+    // ── Posición de efectivo (saldos del mayor: caja/bancos 11xx a fechaHasta) ──
+    private List<SaldoDisponibleDto> disponible = new ArrayList<>();
+    private BigDecimal totalDisponible;
 }

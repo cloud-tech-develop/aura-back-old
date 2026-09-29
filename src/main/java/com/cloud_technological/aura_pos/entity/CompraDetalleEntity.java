@@ -60,4 +60,15 @@ public class CompraDetalleEntity {
 
     @Column(name = "precio_venta3")
     private BigDecimal precioVenta3;
+
+    /** Presentación en que se escribió la línea (4 Pacas); cantidad y costo siguen en unidad base. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "producto_presentacion_id")
+    private ProductoPresentacionEntity productoPresentacion;
+
+    @Column(name = "cantidad_presentacion")
+    private BigDecimal cantidadPresentacion;
+
+    @Column(name = "costo_presentacion")
+    private BigDecimal costoPresentacion;
 }

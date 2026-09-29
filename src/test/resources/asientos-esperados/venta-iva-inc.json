@@ -1,0 +1,9 @@
+{
+  "descripcion": "Venta #600 — FE-300",
+  "partidas": [
+    { "cuenta": 1105, "debito": 173000.00, "credito": 0, "tercero": null },
+    { "cuenta": 4135, "debito": 0, "credito": 150000.00, "tercero": null },
+    { "cuenta": 240801, "debito": 0, "credito": 19000.00, "tercero": null },
+    { "cuenta": 246801, "debito": 0, "credito": 4000.00, "tercero": null }
+  ]
+}

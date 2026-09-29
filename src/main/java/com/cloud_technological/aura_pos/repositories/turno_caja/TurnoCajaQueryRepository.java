@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.caja.ComisionResumenTurnoDto;
 import com.cloud_technological.aura_pos.dto.caja.DetalleEfectivoDto;
+import com.cloud_technological.aura_pos.dto.caja.DetalleVentaCreditoDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaDto;
 import com.cloud_technological.aura_pos.dto.caja.TurnoCajaTableDto;
 import com.cloud_technological.aura_pos.dto.caja.VentaCategoriaDto;
@@ -56,10 +57,12 @@ public class TurnoCajaQueryRepository {
                         SELECT SUM(ac.monto)
                         FROM abonos_cobrar ac
                         WHERE ac.turno_caja_id = t.id
+                        AND (ac.metodo_pago IS NULL OR UPPER(ac.metodo_pago) LIKE '%EFECTIVO%')
                     ), 0) - COALESCE((
                         SELECT SUM(ap.monto)
                         FROM abonos_pagar ap
                         WHERE ap.turno_caja_id = t.id
+                        AND (ap.metodo_pago IS NULL OR UPPER(ap.metodo_pago) LIKE '%EFECTIVO%')
                     ), 0)
                 END AS diferencia,
                 t.estado,
@@ -236,10 +239,39 @@ public class TurnoCajaQueryRepository {
                 COALESCE(SUM(v.total_pagar), 0) AS total_ventas_credito
             FROM venta v
             WHERE v.turno_caja_id = :turnoId
-              AND v.estado_venta  = 'COMPLETADA'
+              AND v.estado_venta  = 'PAGO_PARCIAL'
               AND v.pago_parcial  = true
             """;
         return jdbcTemplate.queryForMap(sql, new MapSqlParameterSource("turnoId", turnoId));
+    }
+
+    // Detalle de cada venta a crédito del turno (cliente y montos)
+    public List<DetalleVentaCreditoDto> detalleVentasCreditoTurno(Long turnoId) {
+        String sql = """
+            SELECT
+                v.id          AS venta_id,
+                v.prefijo     AS prefijo,
+                v.consecutivo AS consecutivo,
+                COALESCE(
+                    NULLIF(TRIM(t.razon_social), ''),
+                    NULLIF(TRIM(CONCAT_WS(' ', t.nombres, t.apellidos)), ''),
+                    'Consumidor final'
+                )             AS cliente_nombre,
+                t.numero_documento AS cliente_documento,
+                v.total_pagar AS total_venta,
+                COALESCE(cc.total_deuda, v.saldo_pendiente, 0) AS monto_credito,
+                (v.total_pagar - COALESCE(cc.total_deuda, v.saldo_pendiente, 0)) AS monto_abonado
+            FROM venta v
+            LEFT JOIN cuentas_cobrar cc ON cc.venta_id = v.id AND cc.deleted_at IS NULL
+            LEFT JOIN tercero t          ON t.id        = v.cliente_id
+            WHERE v.turno_caja_id = :turnoId
+              AND v.estado_venta  = 'PAGO_PARCIAL'
+              AND v.pago_parcial  = true
+            ORDER BY v.id
+            """;
+        return jdbcTemplate.query(sql,
+            new MapSqlParameterSource("turnoId", turnoId),
+            new BeanPropertyRowMapper<>(DetalleVentaCreditoDto.class));
     }
 
     // Suma total de comisiones del turno (para calcular totalEsperado)

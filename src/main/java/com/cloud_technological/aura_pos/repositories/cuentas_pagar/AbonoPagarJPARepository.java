@@ -13,8 +13,21 @@ import com.cloud_technological.aura_pos.entity.AbonoPagarEntity;
 public interface AbonoPagarJPARepository extends JpaRepository<AbonoPagarEntity, Long> {
     Optional<AbonoPagarEntity> findByIdAndCuentaPagarId(Long id, Long cuentaPagarId);
     List<AbonoPagarEntity> findByCuentaPagarId(Long cuentaPagarId);
+
+    /** Los abonos que dejó un documento concreto; los busca su reversa. */
+    List<AbonoPagarEntity> findByCuentaPagarIdAndReferencia(Long cuentaPagarId, String referencia);
+
+    /**
+     * Todos los abonos que dejó un documento, sin saber de antemano a qué
+     * cuentas se aplicó. Lo usa la anulación de un comprobante: un mismo CE/RC
+     * puede cruzar la cartera de varias facturas del mismo proveedor.
+     */
+    List<AbonoPagarEntity> findByReferencia(String referencia);
     List<AbonoPagarEntity> findByTurnoCajaIdOrderByFechaPagoAsc(Long turnoCajaId);
 
-    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoPagarEntity a WHERE a.turnoCaja.id = :turnoCajaId")
+    // Solo el efectivo sale del cajón; un pago por banco no baja el arqueo.
+    @Query("SELECT COALESCE(SUM(a.monto), 0) FROM AbonoPagarEntity a "
+            + "WHERE a.turnoCaja.id = :turnoCajaId "
+            + "AND (a.metodoPago IS NULL OR UPPER(a.metodoPago) LIKE '%EFECTIVO%')")
     BigDecimal sumMontoByTurnoCajaId(@Param("turnoCajaId") Long turnoCajaId);
 }

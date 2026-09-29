@@ -58,6 +58,7 @@ public interface UsuarioMapper {
                 .numeroDocumento(dto.getNumeroDocumento())
                 .telefono(dto.getTelefono())
                 .email(dto.getEmail())
+                .granContribuyente(Boolean.TRUE.equals(dto.getGranContribuyente()))
                 .esCliente(false)
                 .esEmpleado(true)
                 .activo(true)

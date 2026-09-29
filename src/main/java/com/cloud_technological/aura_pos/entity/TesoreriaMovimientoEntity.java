@@ -53,6 +53,13 @@ public class TesoreriaMovimientoEntity {
     @Column(name = "transferencia_id")
     private Long transferenciaId;
 
+    /**
+     * Cuenta contable de contrapartida del asiento (el otro lado del banco).
+     * Si es null, el movimiento no se contabiliza automáticamente.
+     */
+    @Column(name = "contrapartida_cuenta_id")
+    private Long contrapartidaCuentaId;
+
     @Column(nullable = false)
     @Builder.Default
     private Boolean conciliado = false;

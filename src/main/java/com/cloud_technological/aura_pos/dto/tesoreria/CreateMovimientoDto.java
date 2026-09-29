@@ -33,4 +33,11 @@ public class CreateMovimientoDto {
 
     @NotBlank
     private String categoria;
+
+    /**
+     * Cuenta contable de contrapartida (ingreso/gasto/activo/pasivo) del asiento.
+     * Opcional: si se envía, el movimiento se contabiliza automáticamente contra
+     * la cuenta contable del banco. Si es null, solo se registra en tesorería.
+     */
+    private Long contrapartidaCuentaId;
 }

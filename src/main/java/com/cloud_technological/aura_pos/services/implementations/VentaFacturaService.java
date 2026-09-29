@@ -66,10 +66,7 @@ public class VentaFacturaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Esta empresa no tiene habilitada la facturación electrónica");
 
-        // 3. Tiene cliente? (no consumidor final)
-        if (venta.getCliente() == null)
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Las ventas a consumidor final no generan factura electrónica");
+        // 3. Sin cliente => se factura como Consumidor Final (Factus lo permite)
 
         // 4. Ya fue facturada?
         if ("EMITIDA".equals(venta.getEstadoDian()))
@@ -113,6 +110,12 @@ public class VentaFacturaService {
         return response;
     }
 
+    // ── Datos estándar DIAN para Consumidor Final ───────────────────
+    private static final String CF_DOCUMENTO        = "222222222222";
+    private static final String CF_NOMBRE           = "Consumidor Final";
+    private static final Integer CF_TIPO_DOC_FACTUS = 3;   // 3 = Cédula de ciudadanía
+    private static final Integer CF_MUNICIPIO_ID    = 511; // municipio por defecto solicitado
+
     private FacturaElectronicaRequest buildRequest(
             VentaEntity venta,
             EmpresaEntity empresa,
@@ -120,18 +123,41 @@ public class VentaFacturaService {
 
         TerceroEntity cliente = venta.getCliente();
 
-        String nombreCliente = (cliente.getRazonSocial() != null
-                && !cliente.getRazonSocial().isBlank())
-                ? cliente.getRazonSocial()
-                : (cliente.getNombres() + " " + cliente.getApellidos()).trim();
+        // Valores por defecto = Consumidor Final (cuando la venta no tiene cliente).
+        // Dirección y municipio NO se queman: se toman de la empresa/sucursal en
+        // ese momento. Municipio desde la empresa; dirección desde la sucursal de
+        // la venta (con respaldos para no enviar vacío a Factus).
+        String  clienteDocumento  = CF_DOCUMENTO;
+        String  clienteDv         = null;
+        String  nombreCliente     = CF_NOMBRE;
+        String  emailFactura      = null;
+        String  clienteTelefono   = empresa.getTelefono();
+        Integer tipoDocId         = CF_TIPO_DOC_FACTUS;
+        Integer clienteMunicipioId = empresa.getMunicipioId() != null
+                ? empresa.getMunicipioId() : CF_MUNICIPIO_ID;
+        String  clienteDireccion  = direccionConsumidorFinal(venta, empresa);
 
-        String emailFactura = (cliente.getEmailFe() != null
-                && !cliente.getEmailFe().isBlank())
-                ? cliente.getEmailFe() : cliente.getEmail();
+        if (cliente != null) {
+            nombreCliente = (cliente.getRazonSocial() != null
+                    && !cliente.getRazonSocial().isBlank())
+                    ? cliente.getRazonSocial()
+                    : (cliente.getNombres() + " " + cliente.getApellidos()).trim();
 
-        Integer tipoDocId = TIPO_DOC_FACTUS.getOrDefault(
-                cliente.getTipoDocumento() != null
-                        ? cliente.getTipoDocumento().toUpperCase() : "CC", 3);
+            emailFactura = (cliente.getEmailFe() != null
+                    && !cliente.getEmailFe().isBlank())
+                    ? cliente.getEmailFe() : cliente.getEmail();
+
+            tipoDocId = TIPO_DOC_FACTUS.getOrDefault(
+                    cliente.getTipoDocumento() != null
+                            ? cliente.getTipoDocumento().toUpperCase() : "CC", 3);
+
+            clienteDocumento  = cliente.getNumeroDocumento();
+            clienteDv         = cliente.getDv();
+            clienteTelefono   = cliente.getTelefono();
+            clienteDireccion  = cliente.getDireccion();
+            clienteMunicipioId = cliente.getMunicipioId() != null
+                    ? cliente.getMunicipioId().intValue() : CF_MUNICIPIO_ID;
+        }
 
         List<ItemFacturaRequest> items = detalles.stream()
                 .map(d -> ItemFacturaRequest.builder()
@@ -154,16 +180,31 @@ public class VentaFacturaService {
                 .observacion(venta.getObservaciones())
                 .metodoPago("10") // Efectivo por defecto
                 .fechaVencimiento(LocalDate.now().toString())
-                .clienteDocumento(cliente.getNumeroDocumento())
-                .clienteDv(cliente.getDv())
+                .clienteDocumento(clienteDocumento)
+                .clienteDv(clienteDv)
                 .clienteNombre(nombreCliente)
                 .clienteEmail(emailFactura)
-                .clienteTelefono(cliente.getTelefono())
-                .clienteDireccion(cliente.getDireccion())
+                .clienteTelefono(clienteTelefono)
+                .clienteDireccion(clienteDireccion)
                 .clienteTipoDocumentoFactusId(tipoDocId)
-                .clienteMunicipioId(cliente.getMunicipioId().intValue())
+                .clienteMunicipioId(clienteMunicipioId)
                 .items(items)
                 .build();
+    }
+
+
+    // Dirección a usar para Consumidor Final: dirección de la sucursal de la venta;
+    // si no hay, el municipio (nombre) de la empresa; último recurso "Sin dirección".
+    private String direccionConsumidorFinal(VentaEntity venta, EmpresaEntity empresa) {
+        if (venta.getSucursal() != null
+                && venta.getSucursal().getDireccion() != null
+                && !venta.getSucursal().getDireccion().isBlank())
+            return venta.getSucursal().getDireccion();
+
+        if (empresa.getMunicipio() != null && !empresa.getMunicipio().isBlank())
+            return empresa.getMunicipio();
+
+        return "Sin dirección";
     }
 
 

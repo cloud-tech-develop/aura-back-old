@@ -11,6 +11,8 @@ import lombok.Setter;
 @Setter
 public class EmpleadoDto {
     private Long id;
+    /** Identidad del empleado (V99). Para editar sus datos vía el form de tercero. */
+    private Long terceroId;
     private String nombres;
     private String apellidos;
     private String tipoDocumento;
@@ -18,12 +20,14 @@ public class EmpleadoDto {
     private String cargo;
     private LocalDate fechaIngreso;
     private LocalDate fechaRetiro;
+    private LocalDate fechaFinContrato;
     private BigDecimal salarioBase;
     private String tipoContrato;
     private String banco;
     private String numeroCuenta;
     private String tipoCuenta;
     private Boolean activo;
+    private Boolean requiereControlAsistencia;
     private Integer nivelRiesgoArl;
     private BigDecimal porcentajeArl;
     private LocalDateTime createdAt;

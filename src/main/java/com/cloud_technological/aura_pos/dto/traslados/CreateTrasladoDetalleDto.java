@@ -16,5 +16,8 @@ public class CreateTrasladoDetalleDto {
     private Long loteId;
     @NotNull(message = "La cantidad es obligatoria")
     private BigDecimal cantidad;
+
+    /** Seriales que salen, si el producto maneja serial: uno por unidad. */
+    private java.util.List<Long> serialIds;
     private BigDecimal costoUnitario;
 }

@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.PageImpl;
 
 import com.cloud_technological.aura_pos.dto.inventario.CreateInventarioDto;
+import com.cloud_technological.aura_pos.dto.inventario.HistorialProductoResponseDto;
 import com.cloud_technological.aura_pos.dto.inventario.InventarioDto;
 import com.cloud_technological.aura_pos.dto.inventario.InventarioTableDto;
 import com.cloud_technological.aura_pos.dto.inventario.UpdateInventarioDto;
@@ -16,4 +17,5 @@ public interface InventarioService {
     List<InventarioTableDto> listarStockBajo(Integer empresaId);
     InventarioDto crear(CreateInventarioDto dto, Integer empresaId);
     InventarioDto actualizar(Long id, UpdateInventarioDto dto, Integer empresaId);
+    HistorialProductoResponseDto historialProducto(Long productoId, Long sucursalId, Integer empresaId);
 }

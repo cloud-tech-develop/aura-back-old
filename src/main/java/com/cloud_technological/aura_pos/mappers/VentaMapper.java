@@ -19,6 +19,7 @@ public interface VentaMapper {
         @Mapping(target = "clienteDocumento", expression = "java(resolverDocumentoCliente(entity))"),
         @Mapping(target = "usuarioId", source = "entity.usuario.id"),
         @Mapping(target = "turnoCajaId", source = "entity.turnoCaja.id"),
+        @Mapping(target = "numeroVenta", expression = "java(resolverNumeroVenta(entity))"),
         @Mapping(target = "detalles", ignore = true),
         @Mapping(target = "pagos", ignore = true),
     })
@@ -29,6 +30,19 @@ public interface VentaMapper {
         String razonSocial = entity.getCliente().getRazonSocial();
         if (razonSocial != null && !razonSocial.isBlank()) return razonSocial;
         return entity.getCliente().getNombres() + " " + entity.getCliente().getApellidos();
+    }
+
+    /**
+     * Numero que ve el usuario. Es el consecutivo del documento, no el id de la fila:
+     * el id es global de la base y arranca en decenas de miles, lo que confunde a
+     * quien apenas empieza a facturar. Misma regla que numero_venta del listado.
+     */
+    default String resolverNumeroVenta(VentaEntity entity) {
+        if (entity.getConsecutivo() == null) return null;
+        String prefijo = entity.getPrefijo();
+        return (prefijo != null && !prefijo.isBlank())
+                ? prefijo.trim() + "-" + entity.getConsecutivo()
+                : String.valueOf(entity.getConsecutivo());
     }
 
     default String resolverDocumentoCliente(VentaEntity entity) {

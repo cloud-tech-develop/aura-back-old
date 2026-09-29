@@ -18,8 +18,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.producto_composicion.CreateProductoComposicionDto;
+import com.cloud_technological.aura_pos.dto.producto_composicion.GuardarRecetaDto;
 import com.cloud_technological.aura_pos.dto.producto_composicion.ProductoComposicionDto;
 import com.cloud_technological.aura_pos.dto.producto_composicion.ProductoComposicionTableDto;
+import com.cloud_technological.aura_pos.dto.producto_composicion.RecetaCosteoDto;
+import com.cloud_technological.aura_pos.dto.producto_composicion.RecetaDto;
+import com.cloud_technological.aura_pos.dto.producto_composicion.RecetaResumenTableDto;
 import com.cloud_technological.aura_pos.dto.producto_composicion.UpdateProductoComposicionDto;
 import com.cloud_technological.aura_pos.services.ProductoComposicionService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
@@ -83,5 +87,68 @@ public class ProductoComposicionController {
         Integer empresaId = securityUtils.getEmpresaId();
         composicionService.eliminar(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Composición eliminada correctamente", false, true), HttpStatus.OK);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Receta completa — evita el alta línea por línea
+    // ════════════════════════════════════════════════════════════════════════
+
+    /** Una fila por producto con receta (no por ingrediente). */
+    @PostMapping("/recetas/page")
+    public ResponseEntity<ApiResponse<PageImpl<RecetaResumenTableDto>>> listarRecetas(
+            @RequestBody PageableDto<Object> pageable) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        PageImpl<RecetaResumenTableDto> result = composicionService.listarRecetas(pageable, empresaId);
+        if (result.isEmpty())
+            throw new GlobalException(HttpStatus.PARTIAL_CONTENT, "No se encontraron registros");
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    /** Receta completa lista para pintar la grilla de edición. */
+    @GetMapping("/receta/{productoPadreId}")
+    public ResponseEntity<ApiResponse<RecetaDto>> obtenerReceta(@PathVariable Long productoPadreId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RecetaDto result = composicionService.obtenerReceta(productoPadreId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Receta encontrada", false, result), HttpStatus.OK);
+    }
+
+    /**
+     * Guarda la receta entera de un producto en una sola transacción.
+     *
+     * Es un reemplazo total: los componentes que no vengan en el body se borran.
+     */
+    @PutMapping("/receta/{productoPadreId}")
+    public ResponseEntity<ApiResponse<RecetaDto>> guardarReceta(
+            @PathVariable Long productoPadreId,
+            @Valid @RequestBody GuardarRecetaDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RecetaDto result = composicionService.guardarReceta(productoPadreId, dto, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Receta guardada correctamente", false, result), HttpStatus.OK);
+    }
+
+    /** Copia la receta de otro producto. Pisa la del destino. */
+    @PostMapping("/receta/{productoDestinoId}/duplicar-de/{productoOrigenId}")
+    public ResponseEntity<ApiResponse<RecetaDto>> duplicarReceta(
+            @PathVariable Long productoDestinoId,
+            @PathVariable Long productoOrigenId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RecetaDto result = composicionService.duplicarReceta(productoOrigenId, productoDestinoId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Receta duplicada correctamente", false, result), HttpStatus.OK);
+    }
+
+    /** "¿Cuánto me cuesta producir uno?" — no modifica nada. */
+    @GetMapping("/receta/{productoPadreId}/costeo")
+    public ResponseEntity<ApiResponse<RecetaCosteoDto>> costear(@PathVariable Long productoPadreId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RecetaCosteoDto result = composicionService.costear(productoPadreId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Costeo calculado", false, result), HttpStatus.OK);
+    }
+
+    /** Costea y guarda el resultado en el costo del producto. */
+    @PostMapping("/receta/{productoPadreId}/aplicar-costo")
+    public ResponseEntity<ApiResponse<RecetaCosteoDto>> aplicarCosto(@PathVariable Long productoPadreId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        RecetaCosteoDto result = composicionService.aplicarCosto(productoPadreId, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Costo aplicado al producto", false, result), HttpStatus.OK);
     }
 }

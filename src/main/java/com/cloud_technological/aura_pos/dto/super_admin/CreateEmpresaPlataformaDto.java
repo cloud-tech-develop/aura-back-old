@@ -29,6 +29,9 @@ public class CreateEmpresaPlataformaDto {
     private String municipio;
     private Integer municipioId;
 
+    /** AUTOMATICO = los asientos nacen contabilizados; REVISION = el contador los aprueba. */
+    private String modoContabilizacion = "AUTOMATICO";
+
     // Datos del usuario SUPER_ADMIN de la empresa
     @NotBlank(message = "El email del administrador es obligatorio")
     @Email
@@ -46,6 +49,14 @@ public class CreateEmpresaPlataformaDto {
 
     @NotBlank
     private String documentoAdmin;
+
+    private String tipoDocumentoAdmin = "CC";
+    private String tipoPersonaAdmin   = "NATURAL";
+    private String regimenAdmin       = "NO_RESPONSABLE_IVA";
+    private Boolean granContribuyenteAdmin = false;
+    private Boolean autoRetenedorAdmin     = false;
+    private String paisAdmin       = "Colombia";
+    private String codigoPaisAdmin = "CO";
 
     // Sucursal principal
     @NotBlank

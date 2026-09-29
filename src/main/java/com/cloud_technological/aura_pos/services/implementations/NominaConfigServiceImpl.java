@@ -34,6 +34,7 @@ public class NominaConfigServiceImpl implements NominaConfigService {
 
         if (dto.getModoNomina() != null) entity.setModoNomina(dto.getModoNomina());
         if (dto.getPeriodicidad() != null) entity.setPeriodicidad(dto.getPeriodicidad());
+        if (dto.getModoLiquidacion() != null) entity.setModoLiquidacion(dto.getModoLiquidacion());
         if (dto.getSmmlv() != null) entity.setSmmlv(dto.getSmmlv());
         if (dto.getAuxilioTransporte() != null) entity.setAuxilioTransporte(dto.getAuxilioTransporte());
         if (dto.getPctSaludEmpleado() != null) entity.setPctSaludEmpleado(dto.getPctSaludEmpleado());
@@ -43,6 +44,10 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         if (dto.getPctCajaCompensacion() != null) entity.setPctCajaCompensacion(dto.getPctCajaCompensacion());
         if (dto.getPctIcbf() != null) entity.setPctIcbf(dto.getPctIcbf());
         if (dto.getPctSena() != null) entity.setPctSena(dto.getPctSena());
+        if (dto.getAprendizPctLectiva() != null) entity.setAprendizPctLectiva(dto.getAprendizPctLectiva());
+        if (dto.getAprendizPctPractica() != null) entity.setAprendizPctPractica(dto.getAprendizPctPractica());
+        if (dto.getPermiteVacacionesAnticipadas() != null)
+            entity.setPermiteVacacionesAnticipadas(dto.getPermiteVacacionesAnticipadas());
         entity.setUpdatedAt(LocalDateTime.now());
 
         return toDto(configRepo.save(entity));
@@ -65,6 +70,7 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         dto.setId(entity.getId());
         dto.setModoNomina(entity.getModoNomina());
         dto.setPeriodicidad(entity.getPeriodicidad());
+        dto.setModoLiquidacion(entity.getModoLiquidacion());
         dto.setSmmlv(entity.getSmmlv());
         dto.setAuxilioTransporte(entity.getAuxilioTransporte());
         dto.setPctSaludEmpleado(entity.getPctSaludEmpleado());
@@ -74,6 +80,9 @@ public class NominaConfigServiceImpl implements NominaConfigService {
         dto.setPctCajaCompensacion(entity.getPctCajaCompensacion());
         dto.setPctIcbf(entity.getPctIcbf());
         dto.setPctSena(entity.getPctSena());
+        dto.setAprendizPctLectiva(entity.getAprendizPctLectiva());
+        dto.setAprendizPctPractica(entity.getAprendizPctPractica());
+        dto.setPermiteVacacionesAnticipadas(entity.getPermiteVacacionesAnticipadas());
         return dto;
     }
 }

@@ -11,6 +11,7 @@ public class NominaConfigDto {
     private Long id;
     private String modoNomina;
     private String periodicidad;
+    private String modoLiquidacion;
     private BigDecimal smmlv;
     private BigDecimal auxilioTransporte;
     private BigDecimal pctSaludEmpleado;
@@ -20,4 +21,8 @@ public class NominaConfigDto {
     private BigDecimal pctCajaCompensacion;
     private BigDecimal pctIcbf;
     private BigDecimal pctSena;
+    /** Apoyo de sostenimiento del aprendiz SENA como % del SMMLV, por fase (B-10). */
+    private BigDecimal aprendizPctLectiva;
+    private BigDecimal aprendizPctPractica;
+    private Boolean permiteVacacionesAnticipadas;
 }

@@ -51,11 +51,28 @@ public class AbonoPagarEntity {
     @Column(name = "metodo_pago", length = 30)
     private String metodoPago;
 
-    @Column(length = 100)
+    @Column(length = 255)
     private String referencia;
 
     @Column(length = 100)
     private String banco;
+
+    /** Cuenta bancaria DE DONDE salió el dinero del abono (origen del pago). */
+    @Column(name = "cuenta_bancaria_id")
+    private Long cuentaBancariaId;
+
+    /** Cuenta contable de la que salió el pago, elegida a mano (V142). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    /**
+     * La plata se movió del cajón otro día y ese arqueo ya cerró cuadrado
+     * (V152). El abono no se ata a ningún turno: solo deja el asiento. Se
+     * guarda para poder auditarlo desde el panel de supervisión.
+     */
+    @Column(name = "caja_otro_dia", nullable = false)
+    @Builder.Default
+    private Boolean cajaOtroDia = Boolean.FALSE;
 
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;

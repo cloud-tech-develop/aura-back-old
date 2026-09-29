@@ -22,6 +22,7 @@ import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
 import com.cloud_technological.aura_pos.entity.TurnoCajaEntity;
 import com.cloud_technological.aura_pos.entity.UsuarioEntity;
+import com.cloud_technological.aura_pos.entity.VentaEntity;
 import com.cloud_technological.aura_pos.mappers.CuentaCobrarMapper;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
@@ -30,12 +31,25 @@ import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPAReposito
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
+import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Service
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private RetencionRecaudoService retencionRecaudo;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private AcuerdoPagoService acuerdoPagoService;
 
     private final CuentaCobrarQueryRepository queryRepository;
     private final CuentaCobrarJPARepository jpaRepository;
@@ -44,7 +58,9 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
     private final TerceroJPARepository terceroRepository;
     private final UsuarioJPARepository usuarioRepository;
     private final TurnoCajaJPARepository turnoCajaRepository;
+    private final VentaJPARepository ventaRepository;
     private final CuentaCobrarMapper mapper;
+    private final com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
 
     @Autowired
     public CuentaCobrarServiceImpl(CuentaCobrarQueryRepository queryRepository,
@@ -54,7 +70,10 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             TerceroJPARepository terceroRepository,
             UsuarioJPARepository usuarioRepository,
             TurnoCajaJPARepository turnoCajaRepository,
-            CuentaCobrarMapper mapper) {
+            VentaJPARepository ventaRepository,
+            CuentaCobrarMapper mapper,
+            com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService) {
+        this.origenFondosService = origenFondosService;
         this.queryRepository = queryRepository;
         this.jpaRepository = jpaRepository;
         this.abonoJpaRepository = abonoJpaRepository;
@@ -62,6 +81,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         this.terceroRepository = terceroRepository;
         this.usuarioRepository = usuarioRepository;
         this.turnoCajaRepository = turnoCajaRepository;
+        this.ventaRepository = ventaRepository;
         this.mapper = mapper;
     }
 
@@ -111,6 +131,12 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         CuentaCobrarEntity entity = mapper.toEntity(dto);
         entity.setEmpresa(empresa);
         entity.setTercero(tercero);
+        // Relacionar la venta de origen (necesario para imprimir la factura con sus productos)
+        if (dto.getVentaId() != null) {
+            VentaEntity venta = ventaRepository.findByIdAndEmpresaId(dto.getVentaId(), empresaId)
+                    .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Venta no encontrada"));
+            entity.setVenta(venta);
+        }
         entity.setNumeroCuenta(numeroCuenta);
         entity.setTotalDeuda(dto.getTotalDeuda());
         entity.setTotalAbonado(BigDecimal.ZERO);
@@ -156,37 +182,62 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto debe ser mayor a 0");
         }
 
+        // Lo que el cliente retuvo también baja la cartera: el pago más las
+        // retenciones no puede superar el saldo.
+        java.util.List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto> retenciones =
+                retencionRecaudo.validar(dto.getRetenciones());
+        BigDecimal totalRetenciones = RetencionRecaudoService.total(retenciones);
+        BigDecimal totalAplicado = dto.getMonto().add(totalRetenciones);
+
         // Validar que el monto no exceda el saldo pendiente
-        if (dto.getMonto().compareTo(cuenta.getSaldoPendiente()) > 0) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto no puede ser mayor al saldo pendiente");
+        if (totalAplicado.compareTo(cuenta.getSaldoPendiente()) > 0) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, totalRetenciones.signum() > 0
+                    ? "El pago más las retenciones supera el saldo pendiente"
+                    : "El monto no puede ser mayor al saldo pendiente");
         }
 
         // Obtener usuario
         UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        // Obtener turno de caja (opcional)
-        TurnoCajaEntity turnoCaja = null;
-        if (dto.getTurnoCajaId() != null) {
-            turnoCaja = turnoCajaRepository.findById(dto.getTurnoCajaId()).orElse(null);
-        }
+        // Dónde entra la plata. Antes el turno salía de lo que mandara el front
+        // y si no venía nada el abono quedaba sin turno: el recaudo en efectivo
+        // del administrador no aparecía en el cierre de ninguna caja.
+        //
+        // Si el cliente trajo la plata otro día, el origen resuelve
+        // CAJA_OTRO_DIA y devuelve turno null: el recaudo deja su asiento pero
+        // no entra al arqueo de hoy, que no vio entrar ese efectivo, ni al de
+        // aquel día, que ya cerró cuadrado contra el conteo físico.
+        boolean cajaOtroDia = Boolean.TRUE.equals(dto.getCajaOtroDia());
+        OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
+                new OrigenFondosService.Solicitud(
+                        dto.getMetodoPago(),
+                        dto.getTurnoCajaId(),
+                        null,
+                        dto.getCuentaContableId(),
+                        dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
+                        "abono a la cuenta por cobrar",
+                        cajaOtroDia));
 
         // Crear abono
         AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
                 .cuentaCobrar(cuenta)
                 .usuario(usuario)
-                .turnoCaja(turnoCaja)
+                .turnoCaja(origen.turno())
+                .cuentaContableId(dto.getCuentaContableId())
                 .monto(dto.getMonto())
-                .metodoPago(dto.getMetodoPago())
+                .metodoPago(MediosPago.normalizar(dto.getMetodoPago()))
                 .referencia(dto.getReferencia())
+                .cajaOtroDia(cajaOtroDia)
                 .fechaPago(dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now())
                 .build();
 
         abono = abonoJpaRepository.save(abono);
+        retencionRecaudo.registrar(abono, retenciones);
 
         // Actualizar cuenta
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(dto.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(dto.getMonto()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(totalAplicado));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(totalAplicado));
 
         if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
             cuenta.setSaldoPendiente(BigDecimal.ZERO);
@@ -194,8 +245,128 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         }
 
         jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
+
+        // Asiento contable del recaudo tras el commit (evento único, ADR-003).
+        eventPublisher.publishEvent(
+                new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
+                        "ABONO_COBRAR", abono.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
+        if (cuenta.getTercero() != null)
+            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.CreditoMovimientoEvent(
+                    cuenta.getTercero().getId(), empresaId, "AL_PAGAR"));
 
         return toAbonoDto(abono);
+    }
+
+    /**
+     * Sucursal donde se recauda, cuando el front no la manda: la de la venta que
+     * originó la cuenta. Null en cuentas creadas a mano, y entonces el efectivo
+     * exige que el usuario indique sucursal o turno.
+     */
+    private Integer sucursalDeLaCuenta(CuentaCobrarEntity cuenta) {
+        return cuenta.getVenta() != null && cuenta.getVenta().getSucursal() != null
+                ? cuenta.getVenta().getSucursal().getId()
+                : null;
+    }
+
+    @Override
+    @Transactional
+    public void aplicarCruce(Long cuentaId, BigDecimal monto, Integer empresaId, Integer usuarioId,
+            String referencia, OrigenFondosService.OrigenFondos origen, String metodoPago) {
+        CuentaCobrarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por cobrar #" + cuentaId + " no encontrada"));
+        if ("pagada".equals(cuenta.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta por cobrar #" + cuentaId + " ya está pagada");
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El monto aplicado debe ser mayor a 0");
+        if (monto.compareTo(cuenta.getSaldoPendiente()) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El monto aplicado (" + monto + ") supera el saldo pendiente de la cuenta #" + cuentaId);
+
+        UsuarioEntity usuario = usuarioId != null ? usuarioRepository.findById(usuarioId).orElse(null) : null;
+
+        // El turno y el método reales son los que meten el recaudo en el cierre
+        // de caja: construirResumen busca los abonos del turno y solo suma al
+        // efectivo esperado los que MediosPago reconoce como efectivo. Antes se
+        // guardaba turno null y metodoPago "COMPROBANTE" — un valor que no es
+        // un medio de pago — así que el abono no aparecía en ningún arqueo.
+        // Se conserva el literal viejo cuando el llamador no declara nada (la
+        // nota crédito de compra, que no mueve caja).
+        AbonoCobrarEntity abono = AbonoCobrarEntity.builder()
+                .cuentaCobrar(cuenta)
+                .usuario(usuario)
+                .turnoCaja(origen != null ? origen.turno() : null)
+                .monto(monto)
+                .metodoPago(metodoPago != null ? MediosPago.normalizar(metodoPago) : "COMPROBANTE")
+                .referencia(referencia)
+                .cuentaContableId(origen != null ? origen.cuentaContableId() : null)
+                .cajaOtroDia(origen != null
+                        && origen.tipo() == OrigenFondosService.Tipo.CAJA_OTRO_DIA)
+                .fechaPago(LocalDateTime.now())
+                .build();
+        abonoJpaRepository.save(abono);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().add(monto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().subtract(monto));
+        if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0) {
+            cuenta.setSaldoPendiente(BigDecimal.ZERO);
+            cuenta.setEstado("pagada");
+        } else {
+            cuenta.setEstado("parcial");
+        }
+        jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
+        // Sin evento contable: el comprobante ya generó el asiento.
+    }
+
+    @Override
+    @Transactional
+    public void revertirCruce(Long cuentaId, BigDecimal monto, Integer empresaId, String referencia) {
+        CuentaCobrarEntity cuenta = jpaRepository.findByIdAndEmpresaId(cuentaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
+                        "Cuenta por cobrar #" + cuentaId + " no encontrada"));
+
+        // Se borran los abonos que dejó ese documento, no unos cualesquiera: si
+        // el cruce ya no está (lo eliminaron a mano), la cuenta no se toca —
+        // devolverle el saldo dos veces la dejaría inflada.
+        List<AbonoCobrarEntity> abonos = abonoJpaRepository
+                .findByCuentaCobrarIdAndReferencia(cuentaId, referencia);
+        if (abonos.isEmpty()) {
+            return;
+        }
+        BigDecimal revertido = BigDecimal.ZERO;
+        for (AbonoCobrarEntity abono : abonos) {
+            revertido = revertido.add(abono.getMonto());
+        }
+        abonoJpaRepository.deleteAll(abonos);
+
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(revertido));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(revertido));
+        cuenta.setEstado(cuenta.getTotalAbonado().compareTo(BigDecimal.ZERO) > 0
+                ? "parcial" : "pendiente");
+        jpaRepository.save(cuenta);
+        evaluarAcuerdos(cuenta, empresaId);
+    }
+
+    @Override
+    @Transactional
+    public void revertirCrucesDeDocumento(String referencia, Integer empresaId) {
+        if (referencia == null || referencia.isBlank()) {
+            return;
+        }
+        // La referencia lleva el consecutivo del comprobante, que es por
+        // empresa: dos empresas pueden tener su propio CE-000001. Por eso se
+        // filtra por empresa antes de tocar nada.
+        List<Long> cuentas = abonoJpaRepository.findByReferencia(referencia).stream()
+                .map(a -> a.getCuentaCobrar() != null ? a.getCuentaCobrar().getId() : null)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .filter(id -> jpaRepository.findByIdAndEmpresaId(id, empresaId).isPresent())
+                .toList();
+
+        for (Long cuentaId : cuentas) {
+            revertirCruce(cuentaId, null, empresaId, referencia);
+        }
     }
 
     @Override
@@ -218,6 +389,15 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         AbonoCobrarEntity abono = abonoJpaRepository.findByIdAndCuentaCobrarId(abonoId, cuentaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Abono no encontrado"));
 
+        if (abono.getReciboCajaId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Este abono hace parte de un recibo de caja: anule el recibo completo desde cartera");
+        }
+        if (abono.getAbonoOrigenId() != null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Esta es la retención de un pago: elimine el pago y se eliminan sus retenciones");
+        }
+
         // Solo permitir anulación si el abono es del día actual
         if (!abono.getCreatedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Solo se pueden eliminar abonos del día actual");
@@ -228,13 +408,57 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se puede eliminar el abono de una cuenta pagada");
         }
 
-        // Reversar abono
-        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(abono.getMonto()));
-        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(abono.getMonto()));
+        // Reversar abono y sus retenciones: el asiento del principal las incluía.
+        BigDecimal devuelto = abono.getMonto().add(retencionRecaudo.eliminarDe(abono.getId()));
+        cuenta.setTotalAbonado(cuenta.getTotalAbonado().subtract(devuelto));
+        cuenta.setSaldoPendiente(cuenta.getSaldoPendiente().add(devuelto));
         cuenta.setEstado("activa");
 
         jpaRepository.save(cuenta);
         abonoJpaRepository.delete(abono);
+        evaluarAcuerdos(cuenta, empresaId);
+        // Sin esto el asiento RC del abono borrado quedaba vivo en contabilidad.
+        eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                "ABONO_COBRAR", abonoId, empresaId, null));
+    }
+
+    /**
+     * El abono puede pagar o despagar cuotas de un acuerdo. Flush antes: la
+     * evaluación lee el saldo por JDBC y mueve el vencimiento de la cuenta, que
+     * un flush posterior de la entidad pisaría.
+     */
+    private void evaluarAcuerdos(CuentaCobrarEntity cuenta, Integer empresaId) {
+        if (cuenta.getTercero() == null) return;
+        jpaRepository.flush();
+        abonoJpaRepository.flush();
+        acuerdoPagoService.evaluar(empresaId, cuenta.getTercero().getId(), null);
+    }
+
+    @Override
+    @Transactional
+    public void anularPorVenta(Long ventaId, Integer empresaId) {
+        // Buscar la cuenta por cobrar generada por la venta (puede no existir si fue de contado).
+        CuentaCobrarEntity cuenta = jpaRepository.findByVentaIdAndEmpresaId(ventaId, empresaId)
+                .orElse(null);
+
+        if (cuenta == null || cuenta.getDeletedAt() != null) {
+            return;
+        }
+
+        // Bloquear la anulación si la cuenta ya tiene abonos registrados (dinero recibido).
+        boolean tieneAbonos = abonoJpaRepository.findByCuentaCobrarId(cuenta.getId()).stream()
+                .anyMatch(a -> a.getDeletedAt() == null);
+
+        if (tieneAbonos) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No se puede anular la venta porque su cuenta por cobrar ya tiene abonos. "
+                    + "Reverse primero los abonos.");
+        }
+
+        // Sin abonos: anular la cuenta limpiamente.
+        cuenta.setEstado("anulada");
+        cuenta.setDeletedAt(LocalDateTime.now());
+        jpaRepository.save(cuenta);
     }
 
     private CuentaCobrarDto toDto(CuentaCobrarEntity entity) {
@@ -326,6 +550,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         dto.setMonto(entity.getMonto());
         dto.setMetodoPago(entity.getMetodoPago());
         dto.setReferencia(entity.getReferencia());
+        dto.setCajaOtroDia(entity.getCajaOtroDia());
         dto.setFechaPago(entity.getFechaPago());
         dto.setCreatedAt(entity.getCreatedAt());
         
@@ -337,6 +562,7 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
         if (entity.getTurnoCaja() != null) {
             dto.setTurnoCajaId(entity.getTurnoCaja().getId());
         }
+        dto.setAbonoOrigenId(entity.getAbonoOrigenId());
 
         return dto;
     }

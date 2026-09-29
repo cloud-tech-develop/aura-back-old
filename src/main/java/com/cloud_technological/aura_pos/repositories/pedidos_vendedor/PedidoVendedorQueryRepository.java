@@ -30,11 +30,20 @@ public class PedidoVendedorQueryRepository {
             SELECT
                 pv.id,
                 pv.numero_pedido,
-                COALESCE(NULLIF(tv.razon_social, ''), CONCAT(tv.nombres, ' ', tv.apellidos)) AS vendedor_nombre,
-                COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos)) AS cliente_nombre,
+                COALESCE(
+                    NULLIF(TRIM(COALESCE(tv.razon_social, '')), ''),
+                    NULLIF(TRIM(CONCAT(COALESCE(tv.nombres, ''), ' ', COALESCE(tv.apellidos, ''))), ''),
+                    u.username
+                ) AS vendedor_nombre,
+                COALESCE(
+                    NULLIF(TRIM(COALESCE(t.razon_social, '')), ''),
+                    NULLIF(TRIM(CONCAT(COALESCE(t.nombres, ''), ' ', COALESCE(t.apellidos, ''))), ''),
+                    'Consumidor final'
+                ) AS cliente_nombre,
                 pv.estado,
                 pv.total,
                 pv.created_at,
+                pv.venta_id,
                 COUNT(*) OVER() AS total_rows
             FROM pedido_vendedor pv
             INNER JOIN usuario u ON pv.vendedor_id = u.id
@@ -48,8 +57,10 @@ public class PedidoVendedorQueryRepository {
         if (!search.isEmpty()) {
             sql.append("""
                 AND (LOWER(pv.numero_pedido) LIKE :search
+                OR LOWER(u.username) LIKE :search
                 OR LOWER(tv.nombres) LIKE :search
                 OR LOWER(tv.apellidos) LIKE :search
+                OR LOWER(tv.razon_social) LIKE :search
                 OR LOWER(t.razon_social) LIKE :search
                 OR LOWER(t.nombres) LIKE :search)
             """);

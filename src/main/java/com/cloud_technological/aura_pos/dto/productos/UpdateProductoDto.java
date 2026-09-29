@@ -23,16 +23,27 @@ public class UpdateProductoDto {
     @NotNull(message = "La unidad de medida es obligatoria")
     private Long unidadMedidaBaseId;
     private String tipoProducto;
+    /** VENTA | INSUMO | AMBOS. Null conserva el actual. */
+    private String usoProducto;
     private Boolean manejaInventario;
     private Boolean manejaLotes;
     private Boolean manejaSerial;
+    private Integer mesesGarantia;
     private Boolean permitirStockNegativo;
     private BigDecimal costo;
     private BigDecimal precio;
     private BigDecimal precio2;
     private BigDecimal precio3;
     private BigDecimal ivaPorcentaje;
+    private Boolean ivaIncluido;
     private BigDecimal impoconsumo;
     private Boolean activo;
     private Boolean visibleEnPos;
+    private Boolean vendePorUnidad;
+
+    // ── Contabilidad (E4): null = hereda de la categoría / de la empresa ──
+    private Long categoriaContableId;
+    private Long cuentaIngresoId;
+    private Long cuentaCostoId;
+    private Long cuentaInventarioId;
 }

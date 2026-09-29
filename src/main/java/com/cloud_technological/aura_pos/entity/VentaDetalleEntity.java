@@ -57,4 +57,12 @@ public class VentaDetalleEntity {
 
     @Column(name = "subtotal_linea")
     private BigDecimal subtotalLinea;
+
+    /**
+     * Costo total de la línea en unidades base, capturado al momento de la venta
+     * (cantidad base × costo del producto, o suma de costos de componentes).
+     * Base del asiento de costo de venta / salida de inventario.
+     */
+    @Column(name = "costo_linea")
+    private BigDecimal costoLinea;
 }

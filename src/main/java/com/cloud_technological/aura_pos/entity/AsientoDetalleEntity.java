@@ -32,4 +32,19 @@ public class AsientoDetalleEntity {
     @Column(nullable = false, precision = 18, scale = 2)
     @Builder.Default
     private BigDecimal credito = BigDecimal.ZERO;
+
+    /** NIT/Id del tercero involucrado en esta línea (cliente, proveedor, empleado…) */
+    @Column(name = "tercero_id")
+    private Long terceroId;
+
+    /** Centro de costo al que se imputa esta línea contable */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
+    // ── Dimensiones proyecto/frente (E7): rentabilidad por obra ──────────
+    @Column(name = "proyecto_id")
+    private Long proyectoId;
+
+    @Column(name = "frente_id")
+    private Long frenteId;
 }

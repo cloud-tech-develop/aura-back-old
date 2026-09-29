@@ -18,6 +18,7 @@ public class EmpresaPlataformaDto {
     private String municipio;
     private Integer municipioId;
     private Boolean activa;
+    private String modoContabilizacion;
     private LocalDateTime createdAt;
     // Stats en vivo
     private Integer totalSucursales;

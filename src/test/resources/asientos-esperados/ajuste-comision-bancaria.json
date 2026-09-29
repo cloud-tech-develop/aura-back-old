@@ -1,0 +1,7 @@
+{
+  "descripcion": "Conciliación bancaria — COMISION MANEJO CUENTA",
+  "partidas": [
+    { "cuenta": 530515, "debito": 25000.00, "credito": 0, "tercero": 33 },
+    { "cuenta": 111005, "debito": 0, "credito": 25000.00, "tercero": null }
+  ]
+}

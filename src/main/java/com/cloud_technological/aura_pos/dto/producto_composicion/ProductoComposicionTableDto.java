@@ -15,5 +15,12 @@ public class ProductoComposicionTableDto {
     private String productoHijoNombre;
     private BigDecimal cantidad;
     private String tipo;
+
+    private BigDecimal cantidadReceta;
+    private String unidadMedidaAbreviatura;
+    private BigDecimal factorUnidad;
+    private BigDecimal mermaPorcentaje;
+    private BigDecimal rendimiento;
+
     private long totalRows;
 }

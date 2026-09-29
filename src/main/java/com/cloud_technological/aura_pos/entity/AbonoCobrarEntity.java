@@ -51,11 +51,40 @@ public class AbonoCobrarEntity {
     @Column(name = "metodo_pago", length = 30)
     private String metodoPago;
 
-    @Column(length = 100)
+    @Column(length = 255)
     private String referencia;
+
+    /** Cuenta contable donde entró el recaudo, elegida a mano (V142). */
+    @Column(name = "cuenta_contable_id")
+    private Long cuentaContableId;
+
+    /**
+     * La plata se movió del cajón otro día y ese arqueo ya cerró cuadrado
+     * (V152). El abono no se ata a ningún turno: solo deja el asiento. Se
+     * guarda para poder auditarlo desde el panel de supervisión.
+     */
+    @Column(name = "caja_otro_dia", nullable = false)
+    @Builder.Default
+    private Boolean cajaOtroDia = Boolean.FALSE;
 
     @Column(name = "fecha_pago")
     private LocalDateTime fechaPago;
+
+    /** Recibo de caja multi-factura al que pertenece (V167); null si fue un abono suelto. */
+    @Column(name = "recibo_caja_id")
+    private Long reciboCajaId;
+
+    /**
+     * Si este abono es una retención que el cliente practicó (medio de pago
+     * RETEFUENTE | RETEIVA | RETEICA), el abono en efectivo o banco al que
+     * acompaña. Su asiento lo genera ese abono principal; este no lleva uno propio.
+     */
+    @Column(name = "abono_origen_id")
+    private Long abonoOrigenId;
+
+    /** Base sobre la que el cliente calculó la retención (informativa). */
+    @Column(name = "base_retencion", precision = 15, scale = 2)
+    private java.math.BigDecimal baseRetencion;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

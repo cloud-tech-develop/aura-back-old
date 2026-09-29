@@ -13,8 +13,15 @@ import lombok.Setter;
 @Setter
 public class CreateVentaDto {
     private Long clienteId; // opcional, puede ser consumidor final
-    @NotNull(message = "El turno de caja es obligatorio")
-    private Long turnoCajaId;
+    /**
+     * Pedido de vendedor que origina esta venta. Lo envía el despacho: la venta
+     * se enlaza al pedido existente en vez de crear un pedido espejo nuevo.
+     */
+    private Long pedidoVendedorId;
+    private Long turnoCajaId;   // null cuando el usuario es VENDEDOR (sin caja)
+    private Integer sucursalId; // requerido cuando turnoCajaId es null
+    /** Bodega que despacha. Sin ella, la principal de la sucursal. */
+    private Long bodegaId;
     private String tipoDocumento = "POS";
     private String observaciones;
     private LocalDateTime fechaVencimiento; // Para cuentas por cobrar

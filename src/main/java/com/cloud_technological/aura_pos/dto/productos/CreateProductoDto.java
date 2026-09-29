@@ -22,16 +22,27 @@ public class CreateProductoDto {
     @NotNull(message = "La unidad de medida es obligatoria")
     private Long unidadMedidaBaseId;
     private String tipoProducto = "ESTANDAR";
+    /** VENTA | INSUMO | AMBOS. */
+    private String usoProducto = "VENTA";
     private Boolean manejaInventario = true;
     private Boolean manejaLotes = false;
     private Boolean manejaSerial = false;
+    private Integer mesesGarantia;
     private Boolean permitirStockNegativo = false;
     private BigDecimal costo = BigDecimal.ZERO;
     private BigDecimal precio = BigDecimal.ZERO;
     private BigDecimal precio2;
     private BigDecimal precio3;
     private BigDecimal ivaPorcentaje = BigDecimal.ZERO;
+    private Boolean ivaIncluido = false;
     private BigDecimal impoconsumo = BigDecimal.ZERO;
     private Boolean activo = true;
     private Boolean visibleEnPos;
+    private Boolean vendePorUnidad;
+
+    // ── Contabilidad (E4): null = hereda de la categoría / de la empresa ──
+    private Long categoriaContableId;
+    private Long cuentaIngresoId;
+    private Long cuentaCostoId;
+    private Long cuentaInventarioId;
 }

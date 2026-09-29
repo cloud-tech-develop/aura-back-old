@@ -15,6 +15,9 @@ public class TerceroTableDto {
     private Boolean esCliente;
     private Boolean esProveedor;
     private Boolean esEmpleado;
+    private Boolean esBanco;
     private Boolean activo;
+    /** Roles reales (tercero_rol), separados por coma: CLIENTE,PROVEEDOR,EPS,ARL… */
+    private String roles;
     private long totalRows;
 }

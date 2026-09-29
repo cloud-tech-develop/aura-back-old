@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.reportes.ReporteMargenesProductoDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteMovimientosCajaDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteResumenAvanzadoDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteRotacionInventarioDto;
 import com.cloud_technological.aura_pos.dto.reportes.ReporteTopProductoDto;
@@ -54,5 +55,11 @@ public class ReporteAvanzadoServiceImpl implements ReporteAvanzadoService {
     public ReporteResumenAvanzadoDto resumenAvanzado(Integer empresaId,
             LocalDate desde, LocalDate hasta) {
         return repository.resumenAvanzado(empresaId, desde, hasta);
+    }
+
+    @Override
+    public ReporteMovimientosCajaDto resumenMovimientosCaja(Integer empresaId,
+            LocalDate desde, LocalDate hasta) {
+        return repository.resumenMovimientosCaja(empresaId, desde, hasta);
     }
 }

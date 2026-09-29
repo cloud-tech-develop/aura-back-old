@@ -16,11 +16,14 @@ import org.springframework.web.bind.annotation.*;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreatePlanCuentaDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateSaldosInicialesDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.LibroMayorLineaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.PlanCuentaDto;
+import com.cloud_technological.aura_pos.services.AperturaContableService;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
 import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
 import com.cloud_technological.aura_pos.services.PlanCuentasService;
@@ -41,6 +44,9 @@ public class ContabilidadController {
     private ContabilidadAutoService autoService;
 
     @Autowired
+    private AperturaContableService aperturaService;
+
+    @Autowired
     private SecurityUtils securityUtils;
 
     // ── Plan de Cuentas ──────────────────────────────────────────────
@@ -50,6 +56,17 @@ public class ContabilidadController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 planCuentasService.listar(empresaId)));
+    }
+
+    /**
+     * Cuentas que pueden elegirse como origen de un pago. Es la lista del combo
+     * "¿de dónde sale la plata?" de compras y gastos: caja, caja menor, bancos.
+     */
+    @GetMapping("/plan-cuentas/medios-pago")
+    public ResponseEntity<ApiResponse<List<PlanCuentaDto>>> listarMediosPago() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                planCuentasService.listarMediosPago(empresaId)));
     }
 
     @PostMapping("/plan-cuentas")
@@ -127,6 +144,79 @@ public class ContabilidadController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Asiento anulado", false, null));
     }
 
+    // ── Comprobantes manuales (CD/CE/RC) ─────────────────────────────────
+
+    @PostMapping("/comprobantes")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> crearComprobante(
+            @Valid @RequestBody CreateComprobanteDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = asientoService.crearComprobante(empresaId, usuarioId, dto);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Comprobante creado", false, created));
+    }
+
+    @GetMapping("/comprobantes/siguiente")
+    public ResponseEntity<ApiResponse<String>> siguienteConsecutivo(
+            @RequestParam(defaultValue = "CD") String tipo) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                asientoService.siguienteConsecutivo(empresaId, tipo)));
+    }
+
+    // ── Saldos iniciales / apertura ──────────────────────────────────
+
+    @GetMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> obtenerApertura() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, aperturaService.obtener(empresaId)));
+    }
+
+    @GetMapping("/saldos-iniciales/sugerencia-bancos")
+    public ResponseEntity<ApiResponse<java.util.List<com.cloud_technological.aura_pos.dto.contabilidad.SaldoInicialLineaDto>>>
+            sugerenciaBancos() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                aperturaService.sugerirDesdeBancos(empresaId)));
+    }
+
+    @PostMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> guardarApertura(
+            @Valid @RequestBody CreateSaldosInicialesDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = aperturaService.guardar(dto, empresaId, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Saldos iniciales cargados", false, created));
+    }
+
+    /**
+     * Atajo: crea la apertura directamente desde las cuentas bancarias usando el
+     * saldo actual de cada una. Un solo tiro para migrar clientes con saldos.
+     * POST /api/contabilidad/saldos-iniciales/desde-bancos?fecha=YYYY-MM-DD
+     */
+    @PostMapping("/saldos-iniciales/desde-bancos")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> guardarAperturaDesdeBancos(
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate fecha) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto created = aperturaService.guardarDesdeBancos(empresaId, fecha, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Apertura cargada desde bancos", false, created));
+    }
+
+    @DeleteMapping("/saldos-iniciales")
+    public ResponseEntity<ApiResponse<Void>> eliminarApertura() {
+        Integer empresaId = securityUtils.getEmpresaId();
+        aperturaService.eliminar(empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(200, "Apertura eliminada", false, null));
+    }
+
     // ── Balance General ──────────────────────────────────────────────
 
     @GetMapping("/balance")
@@ -139,19 +229,32 @@ public class ContabilidadController {
                 asientoService.balanceGeneral(empresaId, h)));
     }
 
+    @GetMapping("/balance-detallado")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.contabilidad.BalanceGeneralDetalladoDto>> balanceGeneralDetallado(
+            @RequestParam(required = false) String hasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        String h = (hasta != null && !hasta.isBlank()) ? hasta
+                : LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                asientoService.balanceGeneralDetallado(empresaId, h)));
+    }
+
     // ── Estado de Resultados (P&G) ────────────────────────────────────
 
     @GetMapping("/estado-resultados")
     public ResponseEntity<ApiResponse<EstadoResultadosDto>> estadoResultados(
             @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) {
+            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) Long centroCostoId,
+            @RequestParam(required = false) Long proyectoId,
+            @RequestParam(required = false) Long frenteId) {
         Integer empresaId = securityUtils.getEmpresaId();
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate hoy = LocalDate.now();
         String d = (desde != null && !desde.isBlank()) ? desde : hoy.withDayOfMonth(1).format(fmt);
         String h = (hasta != null && !hasta.isBlank()) ? hasta : hoy.format(fmt);
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
-                asientoService.estadoResultados(empresaId, d, h)));
+                asientoService.estadoResultados(empresaId, d, h, centroCostoId, proyectoId, frenteId)));
     }
 
     // ── Libro Mayor ──────────────────────────────────────────────────
@@ -160,14 +263,18 @@ public class ContabilidadController {
     public ResponseEntity<ApiResponse<List<LibroMayorLineaDto>>> libroMayor(
             @RequestParam Long cuentaId,
             @RequestParam(required = false) String desde,
-            @RequestParam(required = false) String hasta) {
+            @RequestParam(required = false) String hasta,
+            @RequestParam(required = false) Long centroCostoId,
+            @RequestParam(required = false) Long proyectoId,
+            @RequestParam(required = false) Long frenteId) {
         Integer empresaId = securityUtils.getEmpresaId();
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate hoy = LocalDate.now();
         String d = (desde != null && !desde.isBlank()) ? desde : hoy.withDayOfMonth(1).format(fmt);
         String h = (hasta != null && !hasta.isBlank()) ? hasta : hoy.format(fmt);
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
-                asientoService.libroMayor(empresaId, cuentaId, d, h)));
+                asientoService.libroMayor(empresaId, cuentaId, d, h,
+                        centroCostoId, proyectoId, frenteId)));
     }
 
     // ── Flujo de Caja ────────────────────────────────────────────────
@@ -205,6 +312,21 @@ public class ContabilidadController {
         Integer usuarioId = securityUtils.getUsuarioId() != null
                 ? securityUtils.getUsuarioId().intValue() : null;
         AsientoContableTableDto result = autoService.generarDesdeCompra(compraId, empresaId, usuarioId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ApiResponse<>(201, "Asiento generado", false, result));
+    }
+
+    /**
+     * Regenera manualmente el asiento de una nómina ya aprobada (útil cuando el
+     * asiento automático falló por falta de cuentas y ya se corrigió el PUC).
+     */
+    @PostMapping("/asientos/generar-desde-nomina/{nominaId}")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> generarDesdeNomina(
+            @PathVariable Long nominaId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        AsientoContableTableDto result = autoService.generarDesdeNomina(nominaId, empresaId, usuarioId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(201, "Asiento generado", false, result));
     }

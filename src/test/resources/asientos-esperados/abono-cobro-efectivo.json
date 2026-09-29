@@ -1,0 +1,7 @@
+{
+  "descripcion": "Recaudo cartera — abono #10",
+  "partidas": [
+    { "cuenta": 1105, "debito": 20000.00, "credito": 0, "tercero": null },
+    { "cuenta": 1305, "debito": 0, "credito": 20000.00, "tercero": 55 }
+  ]
+}

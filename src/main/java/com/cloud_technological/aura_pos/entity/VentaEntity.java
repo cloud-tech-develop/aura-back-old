@@ -33,6 +33,12 @@ public class VentaEntity {
     @JoinColumn(name = "sucursal_id")
     private SucursalEntity sucursal;
 
+    /** Dónde vive el stock (V172). Si el documento no la dice, es la
+     *  bodega principal de la sucursal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bodega_id")
+    private BodegaEntity bodega;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cliente_id")
     private TerceroEntity cliente;
@@ -92,4 +98,20 @@ public class VentaEntity {
 
     @Column(name = "estado_devolucion")
     private String estadoDevolucion;
+
+    // ── Desglose IVA por tarifa (V53) ──────────────────────────
+    @Column(name = "iva_base0")
+    private BigDecimal ivaBase0 = BigDecimal.ZERO;
+
+    @Column(name = "iva_base5")
+    private BigDecimal ivaBase5 = BigDecimal.ZERO;
+
+    @Column(name = "iva_valor5")
+    private BigDecimal ivaValor5 = BigDecimal.ZERO;
+
+    @Column(name = "iva_base19")
+    private BigDecimal ivaBase19 = BigDecimal.ZERO;
+
+    @Column(name = "iva_valor19")
+    private BigDecimal ivaValor19 = BigDecimal.ZERO;
 }

@@ -15,5 +15,7 @@ public class PlanCuentaDto {
     private String padreNombre;
     private Boolean activa;
     private Boolean auxiliar;
+    /** La cuenta puede elegirse como origen de un pago (caja, caja menor, bancos). */
+    private Boolean esMedioPago;
     private String codigoDian;
 }

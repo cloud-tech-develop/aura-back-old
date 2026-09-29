@@ -22,6 +22,8 @@ public class VentaDto {
     private String tipoDocumento;
     private String prefijo;
     private Long consecutivo;
+    /** Numero visible del documento: prefijo-consecutivo, o solo el consecutivo si no hay prefijo. */
+    private String numeroVenta;
     private LocalDateTime fechaEmision;
     private BigDecimal subtotal;
     private BigDecimal descuentoTotal;
@@ -36,4 +38,10 @@ public class VentaDto {
     private String qrData;
     private String estadoDian;
     private String factusUrl;   // URL pública del documento en Factus
+    // Desglose IVA por tarifa (V53)
+    private BigDecimal ivaBase0;
+    private BigDecimal ivaBase5;
+    private BigDecimal ivaValor5;
+    private BigDecimal ivaBase19;
+    private BigDecimal ivaValor19;
 }

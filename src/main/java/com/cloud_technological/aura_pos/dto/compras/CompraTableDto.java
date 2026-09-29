@@ -16,5 +16,15 @@ public class CompraTableDto {
     private LocalDateTime fecha;
     private BigDecimal total;
     private String estado;
+
+    /** FACTURA_COMPRA | NOTA_DEBITO | NOTA_CREDITO | RECIBO. */
+    private String tipoDocumento;
+
+    /**
+     * Factura que corrige, cuando la fila es una nota crédito. Sin esto el
+     * listado muestra un documento en negativo sin decir a qué compra pertenece.
+     */
+    private Long compraOrigenId;
+
     private long totalRows;
 }

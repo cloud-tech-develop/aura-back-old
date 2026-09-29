@@ -1,10 +1,14 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -17,6 +21,7 @@ import com.cloud_technological.aura_pos.dto.compras.GastoDto;
 import com.cloud_technological.aura_pos.dto.compras.GastoTableDto;
 import com.cloud_technological.aura_pos.services.GastoService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
+import com.cloud_technological.aura_pos.utils.CategoriaGasto;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
@@ -26,6 +31,13 @@ public class GastoController {
 
     @Autowired private GastoService gastoService;
     @Autowired private SecurityUtils securityUtils;
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<GastoDto>> obtener(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Gasto",
+                false, gastoService.obtener(id, empresaId)));
+    }
 
     @PostMapping("/page")
     public ResponseEntity<ApiResponse<PageImpl<GastoTableDto>>> listar(
@@ -57,5 +69,23 @@ public class GastoController {
         Integer empresaId = securityUtils.getEmpresaId();
         gastoService.eliminar(id, empresaId);
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Gasto eliminado", false, null));
+    }
+
+    /**
+     * El catálogo de categorías de gasto.
+     *
+     * <p>Lo expone para que el reporte deje de traducir códigos a mano. El
+     * formulario todavía usa su propia constante en el front: migrarlo a este
+     * endpoint es lo que cierra la duplicación.
+     */
+    @GetMapping("/categorias")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> categorias() {
+        List<Map<String, Object>> lista = java.util.Arrays.stream(CategoriaGasto.values())
+                .map(c -> java.util.Map.<String, Object>of(
+                        "value", c.codigo(),
+                        "label", c.etiqueta(),
+                        "deducible", c.deduciblePorDefecto()))
+                .toList();
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "OK", false, lista));
     }
 }
