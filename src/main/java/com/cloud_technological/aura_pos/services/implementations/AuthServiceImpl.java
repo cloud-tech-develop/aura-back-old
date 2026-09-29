@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.auth.LoginRequestDto;
+import com.cloud_technological.aura_pos.services.BodegaService;
 import com.cloud_technological.aura_pos.dto.auth.LoginResponseDto;
 import com.cloud_technological.aura_pos.dto.auth.RegisterRequestDto;
 import com.cloud_technological.aura_pos.dto.auth.SucursalSimpleDto;
@@ -35,6 +36,10 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class AuthServiceImpl implements AuthService {
+
+    /** Toda sucursal nueva nace con su bodega principal (ver V172). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private BodegaService bodegaService;
 
     private final AuthenticationManager authenticationManager;
     private final UsuarioJPARepository usuarioJPARepository;
@@ -102,6 +107,7 @@ public class AuthServiceImpl implements AuthService {
                 .activa(true)
                 .build();
         sucursal = sucursalRepository.save(sucursal);
+        bodegaService.crearPrincipal(sucursal);
 
         // 4. Crear Tercero (Datos personales)
         TerceroEntity tercero = TerceroEntity.builder()

@@ -19,6 +19,7 @@ import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateComprobanteDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreatePlanCuentaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.CreateSaldosInicialesDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.DashboardContableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.EstadoResultadosDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.FlujoCajaDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.LibroMayorLineaDto;
@@ -26,6 +27,7 @@ import com.cloud_technological.aura_pos.dto.contabilidad.PlanCuentaDto;
 import com.cloud_technological.aura_pos.services.AperturaContableService;
 import com.cloud_technological.aura_pos.services.AsientoContableService;
 import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
+import com.cloud_technological.aura_pos.services.DashboardContableService;
 import com.cloud_technological.aura_pos.services.PlanCuentasService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -45,6 +47,9 @@ public class ContabilidadController {
 
     @Autowired
     private AperturaContableService aperturaService;
+
+    @Autowired
+    private DashboardContableService dashboardService;
 
     @Autowired
     private SecurityUtils securityUtils;
@@ -278,6 +283,27 @@ public class ContabilidadController {
     }
 
     // ── Flujo de Caja ────────────────────────────────────────────────
+
+    /**
+     * Resumen del Centro de Contabilidad (/contabilidad en el front): KPIs del
+     * mes y del anterior, serie enero..mes, distribución de gastos y pendientes.
+     * Sin parámetros usa el mes en curso.
+     */
+    @GetMapping("/dashboard")
+    public ResponseEntity<ApiResponse<DashboardContableDto>> dashboard(
+            @RequestParam(required = false) Integer anio,
+            @RequestParam(required = false) Integer mes) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        LocalDate hoy = LocalDate.now();
+        int a = anio != null ? anio : hoy.getYear();
+        int m = mes != null ? mes : hoy.getMonthValue();
+        if (m < 1 || m > 12) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(400, "El mes debe estar entre 1 y 12", true, null));
+        }
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                dashboardService.resumen(empresaId, a, m)));
+    }
 
     @GetMapping("/flujo-caja")
     public ResponseEntity<ApiResponse<FlujoCajaDto>> flujoCaja(

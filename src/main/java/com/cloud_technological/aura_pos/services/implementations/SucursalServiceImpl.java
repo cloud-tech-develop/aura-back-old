@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.sucursal.CreateSucursalDto;
+import com.cloud_technological.aura_pos.services.BodegaService;
 import com.cloud_technological.aura_pos.dto.sucursal.SucursalDto;
 import com.cloud_technological.aura_pos.dto.sucursal.SucursalTableDto;
 import com.cloud_technological.aura_pos.dto.sucursal.UpdateSucursalDto;
@@ -24,6 +25,10 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class SucursalServiceImpl implements SucursalService{
+
+    /** Toda sucursal nueva nace con su bodega principal (ver V172). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private BodegaService bodegaService;
 
     private final SucursalJPARepository jpaRepository;
     private final SucursalQueryRepository queryRepository;
@@ -67,7 +72,9 @@ public class SucursalServiceImpl implements SucursalService{
         entity.setActiva(true);
         entity.setConsecutivoActual(1L);
 
-        return mapper.toDto(jpaRepository.save(entity));
+        SucursalEntity guardada = jpaRepository.save(entity);
+        bodegaService.crearPrincipal(guardada);
+        return mapper.toDto(guardada);
     }
 
     @Override

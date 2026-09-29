@@ -97,6 +97,24 @@ public class BodegaServiceImpl implements BodegaService {
 
     @Override
     @Transactional
+    public void crearPrincipal(SucursalEntity sucursal) {
+        if (sucursal == null || sucursal.getId() == null) return;
+        if (bodegaRepository.findBySucursalIdAndEsPrincipalTrue(sucursal.getId()).isPresent()) return;
+
+        // Mismo nombre y código que les dio V172 a las sucursales existentes.
+        BodegaEntity entity = new BodegaEntity();
+        entity.setEmpresaId(sucursal.getEmpresa().getId());
+        entity.setSucursal(sucursal);
+        entity.setCodigo("BOD-" + sucursal.getId());
+        entity.setNombre("Bodega Principal");
+        entity.setEsPrincipal(Boolean.TRUE);
+        entity.setPermiteVenta(Boolean.TRUE);
+        entity.setActiva(Boolean.TRUE);
+        bodegaRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
     public BodegaTableDto actualizar(Long id, UpdateBodegaDto dto, Integer empresaId) {
         BodegaEntity entity = bodegaRepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Bodega no encontrada"));
