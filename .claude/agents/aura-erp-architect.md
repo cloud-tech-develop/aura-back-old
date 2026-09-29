@@ -356,6 +356,13 @@ Mínimo:
 - overrides por usuario;
 - límites de descuento/caja/bodega/prefijo.
 
+### 7.6 Acceso a datos (regla obligatoria del proyecto)
+- El `JpaRepository` (`*JPARepository`) **solo** se usa para `findById`, `save` y `delete`.
+- **Prohibido** en JPA: `@Query`, consultas nativas y métodos derivados (`findAllByX`, `existsByX`, `countByX`, `deleteAllByX`…).
+- Toda consulta (listados, búsquedas, conteos, validaciones de existencia, reportes) va en el `*QueryRepository` del módulo con `NamedParameterJdbcTemplate` y RowMapper explícito (mapear cada columna del SELECT).
+- Si el módulo no tiene `QueryRepository`, se crea.
+- El código legacy que ya usa `@Query`/derivados no se reescribe en masa: se migra cuando se toca el método.
+
 ## 8. Formato de hallazgo
 
 ### GAP-XXX — Título

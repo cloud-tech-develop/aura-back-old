@@ -29,6 +29,7 @@ import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.EmpleadoService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.utils.PoliticaRoles;
 
 @Service
 public class EmpleadoServiceImpl implements EmpleadoService {
@@ -481,9 +482,16 @@ public class EmpleadoServiceImpl implements EmpleadoService {
 
         // 4. Actualizar el usuario con los nuevos datos del empleado
         usuario.setTipoEmpleado(tipoEmpleado);
-        // El rol se actualiza con el nombre del cargo o del tipo de empleado
+        // El rol se actualiza con el nombre del cargo o del tipo de empleado,
+        // salvo que alguno de los dos sea privilegiado: editar la ficha del
+        // dueño (SUPER_ADMIN, cargo "Gerente") no puede quitarle el rol, y un
+        // cargo escrito "PLATFORM_ADMIN" no puede dar acceso a la plataforma.
         String nuevoRol = tipoEmpleado != null ? tipoEmpleado.getNombre() : cargoEmpleado;
-        usuario.setRol(nuevoRol);
+        if (!PoliticaRoles.esPrivilegiado(usuario.getRol())
+                && !PoliticaRoles.esPrivilegiado(nuevoRol)
+                && nuevoRol != null && !nuevoRol.isBlank()) {
+            usuario.setRol(nuevoRol.trim());
+        }
 
         // 5. Guardar los cambios
         usuarioRepo.save(usuario);

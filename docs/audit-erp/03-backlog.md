@@ -7,6 +7,8 @@
 > - `B` → [parts/B-compras-ventas-caja.md](parts/B-compras-ventas-caja.md)
 > - `C` → [parts/C-contabilidad-bancos-reportes.md](parts/C-contabilidad-bancos-reportes.md)
 >
+> Regla de acceso a datos: JPA solo `findById`/`save`/`delete`; toda consulta en el `QueryRepository` (ver `.claude/agents/aura-erp-architect.md` §7.6).
+>
 > Estado inicial de todas las tareas: **Proposed**. Pasan a **Ready** cuando el usuario aprueba la fase.
 
 Leyenda de dependencias: `→` depende de.
@@ -26,11 +28,11 @@ Leyenda de dependencias: `→` depende de.
 
 | ID | Tarea | Prio | Tipo | Depende |
 |---|---|---|---|---|
-| TASK-A-001 | Lista blanca de roles asignables y bloqueo de escalada a `PLATFORM_ADMIN` | P0 | Backend | F0-04 |
-| TASK-A-002 | Validar empresa en asignación de sucursales y en el token | P0 | Backend | F0-04 |
+| TASK-A-001 | ✅ 2026-09-29 Bloqueo de roles privilegiados (`utils/PoliticaRoles` + tests): PLATFORM_ADMIN nunca desde la empresa, SUPER_ADMIN solo por SUPER_ADMIN; también en sincronizar empleado→usuario | P0 | Backend | F0-04 |
+| TASK-A-002 | ✅ 2026-09-29 Sucursal asignada debe ser de la empresa del usuario (el token solo se emite en login desde esas asignaciones) | P0 | Backend | F0-04 |
 | TASK-A-003 | Red de autorización por URL, seguridad de método activa, rotación JWT | P0 | Backend | — |
 | TASK-A-004 | Proteger el catálogo global de unidades de medida | P0 | Backend | — |
-| TASK-B-001 | Bloquear la anulación de ventas emitidas electrónicamente | P0 | Backend/Frontend | — |
+| ~~TASK-B-001~~ | ❌ Descartada por decisión del usuario (2026-09-29): no se bloquea anular ventas con CUFE | — | — | — |
 | TASK-B-003 | Anulación de venta completa (banco, devoluciones, comisiones) | P0 | Backend | → B-001 |
 | TASK-B-002 | Anulación de compra completa (CxP, pagos, validaciones) | P0 | Backend | — |
 | TASK-B-005 | Valor de la devolución con descuentos de línea y general | P0 | Backend | — |
