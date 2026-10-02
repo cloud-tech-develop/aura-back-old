@@ -136,6 +136,9 @@ public class VentaServiceImpl implements VentaService {
     private PedidoVendedorDetalleJPARepository pedidoVendedorDetalleJPARepository;
 
     @Autowired
+    private CotizacionConversionService cotizacionConversion;
+
+    @Autowired
     public VentaServiceImpl(VentaQueryRepository ventaRepository,
             VentaJPARepository ventaJPARepository,
             VentaDetalleJPARepository detalleJPARepository,
@@ -283,6 +286,12 @@ public class VentaServiceImpl implements VentaService {
             }
             solicitudAutorizadaId = validacion.getSolicitudAutorizadaId();
         }
+
+        // 2.4. Venta que sale de una cotización (D1): se bloquea la cotización y
+        // se valida que siga vendible antes de mover nada.
+        final CotizacionConversionService.Conversion conversion = dto.getCotizacionId() != null
+                ? cotizacionConversion.iniciar(dto.getCotizacionId(), empresaId)
+                : null;
 
         // 3. Crear cabecera
         VentaEntity venta = new VentaEntity();
@@ -452,6 +461,12 @@ public class VentaServiceImpl implements VentaService {
             }
 
             detalleJPARepository.save(detalle);
+
+            // 4.4.0 Línea que sale de la cotización: valida el pendiente y deja la relación.
+            if (conversion != null) {
+                cotizacionConversion.aplicarLinea(conversion, usuarioId.intValue(), item.getCotizacionDetalleId(),
+                        producto.getId(), venta.getId(), detalle.getId(), cantidadBase, subtotalLinea);
+            }
 
             // 4.4.1 Registrar comisión si el producto es SERVICIO
             comisionService.procesarComisionVenta(detalle, empresaId);
@@ -677,6 +692,9 @@ public class VentaServiceImpl implements VentaService {
                     dto.getClienteId(), empresaId, "AL_VENDER"));
         }
 
+        // 8.1 La cotización de origen queda PARCIAL o CONVERTIDA según lo vendido.
+        if (conversion != null) cotizacionConversion.cerrar(conversion);
+
         // 9. La factura interna NO se crea automáticamente. Se genera on-demand
         //    cuando el usuario la solicite (FacturaController POST /facturas/desde-venta).
         //    Así solo se factura la venta que se elija, no todas.
@@ -876,6 +894,9 @@ public class VentaServiceImpl implements VentaService {
 
         venta.setEstadoVenta("ANULADA");
         ventaJPARepository.save(venta);
+
+        // Lo que se vendió desde una cotización vuelve a quedar pendiente en ella (D1).
+        cotizacionConversion.alAnularVenta(id);
 
         // Reversar el asiento contable de la venta tras el commit de la anulación.
         eventPublisher.publishEvent(

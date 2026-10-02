@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import com.cloud_technological.aura_pos.dto.cotizaciones.CotizacionDetalleDto;
 import com.cloud_technological.aura_pos.dto.cotizaciones.CotizacionDto;
 import com.cloud_technological.aura_pos.dto.cotizaciones.CotizacionTableDto;
 import com.cloud_technological.aura_pos.dto.cotizaciones.CreateCotizacionDetalleDto;
@@ -45,6 +47,9 @@ public class CotizacionServiceImpl implements CotizacionService {
     private final EmpresaJPARepository empresaRepository;
     private final CotizacionMapper cotizacionMapper;
     private final CotizacionDetalleMapper detalleMapper;
+
+    @Autowired
+    private CotizacionConversionService cotizacionConversion;
 
     @Autowired
     public CotizacionServiceImpl(CotizacionQueryRepository cotizacionRepository,
@@ -249,18 +254,43 @@ public class CotizacionServiceImpl implements CotizacionService {
         cotizacionJPARepository.save(entity);
     }
 
+    /**
+     * Prepara la cotización para cargarla en el POS. No cambia su estado: eso
+     * pasa al guardar la venta (D1). Solo trae lo que falta por vender: cada
+     * línea con su cantidad pendiente y el descuento prorrateado a esa cantidad.
+     */
     @Override
     public CotizacionDto convertirAVenta(Long id, Integer empresaId) {
         CotizacionEntity entity = cotizacionJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cotización no encontrada"));
 
-        if (!"PENDIENTE".equals(entity.getEstado())) {
+        CotizacionConversionService.validarVendible(entity.getNumero(), entity.getEstado(),
+                entity.getFechaVencimiento());
+
+        List<CotizacionDetalleDto> pendientes = new ArrayList<>();
+        for (CotizacionDetalleDto d : cotizacionRepository.obtenerDetalles(entity.getId())) {
+            BigDecimal pendiente = d.getCantidadPendiente() != null ? d.getCantidadPendiente() : BigDecimal.ZERO;
+            if (pendiente.signum() <= 0) continue;
+            if (pendiente.compareTo(d.getCantidad()) < 0) {
+                BigDecimal desc = d.getDescuentoValor() != null ? d.getDescuentoValor() : BigDecimal.ZERO;
+                BigDecimal descProrrateado = desc.multiply(pendiente)
+                        .divide(d.getCantidad(), 2, RoundingMode.HALF_UP);
+                BigDecimal baseNeta = d.getPrecioUnitario().multiply(pendiente).subtract(descProrrateado);
+                BigDecimal iva = baseNeta.multiply(d.getIvaPorcentaje() != null ? d.getIvaPorcentaje() : BigDecimal.ZERO)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                d.setDescuentoValor(descProrrateado);
+                d.setSubtotal(baseNeta.add(iva).setScale(2, RoundingMode.HALF_UP));
+                d.setCantidad(pendiente);
+            }
+            pendientes.add(d);
+        }
+        if (pendientes.isEmpty()) {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Solo se pueden convertir cotizaciones en estado PENDIENTE");
+                    "La cotización " + entity.getNumero() + " ya no tiene nada pendiente por vender");
         }
 
         CotizacionDto dto = cotizacionMapper.toDto(entity);
-        dto.setDetalles(cotizacionRepository.obtenerDetalles(entity.getId()));
+        dto.setDetalles(pendientes);
         return dto;
     }
 
@@ -288,6 +318,8 @@ public class CotizacionServiceImpl implements CotizacionService {
         entity.setReactivadaAt(LocalDateTime.now());
         entity.setReactivadaPor(usuarioId != null ? usuarioId.intValue() : null);
         cotizacionJPARepository.save(entity);
+        // Si alcanzó a venderse una parte antes de vencer, vuelve como PARCIAL.
+        cotizacionConversion.recalcularEstado(entity.getId());
 
         CotizacionDto dto = cotizacionMapper.toDto(entity);
         dto.setDetalles(cotizacionRepository.obtenerDetalles(entity.getId()));
@@ -295,16 +327,8 @@ public class CotizacionServiceImpl implements CotizacionService {
     }
 
     @Override
+    @Transactional
     public void vencerCotizacionesExpiradas() {
-        List<CotizacionEntity> expiradas = cotizacionJPARepository.findAll().stream()
-                .filter(c -> "PENDIENTE".equals(c.getEstado())
-                        && c.getFechaVencimiento() != null
-                        && c.getFechaVencimiento().isBefore(LocalDate.now()))
-                .toList();
-
-        for (CotizacionEntity c : expiradas) {
-            c.setEstado("VENCIDA");
-        }
-        cotizacionJPARepository.saveAll(expiradas);
+        cotizacionRepository.vencerExpiradas(LocalDate.now());
     }
 }

@@ -1,6 +1,6 @@
 # Plan: cadena documental (trazabilidad de documentos)
 
-> Estado: **DISEÑADO 2026-09-30, sin implementar.** Se arranca por D0.
+> Estado: **D0 y D1 implementados full-stack 2026-10-01 (local, sin commit; V189 sin correr).** D2–D7 diseñadas, sin implementar.
 > Origen: fase F4 del roadmap de la auditoría (`docs/audit-erp/02-roadmap.md`),
 > tareas B-020, B-011, B-004, B-006/C-006, B-021, B-022, B-019, B-014, B-018.
 > Detalle de cada tarea: `docs/audit-erp/parts/B-compras-ventas-caja.md`.
@@ -103,8 +103,8 @@ En una sesión nueva: "sigamos con la cadena documental". Revisar este archivo, 
 ## Estado por fase
 | Fase | Estado | Migración | Notas |
 |---|---|---|---|
-| D0 | Pendiente | V189 | |
-| D1 | Pendiente | — | |
+| D0 | **Hecho full-stack** (local, V189 sin correr) | V189 | Back: tabla `documento_relacion`, `DocumentoRelacionService` (registrar/aplicado/pendiente/anularPorDestino), QueryRepository, `GET /api/documentos/{tipo}/{id}/relacionados`, espejo Laravel. Front: `<app-documentos-relacionados tipo id>` + `DocumentoRelacionService`, integrado en el detalle de cotización. **Pendiente: cablear `registrar(...)` en los flujos reales y poner el panel en venta/compra/OC/pedido/devolución.** |
+| D1 | **Hecho full-stack** (local) | — (usa V189) | `CotizacionConversionService` (bloqueo FOR UPDATE, relación por línea, PENDIENTE/PARCIAL/CONVERTIDA, liberar al anular la venta); `CreateVentaDto.cotizacionId` + `cotizacionDetalleId` por línea; convertir carga solo lo pendiente (descuento prorrateado); vencimiento por query (también vence PARCIAL); reactivar recalcula. **Decisión:** vender más de lo pendiente NO bloquea: la cotización se consume hasta su pendiente y el excedente es venta normal (el POS fusiona el mismo producto en una línea). Front: origen en cada línea del carrito, estado Parcial, "Vender lo pendiente", avance por línea, panel en detalle de venta, manual /ayuda. |
 | D2 | Pendiente | | Decisión 1 |
 | D3 | Pendiente | | Decisión 2 |
 | D4 | Pendiente | | |

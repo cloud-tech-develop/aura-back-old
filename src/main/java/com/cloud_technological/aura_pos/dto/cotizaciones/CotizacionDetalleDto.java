@@ -18,4 +18,8 @@ public class CotizacionDetalleDto {
     private BigDecimal ivaPorcentaje;
     private BigDecimal descuentoValor;
     private BigDecimal subtotal;
+    /** Cantidad ya vendida desde esta línea (relaciones VIGENTE, D1). */
+    private BigDecimal cantidadAplicada;
+    /** Lo que falta por vender: cantidad − aplicada, nunca negativo. */
+    private BigDecimal cantidadPendiente;
 }
