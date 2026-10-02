@@ -86,17 +86,15 @@ public class CotizacionQueryRepository {
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(CotizacionDetalleDto.class));
     }
 
+    /** Siguiente número de cotización con candado por empresa (ver VentaQueryRepository). */
     public Long obtenerSiguienteConsecutivo(Integer empresaId) {
-        try {
-            String sql = """
-                SELECT COALESCE(MAX(CAST(SUBSTRING(numero, 5) AS BIGINT)), 0) + 1
-                FROM cotizacion
-                WHERE empresa_id = :empresaId
-            """;
-            MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-            return jdbcTemplate.queryForObject(sql, params, Long.class);
-        } catch (Exception e) {
-            return 1L;
-        }
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(176176, :empresaId)", params, rs -> null);
+        String sql = """
+            SELECT COALESCE(MAX(CAST(SUBSTRING(numero, 5) AS BIGINT)), 0) + 1
+            FROM cotizacion
+            WHERE empresa_id = :empresaId
+        """;
+        return jdbcTemplate.queryForObject(sql, params, Long.class);
     }
 }

@@ -28,6 +28,10 @@ import jakarta.transaction.Transactional;
 @Service
 public class SerialProductoServiceImpl implements SerialProductoService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
     
@@ -118,8 +122,8 @@ public class SerialProductoServiceImpl implements SerialProductoService {
 
         // A mano solo se registran seriales del stock que ya existe: lo que entra
         // nuevo trae sus seriales en la compra. Nunca más DISPONIBLES que stock.
-        java.math.BigDecimal stock = inventarioJPARepository
-                .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+        java.math.BigDecimal stock = inventarioStock
+                .bloquear(bodega.getId(), producto.getId())
                 .map(i -> i.getStockActual() != null ? i.getStockActual() : java.math.BigDecimal.ZERO)
                 .orElse(java.math.BigDecimal.ZERO);
         long disponibles = serialJPARepository.countByProductoIdAndBodegaIdAndEstado(

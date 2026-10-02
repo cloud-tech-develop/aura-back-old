@@ -216,39 +216,43 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         return v != null ? v : BigDecimal.ZERO;
     }
 
-    @Override
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public AsientoContableTableDto generarDesdeCompra(Long compraId, Integer empresaId,
-            Integer usuarioId) {
-        if (yaContabilizado("COMPRA", compraId, empresaId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Ya existe un asiento contable para la compra #" + compraId);
-        }
 
-        CompraEntity compra = compraRepo.findByIdAndEmpresaId(compraId, empresaId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Compra no encontrada"));
+    // ── Asiento de compra: una sola construcción para el asiento real y la vista previa ──
 
-        // El asiento pertenece al mes de la compra (V171).
-        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId,
-                compra.getFecha() != null ? compra.getFecha().toLocalDate() : null);
+    /** Línea de la compra para el asiento: ya neta del descuento de la línea. */
+    public record LineaCompraAsiento(Long productoId, BigDecimal neto, BigDecimal iva) {
+    }
 
-        BigDecimal subtotal   = nz(compra.getSubtotal());
-        BigDecimal descuento  = nz(compra.getDescuentoTotal());
-        BigDecimal fletes     = nz(compra.getFletes());
-        BigDecimal impuestos  = nz(compra.getImpuestosTotal());            // IVA descontable
-        BigDecimal netaAPagar = compra.getNetaAPagar() != null
-                ? compra.getNetaAPagar() : nz(compra.getTotal());
+    public record PagoCompraAsiento(String metodoPago, Long cuentaBancariaId, Long cuentaContableId,
+            BigDecimal monto) {
+    }
+
+    /** Lo que el asiento necesita de una compra, venga de la base o de un formulario sin guardar. */
+    public record DatosCompraAsiento(BigDecimal subtotal, BigDecimal descuento, BigDecimal fletes,
+            BigDecimal impuestos, BigDecimal netaAPagar, Long proveedorId, boolean esNotaCredito,
+            Long cuentaContableId, List<LineaCompraAsiento> lineas, BigDecimal retefuente,
+            BigDecimal reteiva, BigDecimal reteica, List<PagoCompraAsiento> pagos) {
+    }
+
+    /**
+     * Partidas del asiento de una compra. Lo usan {@link #generarDesdeCompra}
+     * y la vista previa: el contador ve exactamente lo que se va a registrar.
+     */
+    public List<AsientoDetalleEntity> lineasCompra(Integer empresaId, DatosCompraAsiento d) {
+        BigDecimal subtotal   = d.subtotal();
+        BigDecimal descuento  = d.descuento();
+        BigDecimal fletes     = d.fletes();
+        BigDecimal impuestos  = d.impuestos();            // IVA descontable
+        BigDecimal netaAPagar = d.netaAPagar();
         // Costo capitalizado en inventario: subtotal neto de descuento + fletes
         BigDecimal costoInventario = subtotal.subtract(descuento).add(fletes);
-        Long proveedorId = compra.getProveedor() != null ? compra.getProveedor().getId() : null;
+        Long proveedorId = d.proveedorId();
 
         // Una nota crédito de compra se guarda como el documento negativo de la
         // factura que corrige. El asiento es el mismo, con cada línea del lado
         // contrario — eso lo resuelve lineaFirmada() a partir del signo, así que
         // aquí solo cambia el texto del comprobante.
-        boolean esNotaCredito = "NOTA_CREDITO".equalsIgnoreCase(compra.getTipoDocumento());
-        String etiqueta = esNotaCredito ? "Nota crédito compra" : "Compra";
+        String etiqueta = d.esNotaCredito() ? "Nota crédito compra" : "Compra";
 
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
@@ -257,16 +261,19 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // categoría contable de cada producto (E4) → inventario por defecto.
         // El delta por fletes/descuento de cabecera se ajusta al grupo mayor.
         if (costoInventario.signum() != 0) {
-            if (compra.getCuentaContableId() != null) {
-                detalles.add(lineaFirmada(compra.getCuentaContableId(),
+            if (d.cuentaContableId() != null) {
+                detalles.add(lineaFirmada(d.cuentaContableId(),
                         etiqueta + " — destino contable", costoInventario, true, null));
             } else {
                 java.util.Map<Long, BigDecimal> porCuenta = new java.util.LinkedHashMap<>();
-                for (var det : compraDetalleRepo.findByCompraId(compraId)) {
-                    Long productoId = det.getProducto() != null ? det.getProducto().getId() : null;
-                    Long cuentaId = resolucionCuentaProducto.resolver(productoId, empresaId)
-                            .inventarioId();
-                    BigDecimal base = nz(det.getSubtotalLinea()).subtract(nz(det.getDescuentoValor()));
+                for (var det : d.lineas()) {
+                    Long productoId = det.productoId();
+                    // La clasificación del ítem decide el débito (V185): la
+                    // mercancía va a inventario, un activo a la 15, un gasto a la 5…
+                    Long cuentaId = resolucionCuentaProducto.resolverCompra(productoId, empresaId)
+                            .cuentaCompraId();
+                    // subtotal_linea ya es neto del descuento de la línea.
+                    BigDecimal base = det.neto();
                     porCuenta.merge(cuentaId, base, BigDecimal::add);
                 }
                 if (porCuenta.isEmpty()) {
@@ -275,6 +282,22 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 } else {
                     BigDecimal suma = porCuenta.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
                     BigDecimal delta = costoInventario.subtract(suma);
+                    // Los fletes se reparten por el neto de cada cuenta, igual
+                    // que en el costo promedio y en las fichas de activo (V185):
+                    // si toda la diferencia cae en una sola cuenta, la 15 no
+                    // cuadra con sus fichas ni la 14 con el kardex valorizado.
+                    if (delta.signum() != 0 && suma.signum() != 0 && porCuenta.size() > 1) {
+                        java.util.Map<Long, BigDecimal> repartido = new java.util.LinkedHashMap<>();
+                        BigDecimal asignado = BigDecimal.ZERO;
+                        for (var e : porCuenta.entrySet()) {
+                            BigDecimal parte = delta.multiply(e.getValue())
+                                    .divide(suma, 2, java.math.RoundingMode.HALF_UP);
+                            repartido.put(e.getKey(), e.getValue().add(parte));
+                            asignado = asignado.add(parte);
+                        }
+                        porCuenta = repartido;
+                        delta = delta.subtract(asignado);
+                    }
                     if (delta.signum() != 0) {
                         // Con importes negativos (nota crédito) el grupo "mayor"
                         // es el de mayor valor absoluto, no el aritmético.
@@ -285,7 +308,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                     }
                 }
                 porCuenta.forEach((cuentaId, monto) ->
-                        detalles.add(lineaFirmada(cuentaId, "Inventario " + etiqueta.toLowerCase(),
+                        detalles.add(lineaFirmada(cuentaId, "Destino " + etiqueta.toLowerCase(),
                                 monto, true, null)));
             }
         }
@@ -293,12 +316,12 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // ── DÉBITO · IVA descontable agrupado por cuenta del impuesto (E5) ────
         if (impuestos.signum() != 0) {
             java.util.Map<Long, BigDecimal> ivaPorCuenta = new java.util.LinkedHashMap<>();
-            for (var det : compraDetalleRepo.findByCompraId(compraId)) {
-                BigDecimal ivaLinea = nz(det.getImpuestoValor());
+            for (var det : d.lineas()) {
+                BigDecimal ivaLinea = det.iva();
                 if (ivaLinea.signum() == 0) {
                     continue;
                 }
-                Long productoId = det.getProducto() != null ? det.getProducto().getId() : null;
+                Long productoId = det.productoId();
                 ivaPorCuenta.merge(resolucionImpuesto.resolverDescontable(productoId, empresaId),
                         ivaLinea, BigDecimal::add);
             }
@@ -322,17 +345,17 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         }
 
         // ── CRÉDITO · retenciones practicadas al proveedor ────────────────────
-        BigDecimal retefuente = nz(compra.getRetefuenteValor());
+        BigDecimal retefuente = d.retefuente();
         if (retefuente.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEFUENTE_PRACTICADA);
             detalles.add(lineaFirmada(c.getId(), "Retención en la fuente", retefuente, false, proveedorId));
         }
-        BigDecimal reteiva = nz(compra.getReteivaValor());
+        BigDecimal reteiva = d.reteiva();
         if (reteiva.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEIVA_PRACTICADA);
             detalles.add(lineaFirmada(c.getId(), "ReteIVA", reteiva, false, proveedorId));
         }
-        BigDecimal reteica = nz(compra.getReteicaValor());
+        BigDecimal reteica = d.reteica();
         if (reteica.signum() != 0) {
             PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEICA_PRACTICADA);
             detalles.add(lineaFirmada(c.getId(), "ReteICA", reteica, false, proveedorId));
@@ -340,16 +363,16 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
 
         // ── CRÉDITO · pago de contado (caja/bancos) ───────────────────────────
         BigDecimal pagado = BigDecimal.ZERO;
-        for (CompraPagoEntity pago : compraPagoRepo.findByCompraIdAndActivoTrue(compraId)) {
-            BigDecimal monto = nz(pago.getMonto());
+        for (PagoCompraAsiento pago : d.pagos()) {
+            BigDecimal monto = pago.monto();
             // En una nota crédito el movimiento está en negativo — es plata que
             // vuelve — y lineaFirmada lo manda al débito de caja/bancos.
             if (monto.signum() == 0) continue;
-            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.getMetodoPago(),
-                    pago.getCuentaBancariaId(), pago.getCuentaContableId());
+            PlanCuentaEntity cuenta = resolverCuentaPago(empresaId, pago.metodoPago(),
+                    pago.cuentaBancariaId(), pago.cuentaContableId());
             detalles.add(lineaFirmada(cuenta.getId(),
                     (monto.signum() < 0 ? "Devolución del proveedor (" : "Pago compra (")
-                            + pago.getMetodoPago() + ")", monto, false, null));
+                            + pago.metodoPago() + ")", monto, false, null));
             pagado = pagado.add(monto);
         }
 
@@ -362,6 +385,48 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             detalles.add(lineaFirmada(prov.getId(), "Cuenta por pagar proveedor",
                     saldoProveedor, false, proveedorId));
         }
+
+        return detalles;
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto generarDesdeCompra(Long compraId, Integer empresaId,
+            Integer usuarioId) {
+        if (yaContabilizado("COMPRA", compraId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe un asiento contable para la compra #" + compraId);
+        }
+
+        CompraEntity compra = compraRepo.findByIdAndEmpresaId(compraId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Compra no encontrada"));
+
+        // El asiento pertenece al mes de la compra (V171).
+        PeriodoContableEntity periodo = periodoResolver.resolver(empresaId,
+                compra.getFecha() != null ? compra.getFecha().toLocalDate() : null);
+
+        boolean esNotaCredito = "NOTA_CREDITO".equalsIgnoreCase(compra.getTipoDocumento());
+        String etiqueta = esNotaCredito ? "Nota crédito compra" : "Compra";
+        List<LineaCompraAsiento> lineasCompra = new ArrayList<>();
+        for (var det : compraDetalleRepo.findByCompraId(compraId)) {
+            lineasCompra.add(new LineaCompraAsiento(
+                    det.getProducto() != null ? det.getProducto().getId() : null,
+                    nz(det.getSubtotalLinea()), nz(det.getImpuestoValor())));
+        }
+        List<PagoCompraAsiento> pagosCompra = new ArrayList<>();
+        for (CompraPagoEntity pago : compraPagoRepo.findByCompraIdAndActivoTrue(compraId)) {
+            pagosCompra.add(new PagoCompraAsiento(pago.getMetodoPago(), pago.getCuentaBancariaId(),
+                    pago.getCuentaContableId(), nz(pago.getMonto())));
+        }
+        List<AsientoDetalleEntity> detalles = lineasCompra(empresaId, new DatosCompraAsiento(
+                nz(compra.getSubtotal()), nz(compra.getDescuentoTotal()), nz(compra.getFletes()),
+                nz(compra.getImpuestosTotal()),
+                compra.getNetaAPagar() != null ? compra.getNetaAPagar() : nz(compra.getTotal()),
+                compra.getProveedor() != null ? compra.getProveedor().getId() : null,
+                esNotaCredito, compra.getCuentaContableId(), lineasCompra,
+                nz(compra.getRetefuenteValor()), nz(compra.getReteivaValor()), nz(compra.getReteicaValor()),
+                pagosCompra));
 
         if (detalles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -394,6 +459,27 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         AsientoContableTableDto result = toDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
         return result;
+    }
+
+    /**
+     * Antes el listener llamaba reversar() y generarDesdeCompra() por separado,
+     * cada uno en su propia transacción: si el segundo fallaba (cuenta mal
+     * configurada, mes cerrado…) la reversa ya estaba confirmada y la compra
+     * editada quedaba SIN asiento vigente. Aquí se llaman directo (sin pasar
+     * por el proxy), así que corren dentro de esta única transacción.
+     */
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto reprocesarCompra(Long compraId, Integer empresaId, Integer usuarioId) {
+        reversar("COMPRA", compraId, empresaId, usuarioId);
+        return generarDesdeCompra(compraId, empresaId, usuarioId);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public AsientoContableTableDto reprocesarGasto(Long gastoId, Integer empresaId, Integer usuarioId) {
+        reversar("GASTO", gastoId, empresaId, usuarioId);
+        return generarDesdeGasto(gastoId, empresaId, usuarioId);
     }
 
     @Override
@@ -1379,6 +1465,9 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
      */
     private java.util.Optional<AsientoContableEntity> asientoVigente(String tipoOrigen,
             Long origenId, Integer empresaId) {
+        // Serializa generar/reversar del mismo documento (ver bloquearDocumento):
+        // sin esto dos eventos simultáneos dejaban dos asientos vigentes.
+        queryRepo.bloquearDocumento(empresaId, tipoOrigen, origenId);
         long originales = asientoRepo.countByTipoOrigenAndOrigenIdAndEmpresaIdAndEstado(
                 tipoOrigen, origenId, empresaId, ESTADO_CONTABILIZADO);
         if (originales == 0) {

@@ -15,5 +15,9 @@ public class DepreciacionPeriodoDto {
     private Long periodoId;
     private BigDecimal valor;
     private Long asientoId;
+    private String metodo;
+    private BigDecimal unidades;
+    private String periodo;
+    private String activoCodigo;
     private LocalDateTime calculadoEn;
 }

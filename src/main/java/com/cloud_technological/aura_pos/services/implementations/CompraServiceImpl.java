@@ -60,8 +60,25 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class CompraServiceImpl implements CompraService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.CostoPromedioService costoPromedio;
+
+    @Autowired
+    private com.cloud_technological.aura_pos.services.CompraClasificacionService compraClasificacion;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
     private final CompraQueryRepository compraRepository;
     private final CompraJPARepository compraJPARepository;
@@ -233,10 +250,26 @@ public class CompraServiceImpl implements CompraService {
         }
     }
 
-    /** Línea escrita en una presentación, tal como la escribió el usuario (4 Pacas a $52.500). */
+    /**
+     * Línea escrita en una presentación, tal como la escribió el usuario
+     * (4 Pacas a $52.500, más 2 und sueltas).
+     */
     private record LineaPresentacion(
             com.cloud_technological.aura_pos.entity.ProductoPresentacionEntity presentacion,
-            BigDecimal cantidad, BigDecimal costo) {
+            BigDecimal cantidad, BigDecimal costo, BigDecimal suelta, BigDecimal cantidadBase) {
+
+        /** Valor de la línea: las presentaciones a su costo y las sueltas a costo ÷ contenido. */
+        BigDecimal bruto() {
+            BigDecimal presentaciones = cantidad.multiply(costo);
+            if (suelta.signum() == 0) {
+                return presentaciones;
+            }
+            BigDecimal enPresentaciones = cantidadBase.subtract(suelta);
+            BigDecimal costoUnidad = enPresentaciones.signum() != 0
+                    ? presentaciones.divide(enPresentaciones, 6, java.math.RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            return presentaciones.add(suelta.multiply(costoUnidad)).setScale(2, java.math.RoundingMode.HALF_UP);
+        }
     }
 
     /**
@@ -259,12 +292,14 @@ public class CompraServiceImpl implements CompraService {
                             "La presentación no pertenece a " + nombreProducto(item.getProductoId())));
             BigDecimal cantidad = nz(item.getCantidad()).abs();
             BigDecimal costo = nz(item.getCostoUnitario());
+            BigDecimal suelta = nz(item.getCantidadSuelta()).abs();
             BigDecimal cantidadBase = com.cloud_technological.aura_pos.utils.PresentacionConversion
-                    .aBase(cantidad, presentacion);
+                    .aBase(cantidad, presentacion).add(suelta);
             if (cantidadBase.signum() <= 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "La cantidad de " + nombreProducto(item.getProductoId()) + " debe ser mayor que cero");
-            lineas.put(item, new LineaPresentacion(presentacion, cantidad, costo));
+            LineaPresentacion linea = new LineaPresentacion(presentacion, cantidad, costo, suelta, cantidadBase);
+            lineas.put(item, linea);
             item.setCantidad(cantidadBase);
             // Los lotes se escriben en la misma presentación que la línea (4 bultos).
             if (item.getLotes() != null) {
@@ -274,7 +309,7 @@ public class CompraServiceImpl implements CompraService {
                                 .aBase(lote.getCantidad().abs(), presentacion));
                 }
             }
-            item.setCostoUnitario(cantidad.multiply(costo)
+            item.setCostoUnitario(linea.bruto()
                     .divide(cantidadBase, 2, java.math.RoundingMode.HALF_UP));
         }
         return lineas;
@@ -472,6 +507,7 @@ public class CompraServiceImpl implements CompraService {
         compra.setBodega(bodega);
         compra.setProveedor(proveedor);
         compra.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDateTime.now());
+        periodoGuard.exigirAbierto(empresaId, compra.getFecha().toLocalDate());
         compra.setEstado("RECIBIDA");
         compra.setTipoDocumento(dto.getTipoDocumento() != null ? dto.getTipoDocumento() : "FACTURA_COMPRA");
         compra.setCompraOrigenId(esNC ? compraOrigen.getId() : null);
@@ -515,12 +551,20 @@ public class CompraServiceImpl implements CompraService {
         BigDecimal subtotalBruto = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
         BigDecimal impuestosTotal = BigDecimal.ZERO;
+        java.util.Map<Long, BigDecimal[]> costoPorProducto = new java.util.LinkedHashMap<>();
+        BigDecimal netoDocumento = BigDecimal.ZERO;
+        List<CompraDetalleEntity> lineasGuardadas = new java.util.ArrayList<>();
 
         // 2. Procesar cada detalle
         for (CreateCompraDetalleDto item : dto.getDetalles()) {
             ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "Producto no encontrado: " + item.getProductoId()));
+            com.cloud_technological.aura_pos.utils.ClasificacionItem clasificacion =
+                    com.cloud_technological.aura_pos.utils.ClasificacionItem.de(producto.getClasificacion());
+            if (esNC) {
+                compraClasificacion.validarNotaCredito(producto);
+            }
 
             // 2.1 Crear detalle con descuento. El front siempre manda cantidades
             //     positivas ("devuélveme 3"); el signo lo pone el documento.
@@ -529,7 +573,7 @@ public class CompraServiceImpl implements CompraService {
             BigDecimal descPct = item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO;
             LineaPresentacion enPresentacion = lineasPresentacion.get(item);
             BigDecimal brutoLinea = enPresentacion != null
-                    ? enPresentacion.cantidad().multiply(enPresentacion.costo()).multiply(signo)
+                    ? enPresentacion.bruto().multiply(signo)
                     : cantidad.multiply(item.getCostoUnitario());
             BigDecimal descValor = brutoLinea.multiply(descPct).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal netoLinea = brutoLinea.subtract(descValor);
@@ -542,9 +586,13 @@ public class CompraServiceImpl implements CompraService {
             detalle.setDescuentoPct(descPct);
             detalle.setDescuentoValor(descValor);
             detalle.setSubtotalLinea(netoLinea);
+            detalle.setClasificacion(clasificacion.name());
+            detalle.setCantidadSuelta(null);
             if (enPresentacion != null) {
                 detalle.setProductoPresentacion(enPresentacion.presentacion());
                 detalle.setCantidadPresentacion(enPresentacion.cantidad().multiply(signo));
+                detalle.setCantidadSuelta(enPresentacion.suelta().signum() != 0
+                        ? enPresentacion.suelta().multiply(signo) : null);
                 detalle.setCostoPresentacion(enPresentacion.costo());
             }
 
@@ -565,6 +613,14 @@ public class CompraServiceImpl implements CompraService {
             //     fije una devolución arrastra el error a todas las ventas.
             if (!esNC) {
                 actualizarPreciosProducto(producto, item);
+            }
+            netoDocumento = netoDocumento.add(netoLinea);
+            lineasGuardadas.add(detalle);
+
+            // Un servicio, un gasto, un activo o un diferido no tienen
+            // existencias (V185): la línea solo cuenta en totales y asiento.
+            if (!clasificacion.mueveInventario()) {
+                continue;
             }
 
             // 2.4 Actualizar inventario
@@ -602,6 +658,17 @@ public class CompraServiceImpl implements CompraService {
                     saldoAnterior, item.getCostoUnitario(),
                     esNC ? TipoMovimientoInventario.NOTA_CREDITO_COMPRA.codigo() : TipoMovimientoInventario.COMPRA.codigo(),
                     (esNC ? "Nota crédito compra #" : "Compra #") + compra.getId());
+
+            // 2.7 Costo promedio: la compra entra neta de descuento; la nota
+            //     crédito sale al costo al que la devuelve (ambos con signo).
+            acumularCosto(costoPorProducto, producto.getId(), cantidad, netoLinea);
+        }
+        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento);
+
+        // 2.8 Fichas de activo y diferidos de las líneas que los crean (V185).
+        if (!esNC) {
+            compraClasificacion.crearDesdeCompra(compra, lineasGuardadas, nz(compra.getFletes()),
+                    netoDocumento, empresaId);
         }
 
         // 3. Actualizar totales
@@ -1147,13 +1214,45 @@ public class CompraServiceImpl implements CompraService {
         cambioUnidadProducto.validarDocumentoPrevio("COMPRA", id,
                 detalles.stream().map(d -> d.getProducto().getId()).toList(), "anular la compra");
 
+        // Antes la anulación solo devolvía el inventario: la cuenta por pagar
+        // seguía viva (y se podía pagar) y el dinero que salió del banco o de la
+        // caja no volvía. Ahora revierte lo mismo que la compra movió, y se
+        // niega cuando hay algo encima que no puede deshacer sola.
+        if (!esNotaCredito(compra.getTipoDocumento())) {
+            if (compraRepository.notasCreditoVigentes(id, empresaId) > 0)
+                throw new GlobalException(HttpStatus.CONFLICT,
+                        "La compra tiene notas crédito vigentes: anúlelas primero");
+            if (compraRepository.tieneDocumentoSoporteAceptado(id, empresaId))
+                throw new GlobalException(HttpStatus.CONFLICT,
+                        "La compra tiene un documento soporte aceptado por la DIAN: no se anula,"
+                                + " se corrige con una nota de ajuste");
+            var cxp = cuentaPagarJPARepository.findFirstByCompraIdAndEmpresaId(id, empresaId).orElse(null);
+            if (cxp != null && cxp.getTotalAbonado() != null && cxp.getTotalAbonado().signum() > 0)
+                throw new GlobalException(HttpStatus.CONFLICT,
+                        "La cuenta por pagar de esta compra ya tiene abonos: anule los abonos antes de anular la compra");
+
+            Long usuarioAnula = securityUtils.getUsuarioId();
+            revertirPagosAnteriores(compra, empresaId, usuarioAnula, "anulación");
+
+            if (cxp != null && !"anulada".equalsIgnoreCase(cxp.getEstado())) {
+                cxp.setEstado("anulada");
+                cxp.setSaldoPendiente(BigDecimal.ZERO);
+                cuentaPagarJPARepository.save(cxp);
+            }
+        }
+
+        // Activos y diferidos que creó la compra (V185): si alguno ya se movió
+        // (depreciación, cuotas, baja) la anulación se niega.
+        compraClasificacion.revertirDeCompra(id, empresaId, "anular la compra");
+
         // El soporte del pago no puede seguir vigente si la compra no existe.
         comprobanteCajaService.anularDeDocumento(empresaId, "COMPRA", id,
                 "Compra anulada");
 
         for (CompraDetalleEntity detalle : detalles) {
-            InventarioEntity inventario = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
+            if (!mueveInventario(detalle)) continue;
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + detalle.getProducto().getNombre()));
 
@@ -1200,6 +1299,10 @@ public class CompraServiceImpl implements CompraService {
                         "Anulación Compra #" + compra.getId());
             }
         }
+
+        // Costo promedio: se deshace lo que la línea mezcló (la compra saca su
+        // entrada; la nota crédito devuelve lo que había sacado).
+        aplicarCostoPromedio(reversionDeCosto(detalles), nz(compra.getFletes()).negate(), netoAReversar(detalles));
 
         // El crédito que la nota otorgó deja de existir con ella: hay que
         // devolverle la deuda al proveedor (o sacar de nuevo la plata que
@@ -1253,9 +1356,14 @@ public class CompraServiceImpl implements CompraService {
 
         final var lineasPresentacion = normalizarPresentaciones(dto, empresaId);
 
+        // 0. Activos y diferidos que creó la versión anterior: se rehacen con
+        //    las líneas nuevas (se niega si alguno ya se movió).
+        compraClasificacion.revertirDeCompra(id, empresaId, "editar la compra");
+
         // 1. Revertir inventario de los detalles existentes
         List<CompraDetalleEntity> detallesAnteriores = detalleJPARepository.findByCompraId(id);
         for (CompraDetalleEntity detalle : detallesAnteriores) {
+            if (!mueveInventario(detalle)) continue;
             // Los lotes que creó la línea salen antes de borrarla; si de alguno
             // ya se vendió, la edición se bloquea.
             List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesAnteriores =
@@ -1264,8 +1372,8 @@ public class CompraServiceImpl implements CompraService {
                     compraDetalleLoteRepository.findByCompraDetalleIdOrderByIdAsc(detalle.getId()));
             serialStock.revertirEntradaCompra(detalle.getId(), "editar la compra");
 
-            InventarioEntity inventario = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodegaDeCompra(compra, empresaId).getId(), detalle.getProducto().getId())
                     .orElse(null);
             if (inventario != null && !lotesAnteriores.isEmpty()) {
                 BigDecimal saldoAnterior = inventario.getStockActual();
@@ -1298,6 +1406,11 @@ public class CompraServiceImpl implements CompraService {
             }
         }
 
+        // Costo promedio: sale la versión anterior de la compra (con sus fletes
+        // anteriores) antes de mezclar la nueva.
+        aplicarCostoPromedio(reversionDeCosto(detallesAnteriores), nz(compra.getFletes()).negate(),
+                netoAReversar(detallesAnteriores));
+
         // 2. Eliminar detalles anteriores
         detalleJPARepository.deleteAll(detallesAnteriores);
 
@@ -1310,6 +1423,7 @@ public class CompraServiceImpl implements CompraService {
         compra.setBodega(bodega);
         compra.setNumeroCompra(dto.getNumeroCompra());
         if (dto.getFecha() != null) compra.setFecha(dto.getFecha());
+        periodoGuard.exigirAbierto(empresaId, compra.getFecha() != null ? compra.getFecha().toLocalDate() : null);
         compra.setObservaciones(dto.getObservaciones());
         compra.setTipoDocumento(dto.getTipoDocumento() != null ? dto.getTipoDocumento() : "FACTURA_COMPRA");
         compra.setFletes(dto.getFletes() != null ? dto.getFletes() : BigDecimal.ZERO);
@@ -1322,17 +1436,22 @@ public class CompraServiceImpl implements CompraService {
         BigDecimal subtotalBruto = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
         BigDecimal impuestosTotal = BigDecimal.ZERO;
+        java.util.Map<Long, BigDecimal[]> costoPorProducto = new java.util.LinkedHashMap<>();
+        BigDecimal netoDocumento = BigDecimal.ZERO;
+        List<CompraDetalleEntity> lineasGuardadas = new java.util.ArrayList<>();
 
         // 4. Procesar nuevos detalles
         for (CreateCompraDetalleDto item : dto.getDetalles()) {
             ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "Producto no encontrado: " + item.getProductoId()));
+            com.cloud_technological.aura_pos.utils.ClasificacionItem clasificacion =
+                    com.cloud_technological.aura_pos.utils.ClasificacionItem.de(producto.getClasificacion());
 
             BigDecimal descPct = item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO;
             LineaPresentacion enPresentacion = lineasPresentacion.get(item);
             BigDecimal brutoLinea = enPresentacion != null
-                    ? enPresentacion.cantidad().multiply(enPresentacion.costo())
+                    ? enPresentacion.bruto()
                     : item.getCantidad().multiply(item.getCostoUnitario());
             BigDecimal descValor = brutoLinea.multiply(descPct).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal netoLinea = brutoLinea.subtract(descValor);
@@ -1343,9 +1462,12 @@ public class CompraServiceImpl implements CompraService {
             detalle.setDescuentoPct(descPct);
             detalle.setDescuentoValor(descValor);
             detalle.setSubtotalLinea(netoLinea);
+            detalle.setClasificacion(clasificacion.name());
+            detalle.setCantidadSuelta(null);
             if (enPresentacion != null) {
                 detalle.setProductoPresentacion(enPresentacion.presentacion());
                 detalle.setCantidadPresentacion(enPresentacion.cantidad());
+                detalle.setCantidadSuelta(enPresentacion.suelta().signum() != 0 ? enPresentacion.suelta() : null);
                 detalle.setCostoPresentacion(enPresentacion.costo());
             }
 
@@ -1360,6 +1482,11 @@ public class CompraServiceImpl implements CompraService {
             detalleJPARepository.save(detalle);
 
             actualizarPreciosProducto(producto, item);
+            netoDocumento = netoDocumento.add(netoLinea);
+            lineasGuardadas.add(detalle);
+            if (!clasificacion.mueveInventario()) {
+                continue;
+            }
 
             InventarioEntity inventario = resolverInventario(bodega, producto);
             BigDecimal saldoAnterior = inventario.getStockActual();
@@ -1376,7 +1503,12 @@ public class CompraServiceImpl implements CompraService {
             registrarKardexPorLotes(bodega, producto, lotes, item.getCantidad(),
                     saldoAnterior, item.getCostoUnitario(), TipoMovimientoInventario.EDICION_COMPRA.codigo(),
                     "Edición Compra #" + compra.getId());
+
+            acumularCosto(costoPorProducto, producto.getId(), item.getCantidad(), netoLinea);
         }
+        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento);
+        compraClasificacion.crearDesdeCompra(compra, lineasGuardadas, nz(compra.getFletes()),
+                netoDocumento, empresaId);
 
         // 5. Actualizar totales
         BigDecimal subtotalNeto = subtotalBruto.subtract(descuentoTotal);
@@ -1434,19 +1566,29 @@ public class CompraServiceImpl implements CompraService {
      * movieron cuando se registró la primera vez.
      */
     private void revertirPagosAnteriores(CompraEntity compra, Integer empresaId, Long usuarioId) {
+        revertirPagosAnteriores(compra, empresaId, usuarioId, "edición");
+    }
+
+    /**
+     * Devuelve al banco y a la caja lo que pagaron los pagos activos de la
+     * compra y los desactiva. {@code motivo} va en el concepto del reverso.
+     */
+    private void revertirPagosAnteriores(CompraEntity compra, Integer empresaId, Long usuarioId, String motivo) {
         List<CompraPagoEntity> anteriores = compraPagoJPARepository
                 .findByCompraIdAndActivoTrue(compra.getId());
         if (anteriores.isEmpty()) {
             return;
         }
-        UsuarioEntity usuario = usuarioRepository.findById(usuarioId.intValue()).orElse(null);
+        UsuarioEntity usuario = usuarioId != null
+                ? usuarioRepository.findById(usuarioId.intValue()).orElse(null) : null;
+        Integer usuarioInt = usuarioId != null ? usuarioId.intValue() : null;
 
         for (CompraPagoEntity pago : anteriores) {
             // Devolver al banco lo que había salido de él.
-            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioId.intValue(),
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId, usuarioInt,
                     new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
                             pago.getCuentaBancariaId(), false, pago.getMonto(),
-                            "Reverso pago compra #" + compra.getId() + " (edición)",
+                            "Reverso pago compra #" + compra.getId() + " (" + motivo + ")",
                             Terceros.nombreVisible(compra.getProveedor()),
                             "COMPRA-" + compra.getId(), "COMPRA"));
 
@@ -1469,7 +1611,7 @@ public class CompraServiceImpl implements CompraService {
                             .turnoCaja(origen.turno())
                             .usuario(usuario)
                             .tipo("INGRESO")
-                            .concepto("Reverso pago compra #" + compra.getId() + " (edición)")
+                            .concepto("Reverso pago compra #" + compra.getId() + " (" + motivo + ")")
                             .monto(pago.getMonto())
                             // El reverso entra hoy a la caja que lo recibe, que
                             // no tiene por qué ser la que pagó: si aquel turno
@@ -1542,8 +1684,66 @@ public class CompraServiceImpl implements CompraService {
 
     // ─── Métodos privados de apoyo ───────────────────────────────────────────
 
+    /** Suma por producto la cantidad y el valor neto (con signo) de las líneas del documento. */
+    private static void acumularCosto(java.util.Map<Long, BigDecimal[]> acumulado, Long productoId,
+            BigDecimal cantidad, BigDecimal neto) {
+        BigDecimal[] v = acumulado.computeIfAbsent(productoId, k -> new BigDecimal[] { BigDecimal.ZERO, BigDecimal.ZERO });
+        v[0] = v[0].add(nz(cantidad));
+        v[1] = v[1].add(nz(neto));
+    }
+
+    /**
+     * Lo contrario de lo que metieron las líneas guardadas: para anular o editar.
+     * Solo las líneas que movieron inventario entraron al costo promedio.
+     */
+    private static java.util.Map<Long, BigDecimal[]> reversionDeCosto(List<CompraDetalleEntity> detalles) {
+        java.util.Map<Long, BigDecimal[]> acumulado = new java.util.LinkedHashMap<>();
+        for (CompraDetalleEntity d : detalles) {
+            if (!mueveInventario(d)) continue;
+            acumularCosto(acumulado, d.getProducto().getId(),
+                    nz(d.getCantidad()).negate(), nz(d.getSubtotalLinea()).negate());
+        }
+        return acumulado;
+    }
+
+    /** Neto de todas las líneas guardadas, con el signo contrario: base del reparto de fletes al revertir. */
+    private static BigDecimal netoAReversar(List<CompraDetalleEntity> detalles) {
+        return detalles.stream().map(d -> nz(d.getSubtotalLinea()).negate()).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** ¿La línea movió stock cuando se registró? (V185; las previas siempre lo hicieron). */
+    private static boolean mueveInventario(CompraDetalleEntity detalle) {
+        return com.cloud_technological.aura_pos.services.CompraClasificacionService.de(detalle).mueveInventario();
+    }
+
+    /**
+     * Mezcla en el costo promedio cada producto del documento, una vez por
+     * producto aunque venga en varias líneas. Los fletes se reparten según el
+     * valor neto de cada producto: la contabilidad los capitaliza en el
+     * inventario, así que si no entraran al costo el kardex valorizado nunca
+     * cuadraría con la cuenta 1435.
+     */
+    private void aplicarCostoPromedio(java.util.Map<Long, BigDecimal[]> porProducto, BigDecimal fletes,
+            BigDecimal netoDocumento) {
+        // Los fletes se reparten sobre el neto de TODAS las líneas (V185): la
+        // parte de un activo o de un gasto de la misma factura va a su cuenta,
+        // no al costo de la mercancía. Es el mismo reparto del asiento.
+        BigDecimal sumaNeto = netoDocumento;
+        for (var e : porProducto.entrySet()) {
+            BigDecimal neto = e.getValue()[1];
+            BigDecimal flete = fletes.signum() != 0 && sumaNeto.signum() != 0
+                    ? fletes.multiply(neto).divide(sumaNeto, 6, java.math.RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            costoPromedio.aplicar(e.getKey(), e.getValue()[0], neto.add(flete));
+        }
+    }
+
+    /**
+     * Precios de venta escritos en la compra. El costo NO se toca aquí: lo
+     * mezcla CostoPromedioService con lo que ya había (antes esta línea lo
+     * sobrescribía con el último precio de compra).
+     */
     private void actualizarPreciosProducto(ProductoEntity producto, CreateCompraDetalleDto item) {
-        producto.setCosto(item.getCostoUnitario());
         if (item.getPrecioVenta1() != null) producto.setPrecio(item.getPrecioVenta1());
         if (item.getPrecioVenta2() != null) producto.setPrecio2(item.getPrecioVenta2());
         if (item.getPrecioVenta3() != null) producto.setPrecio3(item.getPrecioVenta3());
@@ -1680,8 +1880,8 @@ public class CompraServiceImpl implements CompraService {
     }
 
     private InventarioEntity resolverInventario(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto) {
-        return inventarioJPARepository
-                .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+        return inventarioStock
+                .bloquear(bodega.getId(), producto.getId())
                 .orElseGet(() -> {
                     InventarioEntity nuevo = new InventarioEntity();
                     nuevo.setBodega(bodega);

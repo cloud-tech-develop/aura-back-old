@@ -47,6 +47,14 @@ public class InventarioEntity {
 
     private String ubicacion;
 
+    /** Hasta dónde llenar la bodega al pedir (V185). Null = sin máximo. */
+    @Column(name = "stock_maximo")
+    private BigDecimal stockMaximo;
+
+    /** Con este saldo o menos hay que pedir (V185). Null = se usa el mínimo. */
+    @Column(name = "punto_reorden")
+    private BigDecimal puntoReorden;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 }

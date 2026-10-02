@@ -34,6 +34,10 @@ import com.cloud_technological.aura_pos.services.GastoService;
 @Service
 public class GastoServiceImpl implements GastoService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
     @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Autowired private com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository terceroJPARepository;
     @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaJPARepository;
@@ -49,6 +53,9 @@ public class GastoServiceImpl implements GastoService {
     @Autowired private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
     @Autowired private com.cloud_technological.aura_pos.services.ComprobanteCajaService comprobanteCajaService;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago resolucionCuentaPago;
+    @Autowired private com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository cuentaPagarJPARepository;
+    @Autowired private com.cloud_technological.aura_pos.services.ContabilidadAutoService contabilidadAutoService;
+    @Autowired private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
     @Override
     public GastoDto obtener(Long id, Integer empresaId) {
@@ -77,6 +84,7 @@ public class GastoServiceImpl implements GastoService {
         gasto.setDescripcion(dto.getDescripcion());
         gasto.setMonto(dto.getMonto());
         gasto.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDate.now());
+        periodoGuard.exigirAbierto(empresaId, gasto.getFecha());
         gasto.setDeducible(dto.getDeducible());
         gasto.setEstado("ACTIVO");
         gasto.setCreatedAt(LocalDateTime.now());
@@ -232,6 +240,30 @@ public class GastoServiceImpl implements GastoService {
         GastoEntity gasto = gastoJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Gasto no encontrado"));
 
+        if ("ELIMINADO".equalsIgnoreCase(gasto.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El gasto está anulado: no se puede editar");
+
+        // Editar solo cambiaba las columnas: la caja, el banco y la cuenta por
+        // pagar seguían con el valor viejo y el asiento también. Lo que mueve
+        // dinero (valor, fecha, forma o medio de pago, cuenta, tercero de la
+        // deuda) no se edita: se anula y se registra de nuevo, que deja todo
+        // consistente. Lo demás (cuenta de gasto, centro de costo, IVA,
+        // retenciones…) sí, y el asiento se rehace abajo.
+        String formaNueva = dto.getFormaPago() != null ? dto.getFormaPago().trim().toUpperCase() : "CONTADO";
+        String metodoNuevo = dto.getMetodoPago() != null ? MediosPago.normalizar(dto.getMetodoPago()) : MediosPago.EFECTIVO;
+        boolean cambiaDinero =
+                (dto.getMonto() != null && (gasto.getMonto() == null || dto.getMonto().compareTo(gasto.getMonto()) != 0))
+                || (dto.getFecha() != null && !dto.getFecha().equals(gasto.getFecha()))
+                || !formaNueva.equalsIgnoreCase(gasto.getFormaPago() != null ? gasto.getFormaPago() : "CONTADO")
+                || (!MediosPago.CREDITO.equalsIgnoreCase(formaNueva)
+                        && !metodoNuevo.equalsIgnoreCase(gasto.getMetodoPago() != null ? gasto.getMetodoPago() : MediosPago.EFECTIVO))
+                || !java.util.Objects.equals(dto.getCuentaBancariaId(), gasto.getCuentaBancariaId())
+                || (MediosPago.CREDITO.equalsIgnoreCase(formaNueva)
+                        && !java.util.Objects.equals(dto.getTerceroId(), gasto.getTerceroId()));
+        if (cambiaDinero)
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "El valor, la fecha y la forma de pago de un gasto no se editan: anúlelo y regístrelo de nuevo");
+
         SucursalEntity sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
 
@@ -240,10 +272,29 @@ public class GastoServiceImpl implements GastoService {
         gasto.setDescripcion(dto.getDescripcion());
         gasto.setMonto(dto.getMonto());
         if (dto.getFecha() != null) gasto.setFecha(dto.getFecha());
+        periodoGuard.exigirAbierto(empresaId, gasto.getFecha());
         gasto.setDeducible(dto.getDeducible());
         mapCamposTributarios(dto, gasto);
 
         gasto = gastoJPARepository.save(gasto);
+
+        // El asiento se rehace con los datos nuevos cuando la edición quede
+        // confirmada, reversando y generando en una sola transacción.
+        final Long gastoId = gasto.getId();
+        final Long usuarioActual = securityUtils.getUsuarioId();
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            contabilidadAutoService.reprocesarGasto(gastoId, empresaId,
+                                    usuarioActual != null ? usuarioActual.intValue() : null);
+                        } catch (Exception ex) {
+                            org.slf4j.LoggerFactory.getLogger(GastoServiceImpl.class)
+                                    .warn("No se pudo rehacer el asiento del gasto #{}: {}", gastoId, ex.getMessage());
+                        }
+                    }
+                });
         return toDto(gasto);
     }
 
@@ -252,6 +303,28 @@ public class GastoServiceImpl implements GastoService {
     public void eliminar(Long id, Integer empresaId) {
         GastoEntity gasto = gastoJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Gasto no encontrado"));
+        if ("ELIMINADO".equalsIgnoreCase(gasto.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El gasto ya está anulado");
+
+        // Antes solo cambiaba el estado: la cuenta por pagar seguía viva y el
+        // dinero que salió de la caja o del banco no volvía. Ahora se deshace
+        // lo mismo que el gasto movió.
+        Long cxpId = gastoQueryRepository.cuentaPorPagarDeGasto(empresaId, id);
+        if (cxpId != null) {
+            var cxp = cuentaPagarJPARepository.findById(cxpId).orElse(null);
+            if (cxp != null) {
+                if (cxp.getTotalAbonado() != null && cxp.getTotalAbonado().signum() > 0)
+                    throw new GlobalException(HttpStatus.CONFLICT,
+                            "La cuenta por pagar de este gasto ya tiene abonos: anule los abonos antes de anular el gasto");
+                cxp.setEstado("anulada");
+                cxp.setSaldoPendiente(BigDecimal.ZERO);
+                cuentaPagarJPARepository.save(cxp);
+            }
+        }
+        if (!MediosPago.CREDITO.equalsIgnoreCase(gasto.getFormaPago())) {
+            devolverDineroDelGasto(gasto, empresaId);
+        }
+
         gasto.setEstado("ELIMINADO");
         gastoJPARepository.save(gasto);
 
@@ -263,6 +336,51 @@ public class GastoServiceImpl implements GastoService {
         eventPublisher.publishEvent(
                 new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
                         "GASTO", gasto.getId(), empresaId, null));
+    }
+
+    /**
+     * Devuelve al banco o a la caja lo que salió por el gasto. Al banco
+     * siempre que el gasto tuvo cuenta bancaria; a la caja solo si de verdad
+     * dejó un egreso de caja (un gasto "ya salió de la caja otro día" no lo
+     * dejó, y devolverlo inflaría el arqueo de hoy).
+     */
+    private void devolverDineroDelGasto(GastoEntity gasto, Integer empresaId) {
+        Long usuarioId = securityUtils.getUsuarioId();
+        if (gasto.getCuentaBancariaId() != null) {
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId,
+                    usuarioId != null ? usuarioId.intValue() : null,
+                    new TesoreriaService.MovimientoDocumento(
+                            gasto.getCuentaBancariaId(), false, gasto.getMonto(),
+                            "Reverso gasto #" + gasto.getId() + " (anulación)",
+                            null, "GASTO-" + gasto.getId(), gasto.getCategoria()));
+        }
+        if (gastoQueryRepository.tuvoEgresoDeCaja(MovimientoCajaEntity.ORIGEN_GASTO, gasto.getId())) {
+            OrigenFondosService.OrigenFondos origen = origenFondosService.resolver(empresaId,
+                    new OrigenFondosService.Solicitud(
+                            gasto.getMetodoPago(), null, null, gasto.getCuentaPagoId(),
+                            gasto.getSucursal() != null ? gasto.getSucursal().getId() : null,
+                            "reverso del gasto",
+                            Boolean.TRUE.equals(gasto.getSalidaCajaOtroDia())));
+            if (origen.generaMovimientoCaja()) {
+                UsuarioEntity usuario = usuarioId != null
+                        ? usuarioJPARepository.findById(usuarioId.intValue()).orElse(null) : null;
+                movimientoCajaJPARepository.save(MovimientoCajaEntity.builder()
+                        .turnoCaja(origen.turno())
+                        .usuario(usuario)
+                        .tipo("INGRESO")
+                        .concepto("Reverso gasto #" + gasto.getId() + " (anulación)")
+                        .monto(gasto.getMonto())
+                        // Entra hoy a la caja abierta: si el turno que pagó ya
+                        // cerró, devolverle la plata no lo reabre.
+                        .fecha(java.time.LocalDate.now())
+                        .fechaDocumento(gasto.getFecha())
+                        .origenTipo(MovimientoCajaEntity.ORIGEN_GASTO)
+                        .origenId(gasto.getId())
+                        .origenInferido(origen.turnoInferido())
+                        .metodoPago(gasto.getMetodoPago())
+                        .build());
+            }
+        }
     }
 
     @Override

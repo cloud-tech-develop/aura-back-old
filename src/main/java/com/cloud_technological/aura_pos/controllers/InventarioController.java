@@ -55,6 +55,16 @@ public class InventarioController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Inventario encontrado", false, result), HttpStatus.OK);
     }
 
+    /** Sugerido de compra: lo que está en o bajo su punto de reorden (V185). */
+    @GetMapping("/sugerido-compra")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.inventario.SugeridoCompraDto>>> sugeridoCompra(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long sucursalId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long bodegaId) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        var result = inventarioService.sugeridoCompra(empresaId, sucursalId, bodegaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, result), HttpStatus.OK);
+    }
+
     @GetMapping("/stock-bajo")
     public ResponseEntity<ApiResponse<List<InventarioTableDto>>> listarStockBajo() {
         Integer empresaId = securityUtils.getEmpresaId();

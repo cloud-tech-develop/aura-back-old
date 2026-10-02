@@ -27,6 +27,29 @@ public class ReporteContableController {
     @Autowired private AsientoContableQueryRepository queryRepo;
     @Autowired private PeriodoContableJPARepository periodoRepo;
     @Autowired private SecurityUtils securityUtils;
+    @Autowired private com.cloud_technological.aura_pos.services.implementations.BalancePruebaService balancePrueba;
+
+    /**
+     * Balance de prueba completo (Fase 4): saldo anterior, débitos, créditos y
+     * saldo final hasta el nivel pedido, con filtros y comparativo.
+     *
+     * @param comparar MES_ANTERIOR | ANIO_ANTERIOR (opcional)
+     */
+    @GetMapping("/balance-prueba")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.contabilidad.BalancePruebaDto>> balancePrueba(
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate desde,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate hasta,
+            @RequestParam(required = false) Integer nivel,
+            @RequestParam(required = false) String cuentaDesde,
+            @RequestParam(required = false) String cuentaHasta,
+            @RequestParam(required = false) Long terceroId,
+            @RequestParam(required = false) Long centroCostoId,
+            @RequestParam(required = false) String comparar,
+            @RequestParam(required = false, defaultValue = "true") boolean soloConMovimiento) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, balancePrueba.generar(empresaId, desde, hasta,
+                nivel, cuentaDesde, cuentaHasta, terceroId, centroCostoId, comparar, soloConMovimiento)));
+    }
 
     /**
      * Balance de Comprobación formal por período contable.

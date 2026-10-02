@@ -52,6 +52,9 @@ public class ContabilidadController {
     private DashboardContableService dashboardService;
 
     @Autowired
+    private com.cloud_technological.aura_pos.services.ReprocesoContableService reprocesoService;
+
+    @Autowired
     private SecurityUtils securityUtils;
 
     // ── Plan de Cuentas ──────────────────────────────────────────────
@@ -176,6 +179,14 @@ public class ContabilidadController {
     public ResponseEntity<ApiResponse<AsientoContableTableDto>> obtenerApertura() {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, aperturaService.obtener(empresaId)));
+    }
+
+    /** Líneas propuestas desde un auxiliar: INVENTARIO, ACTIVOS, DIFERIDOS, CARTERA, PROVEEDORES, BANCOS. */
+    @GetMapping("/saldos-iniciales/sugerencias")
+    public ResponseEntity<ApiResponse<java.util.List<com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto>>>
+            sugerencias(@RequestParam String fuente) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, aperturaService.sugerencias(empresaId, fuente)));
     }
 
     @GetMapping("/saldos-iniciales/sugerencia-bancos")
@@ -319,6 +330,33 @@ public class ContabilidadController {
     }
 
     // ── Asientos automáticos ─────────────────────────────────────────
+
+    /**
+     * Documentos sin exactamente un asiento vigente (0 = falta en el mayor,
+     * más de 1 = duplicado). Por defecto, del año en curso.
+     */
+    @GetMapping("/asientos/sin-asiento")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.contabilidad.DocumentoSinAsientoDto>>> sinAsiento(
+            @RequestParam(required = false) String desde,
+            @RequestParam(required = false) String hasta) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        LocalDate hoy = LocalDate.now();
+        LocalDate d = (desde != null && !desde.isBlank()) ? LocalDate.parse(desde) : hoy.withDayOfYear(1);
+        LocalDate h = (hasta != null && !hasta.isBlank()) ? LocalDate.parse(hasta) : hoy;
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, reprocesoService.detectar(empresaId, d, h)));
+    }
+
+    /** Genera el asiento de un documento que no lo tiene (idempotente). */
+    @PostMapping("/asientos/reprocesar")
+    public ResponseEntity<ApiResponse<Long>> reprocesar(@RequestBody java.util.Map<String, Object> body) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null ? securityUtils.getUsuarioId().intValue() : null;
+        String tipo = body.get("tipoOrigen") != null ? body.get("tipoOrigen").toString() : null;
+        Long id = body.get("origenId") != null ? Long.valueOf(body.get("origenId").toString()) : null;
+        Long asientoId = reprocesoService.reprocesar(empresaId, usuarioId, tipo, id);
+        return ResponseEntity.ok(new ApiResponse<>(200,
+                asientoId != null ? "Asiento generado" : "El documento ya tenía asiento", false, asientoId));
+    }
 
     @PostMapping("/asientos/generar-desde-venta/{ventaId}")
     public ResponseEntity<ApiResponse<AsientoContableTableDto>> generarDesdeVenta(

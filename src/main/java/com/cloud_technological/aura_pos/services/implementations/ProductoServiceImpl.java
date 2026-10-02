@@ -34,6 +34,7 @@ import com.cloud_technological.aura_pos.repositories.unidad_medida.UnidadMedidaJ
 import com.cloud_technological.aura_pos.services.CategoriaContableProductoService;
 import com.cloud_technological.aura_pos.services.ConsumoComposicionService;
 import com.cloud_technological.aura_pos.services.ProductoService;
+import com.cloud_technological.aura_pos.utils.ClasificacionItem;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -100,14 +101,16 @@ public class ProductoServiceImpl implements ProductoService {
         }
         validarCodigoContraPresentaciones(dto.getCodigoBarras(), empresaId);
 
+        ClasificacionItem clasificacion = ClasificacionItem.de(dto.getClasificacion());
         categoriaContableService.validarCuentasProducto(empresaId, dto.getCategoriaContableId(),
-                dto.getCuentaIngresoId(), dto.getCuentaCostoId(), dto.getCuentaInventarioId());
+                dto.getCuentaIngresoId(), dto.getCuentaCostoId(), dto.getCuentaInventarioId(), clasificacion);
 
         try {
             ProductoEntity entity = productoMapper.toEntity(dto);
             if (entity.getVendePorUnidad() == null)
                 entity.setVendePorUnidad(true);
             aplicarUso(entity, dto.getUsoProducto(), "VENTA", dto.getVisibleEnPos());
+            aplicarClasificacion(entity, clasificacion);
 
             EmpresaEntity empresa = empresaRepository.findById(empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
@@ -147,8 +150,18 @@ public class ProductoServiceImpl implements ProductoService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está en uso");
         validarCodigoContraPresentaciones(dto.getCodigoBarras(), empresaId);
 
+        // Una pantalla que no manda la clasificación conserva la que tenía.
+        ClasificacionItem clasificacion = dto.getClasificacion() != null && !dto.getClasificacion().isBlank()
+                ? ClasificacionItem.de(dto.getClasificacion())
+                : ClasificacionItem.de(entity.getClasificacion());
+        if (clasificacion != ClasificacionItem.de(entity.getClasificacion())
+                && ClasificacionItem.de(entity.getClasificacion()).mueveInventario()
+                && productoRepository.stockTotal(id, empresaId).signum() != 0)
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "El producto tiene existencias: no puede dejar de ser mercancía. Saque el stock"
+                            + " (ajuste, merma o consumo interno) antes de cambiar su clasificación");
         categoriaContableService.validarCuentasProducto(empresaId, dto.getCategoriaContableId(),
-                dto.getCuentaIngresoId(), dto.getCuentaCostoId(), dto.getCuentaInventarioId());
+                dto.getCuentaIngresoId(), dto.getCuentaCostoId(), dto.getCuentaInventarioId(), clasificacion);
 
         // El mapper pisa con null lo que no venga: el uso actual se guarda antes.
         String usoActual = entity.getUsoProducto();
@@ -163,6 +176,7 @@ public class ProductoServiceImpl implements ProductoService {
         if (dto.getVendePorUnidad() == null)
             entity.setVendePorUnidad(vendePorUnidadActual != null ? vendePorUnidadActual : true);
         aplicarUso(entity, dto.getUsoProducto(), usoActual, dto.getVisibleEnPos());
+        aplicarClasificacion(entity, clasificacion);
 
         // Categoría
         if (dto.getCategoriaId() != null) {
@@ -336,6 +350,22 @@ public class ProductoServiceImpl implements ProductoService {
                     return dto;
                 })
                 .toList();
+    }
+
+    /**
+     * Fija la clasificación (V185) y apaga lo que no aplica: solo la mercancía
+     * lleva inventario, lotes y seriales, y solo lo que se vende sale en el POS.
+     */
+    private void aplicarClasificacion(ProductoEntity entity, ClasificacionItem clasificacion) {
+        entity.setClasificacion(clasificacion.name());
+        if (!clasificacion.mueveInventario()) {
+            entity.setManejaInventario(false);
+            entity.setManejaLotes(false);
+            entity.setManejaSerial(false);
+        }
+        if (!clasificacion.seVende()) {
+            entity.setVisibleEnPos(false);
+        }
     }
 
     /**

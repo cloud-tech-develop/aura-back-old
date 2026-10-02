@@ -39,6 +39,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ConsumoComposicionService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     public static final String ORIGEN_MERMA = "MERMA";
     public static final String ORIGEN_OBSEQUIO = "OBSEQUIO";
     public static final String ORIGEN_CONSUMO_INTERNO = "CONSUMO_INTERNO";
@@ -89,8 +93,8 @@ public class ConsumoComposicionService {
             }
 
             BigDecimal porUnidad = linea.getCantidad() != null ? linea.getCantidad() : BigDecimal.ZERO;
-            BigDecimal stock = inventarioRepository
-                    .findByBodegaIdAndProductoId(bodegaId, hijo.getId())
+            BigDecimal stock = inventarioStock
+                    .bloquear(bodegaId, hijo.getId())
                     .map(InventarioEntity::getStockActual)
                     .orElse(null);
 
@@ -211,8 +215,8 @@ public class ConsumoComposicionService {
     }
 
     private InventarioEntity buscarInventario(BodegaEntity bodega, ProductoEntity producto) {
-        return inventarioRepository
-                .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+        return inventarioStock
+                .bloquear(bodega.getId(), producto.getId())
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                         "El componente '" + producto.getNombre() + "' no tiene inventario en la bodega "
                         + bodega.getNombre()));

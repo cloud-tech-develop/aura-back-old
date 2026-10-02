@@ -27,4 +27,11 @@ public interface FormaPagoContableService {
      * TARJETA, NEQUI, DAVIPLATA→1110), omitiendo las que ya existan.
      */
     void seedDefaults(Integer empresaId);
+
+    /**
+     * Copia la cuenta (y si pide cuenta bancaria) de una forma de pago a otras:
+     * "crédito" → ADDI, Sistecrédito, Bold… sin configurarlas una por una.
+     * Devuelve cuántas cambió.
+     */
+    int copiarCuenta(Integer empresaId, Long origenId, java.util.List<Long> destinoIds);
 }

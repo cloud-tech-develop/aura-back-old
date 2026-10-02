@@ -33,24 +33,24 @@ Leyenda de dependencias: `→` depende de.
 | TASK-A-003 | Red de autorización por URL, seguridad de método activa, rotación JWT | P0 | Backend | — |
 | TASK-A-004 | Proteger el catálogo global de unidades de medida | P0 | Backend | — |
 | ~~TASK-B-001~~ | ❌ Descartada por decisión del usuario (2026-09-29): no se bloquea anular ventas con CUFE | — | — | — |
-| TASK-B-003 | Anulación de venta completa (banco, devoluciones, comisiones) | P0 | Backend | → B-001 |
-| TASK-B-002 | Anulación de compra completa (CxP, pagos, validaciones) | P0 | Backend | — |
-| TASK-B-005 | Valor de la devolución con descuentos de línea y general | P0 | Backend | — |
-| TASK-B-012 | Gasto: edición y anulación coherentes | P0 | Backend | — |
+| ✅ TASK-B-003 | Anulación de venta completa (banco, devoluciones, comisiones) — hecho sin bloqueo por CUFE: revierte banco, bloquea con devoluciones vigentes o comisiones liquidadas; comisiones de ventas anuladas fuera de turno/liquidación | P0 | Backend | → B-001 |
+| ✅ TASK-B-002 | Anulación de compra completa (CxP, pagos, validaciones) — hecho: bloquea NC vigentes, DS aceptado y abonos; revierte pagos (caja/banco) y anula CxP. Sin columna de motivo (pendiente) | P0 | Backend | — |
+| ✅ TASK-B-005 | Valor de la devolución con descuentos de línea y general — hecho: reembolso = subtotal_linea proporcional × prorrata del descuento general | P0 | Backend | — |
+| ✅ TASK-B-012 | Gasto: edición y anulación coherentes — hecho: editar bloquea cambios de dinero y re-postea el asiento; eliminar = anulación completa (CxP, caja, banco) | P0 | Backend | — |
 | TASK-B-017 | Cierre de accesos cruzados entre empresas (caja, devoluciones, ventas) | P1 | Backend | → A-002 |
-| TASK-B-007 | Payload de factura electrónica fiel a la venta | P0 | Backend | — |
-| TASK-B-008 (paso 1) | Quitar `@Retry` en FE, reservar estado antes de enviar, `reference_code` único por sucursal | P0 | Backend | — |
-| TASK-C-001 | Guard de período contable en documentos operativos | P0 | Backend | — |
-| TASK-C-002 | Reproceso atómico de documentos editados (compra) | P0 | Backend | — |
+| ✅ TASK-B-007 | Payload de factura electrónica fiel a la venta — hecho (VALIDAR EN SANDBOX FACTUS): IVA y descuento de la línea + prorrata del general, forma/medio de pago reales, persona jurídica/tributo del tercero | P0 | Backend | — |
+| ✅ TASK-B-008 (paso 1) | Quitar `@Retry` en FE, reservar estado antes de enviar, `reference_code` único por sucursal — hecho: sin retry, reserva ENVIANDO, estado DESCONOCIDO en read-timeout, reference_code V{ventaId}; fallback ya no oculta rechazos | P0 | Backend | — |
+| ✅ TASK-C-001 | Guard de período contable en documentos operativos — hecho: PeriodoContableResolver.exigirAbierto en compra, gasto, devolución, tesorería, traslado de fondos, recibo de caja y abonos CxC/CxP | P0 | Backend | — |
+| ✅ TASK-C-002 | Reproceso atómico de documentos editados (compra) — hecho: reprocesarCompra (y reprocesarGasto) reversa+genera en una transacción | P0 | Backend | — |
 
 ## F2 — Integridad transaccional
 
 | ID | Tarea | Prio | Tipo | Depende |
 |---|---|---|---|---|
-| TASK-A-007 (= B-009) | Numerador transaccional de consecutivos, único por documento | P0 | Backend/DB | F0-03 |
-| TASK-A-005 (= B-010) | Servicio único de movimiento de stock con bloqueo | P0 | Backend | — |
-| TASK-A-006 | El stock solo cambia por documentos (quitar edición directa) | P0 | Backend/Frontend | → A-005 |
-| TASK-C-003 | Consecutivo de comprobante seguro, idempotencia en BD, reproceso y detector de documentos sin asiento | P0 | Backend/DB | → A-007 |
+| ✅ TASK-A-007 (= B-009) | Numerador transaccional de consecutivos, único por documento — hecho 2026-09-29: pg_advisory_xact_lock en venta (por sucursal), cotización, CxC/CxP y serie de comprobantes (compartida con notas); quitado el catch que devolvía 1 | P0 | Backend/DB | F0-03 |
+| ✅ TASK-A-005 (= B-010) | Servicio único de movimiento de stock con bloqueo — hecho: InventarioStockService.bloquear (SELECT … FOR UPDATE) en los 27 puntos + prebloqueo ordenado en la venta | P0 | Backend | — |
+| ✅ TASK-A-006 | El stock solo cambia por documentos (quitar edición directa) — decisión: se deja la edición manual pero pide motivo y deja kardex AJUSTE_MANUAL_ENTRADA/SALIDA (también el saldo inicial) | P0 | Backend/Frontend | → A-005 |
+| ✅ TASK-C-003 | Consecutivo de comprobante seguro, idempotencia en BD, reproceso y detector de documentos sin asiento — hecho parcial: candado por documento en ambos motores, detector GET /asientos/sin-asiento, POST /asientos/reprocesar y pestaña Sin asiento; pendiente separar series OB/CE y job automático | P0 | Backend/DB | → A-007 |
 | TASK-B-015 | Idempotencia de creación y control de factura de proveedor duplicada | P1 | Backend/DB | — |
 | TASK-B-016 | Bloqueo en abonos CxC/CxP y movimientos de turno | P1 | Backend | — |
 | TASK-B-024 | Estados tipados en documentos | P1 | Backend/DB | — |
@@ -62,7 +62,7 @@ Leyenda de dependencias: `→` depende de.
 | ID | Tarea | Prio | Tipo | Depende |
 |---|---|---|---|---|
 | TASK-A-011 | Kardex estructurado (documento, usuario, costo, valor, signo) | P1 | Backend/DB | → A-005 |
-| TASK-A-008 | Costo promedio ponderado por empresa y producto (flag) | P0 | Backend/DB | → A-011 |
+| TASK-A-008 | ✅ 2026-09-29 (local) Costo promedio ponderado en `producto.costo` (`CostoPromedioService` + tests): compra neta de descuento con fletes prorrateados, NC/anular/editar reversan; V184 costo a 6 decimales (+ espejo Laravel). Sin flag | P0 | Backend/DB | — |
 | TASK-C-004 | Costo promedio como base del asiento + control 1435 vs kardex | P0 | Backend | → A-008, C-003 |
 | TASK-A-017 | Reversos al costo del movimiento original | P1 | Backend | → A-011 |
 | TASK-C-005 | `DevolucionGenerador` espejo de la venta original | P0 | Backend | → C-004 |

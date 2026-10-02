@@ -88,6 +88,78 @@ public class ActivoFijoEntity {
     @Column(columnDefinition = "TEXT")
     private String observaciones;
 
+    // ── Origen (V185): la compra que creó la ficha ──────────────────────
+    @Column(name = "compra_id")
+    private Long compraId;
+
+    @Column(name = "compra_detalle_id")
+    private Long compraDetalleId;
+
+    @Column(name = "producto_id")
+    private Long productoId;
+
+    // ── Ficha completa (V186) ───────────────────────────────────────────
+    @Column(length = 40)
+    private String placa;
+
+    @Column(length = 80)
+    private String serial;
+
+    @Column(length = 80)
+    private String marca;
+
+    @Column(length = 80)
+    private String modelo;
+
+    @Column(name = "responsable_tercero_id")
+    private Long responsableTerceroId;
+
+    @Column(name = "activo_padre_id")
+    private Long activoPadreId;
+
+    @Column(length = 120)
+    private String aseguradora;
+
+    @Column(name = "poliza_numero", length = 60)
+    private String polizaNumero;
+
+    @Column(name = "poliza_vence")
+    private LocalDate polizaVence;
+
+    /** La depreciación empieza el mes de esta fecha; null = fecha de adquisición. */
+    @Column(name = "fecha_inicio_depreciacion")
+    private LocalDate fechaInicioDepreciacion;
+
+    /** Unidades de producción: vida total en unidades (horas, km, piezas). */
+    @Column(name = "unidades_estimadas", precision = 18, scale = 2)
+    private BigDecimal unidadesEstimadas;
+
+    /** Adiciones capitalizadas: el costo depreciable es valorCompra + esto. */
+    @Column(name = "valor_adiciones", nullable = false, precision = 18, scale = 2)
+    private BigDecimal valorAdiciones = BigDecimal.ZERO;
+
+    // ── Baja y venta (V186) ─────────────────────────────────────────────
+    @Column(name = "fecha_retiro")
+    private LocalDate fechaRetiro;
+
+    @Column(name = "motivo_retiro", length = 300)
+    private String motivoRetiro;
+
+    @Column(name = "valor_venta", precision = 18, scale = 2)
+    private BigDecimal valorVenta;
+
+    @Column(name = "comprador_tercero_id")
+    private Long compradorTerceroId;
+
+    @Column(name = "asiento_retiro_id")
+    private Long asientoRetiroId;
+
+    /** Costo depreciable: compra + adiciones. */
+    public BigDecimal costoTotal() {
+        return (valorCompra != null ? valorCompra : BigDecimal.ZERO)
+                .add(valorAdiciones != null ? valorAdiciones : BigDecimal.ZERO);
+    }
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

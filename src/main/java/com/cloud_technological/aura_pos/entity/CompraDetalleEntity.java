@@ -71,4 +71,15 @@ public class CompraDetalleEntity {
 
     @Column(name = "costo_presentacion")
     private BigDecimal costoPresentacion;
+
+    /**
+     * Clasificación del producto al registrar la línea (V185). Null en compras
+     * previas = PRODUCTO. Anular y editar la leen para deshacer lo que la
+     * línea hizo, aunque el producto haya cambiado de clasificación después.
+     */
+    private String clasificacion;
+
+    /** Unidades base sueltas que acompañan a la presentación: 4 Pacas + 2 und (V185). */
+    @Column(name = "cantidad_suelta")
+    private BigDecimal cantidadSuelta;
 }

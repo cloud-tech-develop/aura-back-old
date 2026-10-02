@@ -45,6 +45,10 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class TrasladoServiceImpl implements TrasladoService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
     private final TrasladoQueryRepository trasladoRepository;
@@ -160,8 +164,8 @@ public class TrasladoServiceImpl implements TrasladoService {
                             "Producto no encontrado: " + item.getProductoId()));
 
             // 2.1 Validar stock en origen
-            InventarioEntity invOrigen = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodegaOrigen.getId(), producto.getId())
+            InventarioEntity invOrigen = inventarioStock
+                    .bloquear(bodegaOrigen.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
                             + bodegaOrigen.getNombre()));
@@ -253,8 +257,8 @@ public class TrasladoServiceImpl implements TrasladoService {
             ProductoEntity producto = detalle.getProducto();
 
             // Devolver stock al origen
-            InventarioEntity invOrigen = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodegaOrigen.getId(), producto.getId())
+            InventarioEntity invOrigen = inventarioStock
+                    .bloquear(bodegaOrigen.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario origen no encontrado para: " + producto.getNombre()));
 
@@ -279,8 +283,8 @@ public class TrasladoServiceImpl implements TrasladoService {
                             refAnulacion));
 
             // Restar stock del destino
-            InventarioEntity invDestino = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodegaDestino.getId(), producto.getId())
+            InventarioEntity invDestino = inventarioStock
+                    .bloquear(bodegaDestino.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario destino no encontrado para: " + producto.getNombre()));
 
@@ -320,8 +324,8 @@ public class TrasladoServiceImpl implements TrasladoService {
     // ─── Métodos privados ────────────────────────────────────────────────────
 
     private InventarioEntity resolverInventarioDestino(com.cloud_technological.aura_pos.entity.BodegaEntity destino, ProductoEntity producto) {
-        return inventarioJPARepository
-                .findByBodegaIdAndProductoId(destino.getId(), producto.getId())
+        return inventarioStock
+                .bloquear(destino.getId(), producto.getId())
                 .orElseGet(() -> {
                     InventarioEntity nuevo = new InventarioEntity();
                     nuevo.setBodega(destino);

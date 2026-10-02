@@ -25,6 +25,8 @@ public class UpdateProductoDto {
     private String tipoProducto;
     /** VENTA | INSUMO | AMBOS. Null conserva el actual. */
     private String usoProducto;
+    /** PRODUCTO | SERVICIO | GASTO | DOTACION | ACTIVO_FIJO | INTANGIBLE | DIFERIDO (V185). */
+    private String clasificacion;
     private Boolean manejaInventario;
     private Boolean manejaLotes;
     private Boolean manejaSerial;

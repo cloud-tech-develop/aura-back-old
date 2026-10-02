@@ -50,6 +50,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TrasladoFondosServiceImpl implements TrasladoFondosService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
     private static final String TIPO_ORIGEN = "TRASLADO_FONDOS";
     private static final String EFECTIVO = "EFECTIVO";
     private static final String TRANSFERENCIA = "TRANSFERENCIA";
@@ -73,6 +77,7 @@ public class TrasladoFondosServiceImpl implements TrasladoFondosService {
         validarExtremosDistintos(dto);
 
         LocalDate fecha = dto.getFecha() != null ? dto.getFecha() : LocalDate.now();
+        periodoGuard.exigirAbierto(empresaId, fecha);
 
         // Resolver ambos extremos ANTES de guardar: si el destino no sirve como
         // medio de pago, el traslado no debe existir a medias con el arqueo del

@@ -16,5 +16,7 @@ public class InventarioDto {
     private String productoSku;
     private BigDecimal stockActual;
     private BigDecimal stockMinimo;
+    private BigDecimal stockMaximo;
+    private BigDecimal puntoReorden;
     private String ubicacion;
 }

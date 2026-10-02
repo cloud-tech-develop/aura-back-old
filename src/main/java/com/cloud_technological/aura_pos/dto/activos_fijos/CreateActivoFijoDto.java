@@ -48,4 +48,19 @@ public class CreateActivoFijoDto {
     private Long periodoContableId;
     private Long terceroId;
     private String observaciones;
+
+    // ── Ficha completa (V186) ───────────────────────────────────────────
+    private String placa;
+    private String serial;
+    private String marca;
+    private String modelo;
+    private Long responsableTerceroId;
+    private Long activoPadreId;
+    private String aseguradora;
+    private String polizaNumero;
+    private LocalDate polizaVence;
+    /** La depreciación empieza el mes de esta fecha; vacío = fecha de adquisición. */
+    private LocalDate fechaInicioDepreciacion;
+    /** Solo UNIDADES_PRODUCCION: vida total en unidades. */
+    private BigDecimal unidadesEstimadas;
 }

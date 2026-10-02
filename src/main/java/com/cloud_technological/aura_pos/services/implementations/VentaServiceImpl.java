@@ -74,6 +74,13 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class VentaServiceImpl implements VentaService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
 
@@ -97,6 +104,9 @@ public class VentaServiceImpl implements VentaService {
     private final TerceroJPARepository terceroJPARepository;
     private final UsuarioJPARepository usuarioJPARepository;
     private final EmpresaJPARepository empresaRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.RecargoFormaPagoService recargoFormaPago;
     private final SucursalJPARepository sucursalJPARepository;
     private final MovimientoInventarioJPARepository movimientoJPARepository;
     private final VentaMapper ventaMapper;
@@ -195,6 +205,10 @@ public class VentaServiceImpl implements VentaService {
     @Override
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
+
+        // 0. Recargo por forma de pago (Sistecrédito, ADDI…): sube esos pagos y
+        // agrega la línea del recargo antes de validar y totalizar.
+        if (recargoFormaPago != null) recargoFormaPago.aplicar(dto, empresaId);
 
         // 1. Validar turno. Sigue siendo opcional para vendedores sin caja, pero
         // el efectivo obliga: sin turno no hay dónde registrar el dinero físico
@@ -328,6 +342,18 @@ public class VentaServiceImpl implements VentaService {
         final SucursalEntity sucursalVenta = sucursal;
         final com.cloud_technological.aura_pos.entity.BodegaEntity bodegaVenta = bodega;
 
+        // Bloqueo de los saldos de la venta en orden fijo (por id de producto).
+        // Cada línea los bloquea igual al procesarse, pero en el orden del
+        // carrito: dos cajas con los mismos productos en distinto orden se
+        // quedarían esperándose una a la otra (deadlock). Tomarlos todos aquí,
+        // ordenados, lo evita.
+        dto.getDetalles().stream()
+                .map(CreateVentaDetalleDto::getProductoId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .forEach(pid -> inventarioStock.bloquear(bodegaVenta.getId(), pid));
+
         // 4. Procesar cada detalle
         for (CreateVentaDetalleDto item : dto.getDetalles()) {
             ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(item.getProductoId(), empresaId)
@@ -366,8 +392,8 @@ public class VentaServiceImpl implements VentaService {
 
                     BigDecimal cantidadRequerida = cantidadBase.multiply(comp.getCantidad());
 
-                    InventarioEntity invHijo = inventarioJPARepository
-                            .findByBodegaIdAndProductoId(bodega.getId(), hijo.getId())
+                    InventarioEntity invHijo = inventarioStock
+                            .bloquear(bodega.getId(), hijo.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en la bodega "
                             + bodega.getNombre()));
@@ -381,8 +407,8 @@ public class VentaServiceImpl implements VentaService {
                     }
                 }
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
-                InventarioEntity inventario = inventarioJPARepository
-                        .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+                InventarioEntity inventario = inventarioStock
+                        .bloquear(bodega.getId(), producto.getId())
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                         "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
                         + bodega.getNombre()));
@@ -448,8 +474,8 @@ public class VentaServiceImpl implements VentaService {
 
                     BigDecimal cantidadDescontar = cantidadBase.multiply(comp.getCantidad());
 
-                    InventarioEntity invHijo = inventarioJPARepository
-                            .findByBodegaIdAndProductoId(bodega.getId(), hijo.getId())
+                    InventarioEntity invHijo = inventarioStock
+                            .bloquear(bodega.getId(), hijo.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en la bodega "
                             + bodega.getNombre()));
@@ -475,8 +501,8 @@ public class VentaServiceImpl implements VentaService {
 
             } else if (Boolean.TRUE.equals(producto.getManejaInventario())) {
                 // Producto simple → descontar cantidadBase (ya dividida por factorConversion si hay presentación)
-                InventarioEntity inventario = inventarioJPARepository
-                        .findByBodegaIdAndProductoId(bodega.getId(), producto.getId()).get();
+                InventarioEntity inventario = inventarioStock
+                        .bloquear(bodega.getId(), producto.getId()).get();
 
                 BigDecimal saldoAnterior = inventario.getStockActual();
                 BigDecimal saldoNuevo = saldoAnterior.subtract(cantidadBase);
@@ -735,9 +761,36 @@ public class VentaServiceImpl implements VentaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La venta ya está anulada");
         }
 
+        // Con devoluciones vigentes, anular la venta reversaría dos veces lo
+        // mismo (la devolución ya devolvió inventario, dinero e ingreso).
+        if (ventaRepository.devolucionesVigentes(id) > 0) {
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "La venta tiene devoluciones vigentes: anúlelas primero o registre la devolución total");
+        }
+        // Una comisión ya liquidada se le pagó al técnico/vendedor: anular la
+        // venta no puede borrarla en silencio.
+        if (ventaRepository.comisionesLiquidadas(id) > 0) {
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "Las comisiones de esta venta ya se liquidaron: ajuste la liquidación antes de anular la venta");
+        }
+
         // Anular la cuenta por cobrar asociada (ventas a crédito).
         // Falla si la cuenta ya tiene abonos, abortando la anulación de la venta.
         cuentaCobrarService.anularPorVenta(id, empresaId);
+
+        // El dinero que entró al banco sale de nuevo: sin esto el saldo de la
+        // cuenta bancaria quedaba inflado con ventas que ya no existen.
+        Long usuarioAnula = securityUtils.getUsuarioId();
+        for (VentaQueryRepository.PagoBancario pago : ventaRepository.pagosBancarios(id)) {
+            tesoreriaService.registrarMovimientoDeDocumento(empresaId,
+                    usuarioAnula != null ? usuarioAnula.intValue() : null,
+                    new com.cloud_technological.aura_pos.services.TesoreriaService.MovimientoDocumento(
+                            pago.cuentaBancariaId(), true, pago.monto(),
+                            "Anulación venta " + Documentos.numeroVenta(venta) + " - reverso del recaudo",
+                            com.cloud_technological.aura_pos.utils.Terceros.nombreVisible(venta.getCliente()),
+                            "VENTA-" + venta.getId(),
+                            "VENTA"));
+        }
 
         List<VentaDetalleEntity> detalles = detalleJPARepository.findByVentaId(id);
 
@@ -765,8 +818,8 @@ public class VentaServiceImpl implements VentaService {
 
                         BigDecimal cantidadDevolver = cantidadBase.multiply(comp.getCantidad());
 
-                        InventarioEntity invHijo = inventarioJPARepository
-                                .findByBodegaIdAndProductoId(bodegaDeVenta(venta, empresaId).getId(), hijo.getId())
+                        InventarioEntity invHijo = inventarioStock
+                                .bloquear(bodegaDeVenta(venta, empresaId).getId(), hijo.getId())
                                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                                 "Inventario no encontrado para componente: " + hijo.getNombre()));
 
@@ -789,8 +842,8 @@ public class VentaServiceImpl implements VentaService {
                     }
                 } else {
                     // Producto simple — lógica actual sin cambios
-                    InventarioEntity inventario = inventarioJPARepository
-                            .findByBodegaIdAndProductoId(bodegaDeVenta(venta, empresaId).getId(), producto.getId())
+                    InventarioEntity inventario = inventarioStock
+                            .bloquear(bodegaDeVenta(venta, empresaId).getId(), producto.getId())
                             .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + producto.getNombre()));
 

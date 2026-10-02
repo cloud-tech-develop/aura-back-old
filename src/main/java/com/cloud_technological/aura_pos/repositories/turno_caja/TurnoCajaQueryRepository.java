@@ -203,6 +203,7 @@ public class TurnoCajaQueryRepository {
             JOIN tercero t  ON u.tercero_id   = t.id
             LEFT JOIN comision_liquidacion cl ON cv.liquidacion_id = cl.id
             WHERE v.turno_caja_id = :turnoId
+              AND v.estado_venta <> 'ANULADA'
             GROUP BY u.id, t.nombres, t.apellidos
             ORDER BY total_comision DESC
             """;
@@ -281,6 +282,7 @@ public class TurnoCajaQueryRepository {
             FROM comision_venta cv
             JOIN venta v ON cv.venta_id = v.id
             WHERE v.turno_caja_id = :turnoId
+              AND v.estado_venta <> 'ANULADA'
             """;
         BigDecimal total = jdbcTemplate.queryForObject(sql,
             new MapSqlParameterSource("turnoId", turnoId), BigDecimal.class);

@@ -42,6 +42,11 @@ public class FormaPagoContableEntity {
     @Builder.Default
     private Boolean activo = Boolean.TRUE;
 
+    /** Recargo que paga el cliente al usar esta forma (Sistecrédito 5 %…), V188. */
+    @Column(name = "recargo_porcentaje", nullable = false, precision = 7, scale = 4)
+    @Builder.Default
+    private java.math.BigDecimal recargoPorcentaje = java.math.BigDecimal.ZERO;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

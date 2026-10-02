@@ -48,6 +48,93 @@ public class AperturaContableServiceImpl implements AperturaContableService {
                 .orElse(null);
     }
 
+    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.SaldosInicialesQueryRepository saldosQuery;
+
+    @Override
+    public List<com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto> sugerencias(
+            Integer empresaId, String fuente) {
+        String f = fuente != null ? fuente.trim().toUpperCase() : "";
+        List<com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto> out = new ArrayList<>();
+        switch (f) {
+            case "INVENTARIO" -> {
+                for (var r : saldosQuery.inventario(empresaId)) {
+                    Long cuenta = cuentaO(r.get("cuenta_id"), empresaId, ConceptoContable.INVENTARIO);
+                    out.add(sugerencia(f, cuenta, null, null, "Inventario valorizado al costo promedio",
+                            decimal(r.get("valor")), empresaId));
+                }
+            }
+            case "ACTIVOS" -> {
+                for (var r : saldosQuery.activos(empresaId)) {
+                    boolean intangible = "INTANGIBLE".equals(r.get("categoria"));
+                    Long cuentaActivo = cuentaO(r.get("cuenta_activo_id"), empresaId,
+                            intangible ? ConceptoContable.INTANGIBLES : ConceptoContable.ACTIVO_FIJO_COMPRA);
+                    Long cuentaDep = cuentaO(r.get("cuenta_depreciacion_id"), empresaId,
+                            intangible ? ConceptoContable.AMORTIZACION_ACUMULADA : ConceptoContable.DEPRECIACION_ACUMULADA);
+                    out.add(sugerencia(f, cuentaActivo, null, null, "Costo de activos " + r.get("categoria"),
+                            decimal(r.get("costo")), empresaId));
+                    BigDecimal dep = decimal(r.get("depreciacion"));
+                    if (dep.signum() != 0) {
+                        out.add(sugerencia(f, cuentaDep, null, null, "Depreciación acumulada " + r.get("categoria"),
+                                dep.negate(), empresaId));
+                    }
+                }
+            }
+            case "DIFERIDOS" -> {
+                for (var r : saldosQuery.diferidos(empresaId)) {
+                    Long cuenta = cuentaO(r.get("cuenta_id"), empresaId, ConceptoContable.GASTOS_PAGADOS_ANTICIPADO);
+                    out.add(sugerencia(f, cuenta, null, null, "Diferidos por amortizar", decimal(r.get("valor")), empresaId));
+                }
+            }
+            case "CARTERA", "PROVEEDORES" -> {
+                boolean porPagar = "PROVEEDORES".equals(f);
+                Long cuenta = config.resolverCuenta(empresaId,
+                        porPagar ? ConceptoContable.PROVEEDORES : ConceptoContable.CLIENTES).getId();
+                for (var r : saldosQuery.cartera(empresaId, porPagar)) {
+                    BigDecimal valor = decimal(r.get("valor"));
+                    out.add(sugerencia(f, cuenta, r.get("tercero_id") != null ? ((Number) r.get("tercero_id")).longValue() : null,
+                            (String) r.get("tercero_nombre"), porPagar ? "Saldo por pagar" : "Saldo por cobrar",
+                            porPagar ? valor.negate() : valor, empresaId));
+                }
+            }
+            case "BANCOS" -> {
+                for (SaldoInicialLineaDto l : sugerirDesdeBancos(empresaId)) {
+                    out.add(sugerencia(f, l.getCuentaId(), null, null, "Saldo actual del banco",
+                            nz(l.getDebito()).subtract(nz(l.getCredito())), empresaId));
+                }
+            }
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Fuente inválida: use INVENTARIO, ACTIVOS, DIFERIDOS, CARTERA, PROVEEDORES o BANCOS");
+        }
+        return out;
+    }
+
+    /** saldo positivo = débito; negativo = crédito. */
+    private com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto sugerencia(String fuente,
+            Long cuentaId, Long terceroId, String terceroNombre, String descripcion, BigDecimal saldo, Integer empresaId) {
+        var s = new com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto();
+        s.setFuente(fuente);
+        s.setCuentaId(cuentaId);
+        planRepo.findByIdAndEmpresaId(cuentaId, empresaId).ifPresent(c -> {
+            s.setCuentaCodigo(c.getCodigo());
+            s.setCuentaNombre(c.getNombre());
+        });
+        s.setTerceroId(terceroId);
+        s.setTerceroNombre(terceroNombre);
+        s.setDescripcion(descripcion);
+        BigDecimal v = saldo.setScale(2, java.math.RoundingMode.HALF_UP);
+        s.setDebito(v.max(BigDecimal.ZERO));
+        s.setCredito(v.signum() < 0 ? v.abs() : BigDecimal.ZERO);
+        return s;
+    }
+
+    private Long cuentaO(Object cuentaId, Integer empresaId, ConceptoContable porDefecto) {
+        return cuentaId != null ? ((Number) cuentaId).longValue() : config.resolverCuenta(empresaId, porDefecto).getId();
+    }
+
+    private static BigDecimal decimal(Object v) {
+        return v instanceof BigDecimal b ? b : v instanceof Number n ? new BigDecimal(n.toString()) : BigDecimal.ZERO;
+    }
+
     @Override
     public List<SaldoInicialLineaDto> sugerirDesdeBancos(Integer empresaId) {
         List<SaldoInicialLineaDto> lineas = new ArrayList<>();
@@ -80,6 +167,8 @@ public class AperturaContableServiceImpl implements AperturaContableService {
         CreateSaldosInicialesDto dto = new CreateSaldosInicialesDto();
         dto.setFechaApertura(fecha != null ? fecha : java.time.LocalDate.now());
         dto.setLineas(lineas);
+        // Atajo pensado para eso: solo bancos, el resto es patrimonio.
+        dto.setAceptarDiferencia(true);
         // guardar() aplica el cuadre del descuadre contra patrimonio (resultados acumulados).
         return guardar(dto, empresaId, usuarioId);
     }
@@ -123,6 +212,12 @@ public class AperturaContableServiceImpl implements AperturaContableService {
 
         // Cuadre: la diferencia se lleva a la cuenta de ajuste (patrimonio).
         BigDecimal diff = totalDb.subtract(totalCr);
+        if (diff.signum() != 0 && !Boolean.TRUE.equals(dto.getAceptarDiferencia())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Los saldos no cuadran: débitos " + totalDb.toPlainString() + ", créditos "
+                            + totalCr.toPlainString() + ", diferencia " + diff.abs().toPlainString()
+                            + ". Revise los saldos o confirme que la diferencia es patrimonio.");
+        }
         if (diff.signum() != 0) {
             PlanCuentaEntity ajuste = (dto.getCuentaAjusteId() != null)
                     ? planRepo.findByIdAndEmpresaId(dto.getCuentaAjusteId(), empresaId)

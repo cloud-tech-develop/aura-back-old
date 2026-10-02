@@ -14,7 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.cloud_technological.aura_pos.contabilidad.domain.ReglasAsiento;
 import com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent;
 import com.cloud_technological.aura_pos.entity.DiferidoAmortizacionEntity;
+import com.cloud_technological.aura_pos.entity.DiferidoEntity;
 import com.cloud_technological.aura_pos.entity.GastoEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoJPARepository;
+import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoAmortizacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.gastos.GastoJPARepository;
 
@@ -35,6 +38,8 @@ public class DiferidoService {
     private final GastoJPARepository gastoRepo;
     private final DiferidoAmortizacionJPARepository amortizacionRepo;
     private final ApplicationEventPublisher eventPublisher;
+    private final DiferidoJPARepository diferidoRepo;
+    private final DiferidoQueryRepository diferidoQuery;
 
     /** Día 1 de cada mes a las 03:00. */
     @Scheduled(cron = "0 0 3 1 * *")
@@ -79,6 +84,46 @@ public class DiferidoService {
                             .build());
             eventPublisher.publishEvent(new DocumentoContabilizableEvent(
                     "DIFERIDO", amortizacion.getId(), empresaId, null));
+            generadas++;
+        }
+        return generadas + amortizarDiferidos(fecha, periodo);
+    }
+
+    /**
+     * Diferidos que nacen de una compra (V185). Empiezan el mes de su fecha de
+     * inicio: la cuota de un mes anterior a la compra no existe.
+     */
+    private int amortizarDiferidos(LocalDate fecha, String periodo) {
+        int generadas = 0;
+        for (Long id : diferidoQuery.vigentesConCuotasPendientes()) {
+            DiferidoEntity diferido = diferidoRepo.findById(id).orElse(null);
+            if (diferido == null || diferido.getMeses() == null || diferido.getMeses() <= 0
+                    || diferido.getFechaInicio().withDayOfMonth(1).isAfter(fecha)
+                    || diferidoQuery.cuotaDelPeriodo(id, periodo)) {
+                continue;
+            }
+            long cuotasGeneradas = diferidoQuery.cuotasGeneradas(id);
+            BigDecimal total = ReglasAsiento.nz(diferido.getMonto());
+            BigDecimal cuota = total.divide(BigDecimal.valueOf(diferido.getMeses()),
+                    ReglasAsiento.ESCALA, ReglasAsiento.REDONDEO);
+            boolean ultima = cuotasGeneradas == diferido.getMeses() - 1;
+            if (ultima) {
+                cuota = total.subtract(cuota.multiply(BigDecimal.valueOf(diferido.getMeses() - 1)));
+            }
+
+            DiferidoAmortizacionEntity amortizacion = amortizacionRepo.save(
+                    DiferidoAmortizacionEntity.builder()
+                            .empresaId(diferido.getEmpresaId())
+                            .diferidoId(id)
+                            .periodo(periodo)
+                            .monto(cuota)
+                            .build());
+            if (ultima) {
+                diferido.setEstado(DiferidoEntity.TERMINADO);
+                diferidoRepo.save(diferido);
+            }
+            eventPublisher.publishEvent(new DocumentoContabilizableEvent(
+                    "DIFERIDO", amortizacion.getId(), diferido.getEmpresaId(), null));
             generadas++;
         }
         return generadas;

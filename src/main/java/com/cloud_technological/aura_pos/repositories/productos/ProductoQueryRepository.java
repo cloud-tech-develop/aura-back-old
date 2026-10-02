@@ -53,10 +53,12 @@ public class ProductoQueryRepository {
                 m.nombre AS marca_nombre,
                 p.tipo_producto,
                 p.uso_producto,
+                p.clasificacion,
                 p.precio,
                 p.costo,
                 p.activo,
                 p.iva_porcentaje AS ivaPorcentaje,
+                COALESCE(p.iva_incluido, false) AS iva_incluido,
                 um.abreviatura AS unidad_abreviatura,
                 COALESCE(p.maneja_lotes, false) AS maneja_lotes,
                 COALESCE(p.maneja_serial, false) AS maneja_serial,
@@ -87,7 +89,41 @@ public class ProductoQueryRepository {
             params.addValue("usos", usos);
         }
 
-        sql.append(" ORDER BY p.id DESC OFFSET :offset LIMIT :limit ");
+        List<String> clasificaciones = clasificacionesDeParams(pageable.getParams());
+        if (!clasificaciones.isEmpty()) {
+            sql.append(" AND p.clasificacion IN (:clasificaciones) ");
+            params.addValue("clasificaciones", clasificaciones);
+        }
+
+        // Buscador avanzado de productos: categoría, marca y estado.
+        if (pageable.getParams() instanceof java.util.Map<?, ?> filtros) {
+            Object categoriaId = filtros.get("categoriaId");
+            if (categoriaId != null && !categoriaId.toString().isBlank()) {
+                sql.append(" AND p.categoria_id = :categoriaId ");
+                params.addValue("categoriaId", Long.valueOf(categoriaId.toString()));
+            }
+            Object marcaId = filtros.get("marcaId");
+            if (marcaId != null && !marcaId.toString().isBlank()) {
+                sql.append(" AND p.marca_id = :marcaId ");
+                params.addValue("marcaId", Long.valueOf(marcaId.toString()));
+            }
+            Object activo = filtros.get("activo");
+            if (activo != null && !activo.toString().isBlank()) {
+                sql.append(" AND p.activo = :activo ");
+                params.addValue("activo", Boolean.valueOf(activo.toString()));
+            }
+        }
+
+        // Coincidencia exacta de SKU o código de barras primero (escáner), luego el orden pedido.
+        String orden = "p.nombre".equals(pageable.getOrder_by()) ? "p.nombre ASC" : "p.id DESC";
+        if (!search.isEmpty()) {
+            sql.append(" ORDER BY CASE WHEN LOWER(p.sku) = :exacto OR LOWER(p.codigo_barras) = :exacto THEN 0 ELSE 1 END, ")
+               .append(orden);
+            params.addValue("exacto", search);
+        } else {
+            sql.append(" ORDER BY ").append(orden);
+        }
+        sql.append(" OFFSET :offset LIMIT :limit ");
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
@@ -103,10 +139,19 @@ public class ProductoQueryRepository {
      * texto ("INSUMO" o "INSUMO,AMBOS") o una lista; ignora valores vacíos.
      */
     private static List<String> usosDeParams(Object params) {
+        return listaDeParams(params, "uso");
+    }
+
+    /** Filtro {@code params.clasificacion} del listado (V185), mismo formato que el de uso. */
+    private static List<String> clasificacionesDeParams(Object params) {
+        return listaDeParams(params, "clasificacion");
+    }
+
+    private static List<String> listaDeParams(Object params, String clave) {
         if (!(params instanceof java.util.Map<?, ?> paramMap)) {
             return List.of();
         }
-        Object uso = paramMap.get("uso");
+        Object uso = paramMap.get(clave);
         if (uso == null) {
             return List.of();
         }
@@ -191,6 +236,7 @@ public class ProductoQueryRepository {
                 p.iva_porcentaje,
                 p.tipo_producto,
                 p.uso_producto,
+                p.clasificacion,
                 p.codigo_barras,
                 c.nombre AS categoria_nombre
             FROM producto p
@@ -243,7 +289,8 @@ public class ProductoQueryRepository {
             p.permitir_stock_negativo,
             EXISTS (SELECT 1 FROM producto_composicion pc WHERE pc.producto_padre_id = p.id) AS es_compuesto,
             um.abreviatura AS unidad_abreviatura,
-            p.uso_producto
+            p.uso_producto,
+            p.clasificacion
         FROM producto p
         LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
         LEFT JOIN LATERAL (
@@ -260,6 +307,9 @@ public class ProductoQueryRepository {
         WHERE p.empresa_id = :empresaId
           AND p.deleted_at IS NULL
           AND p.activo = true
+          -- Merma, obsequio y consumo interno sacan existencias: solo la
+          -- mercancía las tiene (V185).
+          AND p.clasificacion = 'PRODUCTO'
         """;
 
     /**
@@ -537,6 +587,8 @@ public class ProductoQueryRepository {
           AND p.deleted_at   IS NULL
           AND p.visible_en_pos = true
           AND p.uso_producto <> 'INSUMO'
+          -- Un gasto, un activo o un diferido se compran, no se venden (V185).
+          AND p.clasificacion IN ('PRODUCTO', 'SERVICIO')
           AND p.activo       = true
           -- Un producto que no se vende por unidad solo aparece si tiene alguna
           -- presentación a la venta (F2: una tarjeta por producto).
@@ -595,5 +647,22 @@ public class ProductoQueryRepository {
                 .addValue("sucursalId", sucursalId);
         return jdbcTemplate.query(sql, params,
                 new BeanPropertyRowMapper<>(com.cloud_technological.aura_pos.dto.productos.PresentacionPosDto.class));
+    }
+
+    /**
+     * Existencias del producto en todas las bodegas. Un producto con stock no
+     * puede dejar de ser PRODUCTO: ese inventario quedaría sin quién lo mueva.
+     */
+    public java.math.BigDecimal stockTotal(Long productoId, Integer empresaId) {
+        String sql = """
+            SELECT COALESCE(SUM(i.stock_actual), 0)
+              FROM inventario i
+              JOIN producto p ON p.id = i.producto_id
+             WHERE i.producto_id = :productoId
+               AND p.empresa_id = :empresaId
+            """;
+        return jdbcTemplate.queryForObject(sql, new MapSqlParameterSource()
+                .addValue("productoId", productoId)
+                .addValue("empresaId", empresaId), java.math.BigDecimal.class);
     }
 }

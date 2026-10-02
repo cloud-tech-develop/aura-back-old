@@ -117,4 +117,17 @@ public class ProductoPresentacionQueryRepository {
         MapSqlParameterSource params = new MapSqlParameterSource("productoId", productoId);
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ProductoPresentacionTableDto.class));
     }
+
+    /** Presentación del producto con su factor y si está activa (para sincronizar conversiones). */
+    public record PresentacionFactor(Long id, java.math.BigDecimal factor, boolean activo) {
+    }
+
+    public List<PresentacionFactor> todasDelProducto(Long productoId) {
+        return jdbcTemplate.query("""
+            SELECT id, factor_conversion, COALESCE(activo, TRUE) AS activo
+              FROM producto_presentacion WHERE producto_id = :p ORDER BY id
+            """, new MapSqlParameterSource("p", productoId),
+                (rs, i) -> new PresentacionFactor(rs.getLong("id"), rs.getBigDecimal("factor_conversion"),
+                        rs.getBoolean("activo")));
+    }
 }
