@@ -18,6 +18,10 @@ public class CreateInventarioDto {
     /** Bodega de la que sale o a la que entra. Sin ella, la principal de la sucursal. */
     private Long bodegaId;
     private BigDecimal stockMinimo = BigDecimal.ZERO;
+    /** Hasta dónde llenar al pedir (V185). */
+    private BigDecimal stockMaximo;
+    /** Con este saldo o menos hay que pedir (V185). */
+    private BigDecimal puntoReorden;
     private BigDecimal stockActual = BigDecimal.ZERO;
     private String ubicacion;
 }

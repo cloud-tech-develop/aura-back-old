@@ -137,6 +137,16 @@ public enum ConceptoContable {
     DEPRECIACION_GASTO("5160", "Gasto por depreciación", "51", "52"),
     DEPRECIACION_ACUMULADA("1592", "Depreciación acumulada", "15", "16"),
 
+    // ── Catálogo unificado (V185): a dónde va la compra según la clasificación ──
+    ACTIVO_FIJO_COMPRA("1524", "Compra de activo fijo (propiedad, planta y equipo)", "15"),
+    INTANGIBLES("1635", "Compra de intangibles (licencias, software)", "16"),
+    AMORTIZACION_ACUMULADA("1698", "Amortización acumulada de intangibles", "16"),
+    GASTO_DOTACION("510551", "Dotación y suministro a trabajadores", "51", "52"),
+
+    // ── Baja y venta de activos fijos (Fase 3) ────────────────────────────
+    PERDIDA_BAJA_ACTIVOS("5310", "Pérdida en venta y retiro de activos", "53"),
+    UTILIDAD_VENTA_ACTIVOS("4245", "Utilidad en venta de activos", "42"),
+
     // ── Patrimonio / apertura (saldos iniciales) ──────────────────────────
     CAPITAL_SOCIAL("3105", "Capital social", "31"),
     RESULTADOS_ACUMULADOS("3705", "Resultados de ejercicios anteriores", "36", "37");

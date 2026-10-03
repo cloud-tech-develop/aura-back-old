@@ -1,0 +1,961 @@
+0:1919 segundosYa.
+0:2121 segundosMuchísimas gracias a todos los que se vuelven a unir a nuestra primera sesión de nuestra World Office Cloud Master
+0:2828 segundosWeek. Recuerda que hoy es el primer día de cinco sesiones donde vamos a ahondar en la versión en la nube de World Office
+0:3737 segundosCloud. Así que no pasa nada, tuvimos una interrupción en la sesión anterior, pero acá los estamos esperando. Vamos a esperar un poquito más para que las
+0:4545 segundospersonas que estaban unidas pues se puedan nuevamente reintegrar. Mientras tanto, les quiero dar muy buenas noticias y es que esta Master Week va a
+0:5555 segundostener cinco sesiones donde vas a poder aprender desde cómo crear un usuario hasta nómina, nómina electrónica, facturación electrónica, todo lo que
+1:031 minuto y 3 segundostenga que ver con inventarios, informes y muchísimo, muchísimo más. ¿Qué es importante? Que tú puedas asistir a
+1:101 minuto y 10 segundosestos 5 días. Nosotros durante la sesión vamos a estar compartiendo el enlace para que puedas dejar tu asistencia. Si
+1:181 minuto y 18 segundostú completas el 100% de asistencia, ya puedes contar con tu certificado eh totalmente gratuito para que puedas
+1:271 minuto y 27 segundosutilizarlo. Puedes llenarlo allí en tu LinkedIn, puedes ponerlo en tu hoja de vida. Tú sabes, querido contador, contadora, que eso es super importante
+1:351 minuto y 35 segundosporque también te abre puertas laborales, oportunidades laborales para que puedas también asistir a otras empresas y puedas también demostrar tu
+1:431 minuto y 43 segundosconocimiento con este certificado. Este es un espacio totalmente gratis. No hay ningún costo y todos son
+1:501 minuto y 50 segundosbienvenidísimos. Así que gracias a todos los que se están uniendo, gracias a Pablo, a Ana, gracias por supuesto a
+1:591 minuto y 59 segundosDiana, a Rocío, a María, a Marlen, a todos, a todos. Gracias de verdad por unirse nuevamente. Ya casi vamos a
+2:082 minutos y 8 segundosretomar donde estábamos en nuestra sesión con nuestro especialista Jonathan Beltrán. ¿Qué es importante? que también
+2:152 minutos y 15 segundosrecuerden que tienen por supuesto la gran recompensa de 220,000
+2:222 minutos y 22 segundospor cada referido. Recuerda que esta recompensa va a tuqu o a tu mi plata por
+2:282 minutos y 28 segundosun referido que no tenga Worldice y lo adquiera en este momento con nosotros.
+2:352 minutos y 35 segundospuede ser la versión empresarial o la versión enterprise, que son las versiones más completas de Word Worldice. Si tu referido completa eh o
+2:442 minutos y 44 segundosdigamos adquiere alguna de estas versiones, tú ya puedes contar con ese dinero. Yo te invito a que escanees el código que estás viendo en pantalla para
+2:512 minutos y 51 segundosque un especialista pueda ayudarte a que esos referidos se hagan efectivos.
+2:562 minutos y 56 segundosEstamos esperando por ti. Así que en este momento vamos a retomar nuevamente la clase.
+3:033 minutos y 3 segundosGracias Jonathan por acompañarnos en esta mañana. que no se compartiendo.
+3:103 minutos y 10 segundosYo les invito a que compartan este nuevo enlace a sus amigos, a sus colegas, al empresario que estaba acompañándonos
+3:173 minutos y 17 segundoshace un rato para que pueda unirse y no se pierda ningún detalle de esta primera clase que es fundamental porque aquí es
+3:243 minutos y 24 segundosdonde tú sientas las bases. Así que completa el el escanea el código, por supuesto, o llena el formulario que te
+3:333 minutos y 33 segundosestamos enviando a través del eh chat de este streaming y comparte este link para que tu amigo, tu empresario, pueda
+3:423 minutos y 42 segundosunirse a esta primera clase. Así que nuevamente bienvenidos y vamos a retomar nuestra primera sesión de nuestra World
+3:493 minutos y 49 segundosOffice Cloud Master Week. Bienvenido, Jonathan, de vuelta.
+3:533 minutos y 53 segundosGracias. Bueno, vamos a retomar en la parte que estábamos. Les pedimos una disculpa a todos los usuarios que de pronto eh estaban en nuestra sala
+4:024 minutos y 2 segundosanterior. Acá retomando estaba comentándoles que vamos a crear los usuarios, que es la parte inicial de los
+4:104 minutos y 10 segundostemas del día de hoy. Acá en los usuarios hacíamos énfasis en que este usuario, o el tercero que vayamos a
+4:194 minutos y 19 segundoscrear como usuario, debe venir creado con una marcación de empleado, sin importar si realmente corresponde a un
+4:264 minutos y 26 segundosempleado con contrato en nuestra empresa. ¿Listo? Entonces aquí estábamos que íbamos a crear a Martina Martínez. A
+4:354 minutos y 35 segundosella pues vinimos y le asignamos después de la creación, cuando lo creamos, que nos lo mostró acá, a ella
+4:414 minutos y 41 segundosle va a llegar un correo electrónico. A ese correo electrónico que le hayamos registrado, el primer acceso que va a
+4:504 minutos y 50 segundospedirle es para que registre la contraseña con la que va a acceder. Una vez esa persona ya haya ingresado con su
+4:574 minutos y 57 segundosnueva contraseña, acá en el sistema, en la opción de en línea, nos mostrará autenticado.
+5:045 minutos y 4 segundosCuando el usuario, nuevamente les repito, cuando el usuario en le llega el correo electrónico de que fue creado como usuario en esta licencia, pues ahí
+5:135 minutos y 13 segundosle llega un icono para que pueda hacer la el registro de su contraseña. Una vez hace el registro de su contraseña e
+5:215 minutos y 21 segundosingresa en cualquiera de las opciones disponibles, pues ya el sistema lo va a mostrar como un usuario autenticado.
+5:295 minutos y 29 segundosAquí al momento de la creación del usuario, pues le asignamos la empresa y le asignamos su rol.
+5:365 minutos y 36 segundos¿Listo? Entonces así ya tenemos creado nuestro usuario. Recuerden que debe estar creado como empleado. ¿Listo? Los
+5:455 minutos y 45 segundosroles, como les decía, aquí mismo en el panel de seguridad, en la opción de roles, vamos a encontrar todos los diferentes roles. El programa ya va a
+5:545 minutos y 54 segundostraer creado por defecto lo que sería el rol facturador, administrador y API. Los
+6:026 minutos y 2 segundosroles podemos crear los que queramos, generalmente en base a eh las áreas de nuestra empresa. Aquí, por ejemplo,
+6:106 minutos y 10 segundosvamos a crear un rol nuevo para los ejemplos que vamos a tramitar el día de hoy. Entonces vamos a crear un rol masterclass.
+6:206 minutos y 20 segundos¿Listo? Y acabamos de crear nuestro rol.
+6:236 minutos y 23 segundosEntonces, ya para temas de permisos y todas estas generalidades, ya inicialmente tenemos que arrancar desde el rol. Ya creamos el usuario, ya queda
+6:316 minutos y 31 segundosclaro que tiene que estar creado como un tercero, tiene que estar marcado con la propiedad de empleado, sin importar si de pronto no es un empleado de nosotros.
+6:426 minutos y 42 segundosY después por la opción de usuarios entramos, lo registramos y ese usuario recibirá un correo electrónico para que
+6:496 minutos y 49 segundoshaga la creación de su contraseña. Una vez realice la creación de esa contraseña, el usuario cambiará en el panel a estado autenticado.
+7:017 minutos y 1 segundoListo. Entonces, en los roles, vean acá, ya nos sale el rol que acabamos de crear. Entonces, importante para todo este tema de los permisos de usuario,
+7:097 minutos y 9 segundosprimero arrancamos por lo más grande y después lo más detallado. Entonces, ¿qué es lo más grande? El rol. Entonces, como
+7:167 minutos y 16 segundosles decía, esto es en base, generalmente sugerimos crearlo en base a las áreas de la empresa. Entonces, aquí tenemos
+7:237 minutos y 23 segundosnuestro rol masterclass. Entonces, lo primero, permisos gruesos o permisos detallados.
+7:307 minutos y 30 segundosPrimero vamos a darle los permisos gruesos. Entonces, cuando entramos a los permisos gruesos, miren que aquí me muestra todos y entonces aquí ya trae
+7:387 minutos y 38 segundospor defecto marcados unos como activos.
+7:437 minutos y 43 segundosEsos que salen con el chulito es porque está completamente activo. Los que salen con este guion menos significa que él
+7:527 minutos y 52 segundostiene permisos parciales en ventas. le vamos a quitar todo que tiene permisos parciales en productos y servicios y aquí ya el resto quedó desmarcado.
+8:038 minutos y 3 segundosEntonces aquí vamos a analizarlo. Es en base a lo que es el panel del programa.
+8:108 minutos y 10 segundosEntonces este informe de docentismo, visualización del panel principal.
+8:148 minutos y 14 segundosEntonces, recuerden que en el panel principal el programa ya viene por defecto con unas gráficas que nos muestran eh temas de variación en las
+8:238 minutos y 23 segundosventas, los productos más vendidos, las ventas por vendedor por mes que nos compara entre dos años diferentes por cliente y las cotizaciones.
+8:348 minutos y 34 segundosPero si ese usuario nosotros no queremos que pueda ver estas gráficas, que no pueda ni verlas ni manipularlas.
+8:418 minutos y 41 segundosEntonces, nos volvemos nuevamente a los permisos gruesos y acá dice visualizar información del panel principal inactivo. Entonces, lo dejamos inactivo,
+8:508 minutos y 50 segundosese usuario no va a poder ver esto. Y aquí está los nuevos informes que habían salido, ausentismos, balanza e y la
+8:588 minutos y 58 segundosficha técnica del inventario. Esto por ahora lo vamos a omitir y temas de cuentas asociadas. Entonces, acá él nos empieza a mostrar los módulos o paneles.
+9:099 minutos y 9 segundosVean que acá tenemos compras. Si miramos acá en el panel, pues tenemos compras.
+9:139 minutos y 13 segundosQue acá tenemos las ventas. Si miramos en el panel, pues tenemos las ventas.
+9:179 minutos y 17 segundosTodos los diferentes módulos o paneles los vamos a ver reflejados como permiso grueso. Entonces, es la misma
+9:259 minutos y 25 segundosestructura. Si por ejemplo acá vamos a entrar y vamos a decirle que voy a ir al al panel de compras, él me muestra que en el panel hay unos documentos, unos
+9:359 minutos y 35 segundosinformes y unas configuraciones asociadas a las compras. Si nos devolvemos a los permisos, entonces
+9:429 minutos y 42 segundosdesplegamos compras y me muestra los documentos. Yo le puedo aquí activar diferentes documentos. Entonces, a este
+9:499 minutos y 49 segundosa este a este usuario masterclass le vamos a activar el uso de las órdenes de compra.
+9:579 minutos y 57 segundoslas remisiones de compra, las facturas de compra, las devoluciones de remisión en compra, notas débito y notas crédito en compra.
+10:0810 minutos y 8 segundosPero en los informes no le voy a dejar ver ninguno de los informes, de pronto es un usuario que solo va a estar
+10:1610 minutos y 16 segundosdesignado para realizar los diferentes documentos, pero que de pronto no pueda ver los informes o sí que pueda ver el
+10:2310 minutos y 23 segundosde las compras por documento. En como aquí le activé uno solo de los informes, vean que la opción de informes sale con
+10:3110 minutos y 31 segundosun menos. Cuando ustedes vean menos ahí es porque en ese módulo se tiene un permiso parcial. Entonces, en este caso,
+10:3910 minutos y 39 segundosah, sí, él tiene permiso a los informes, pero solo al informe de compras por documento. ¿Listo? Vean que en los documentos le di permiso a todos.
+10:4810 minutos y 48 segundosEntonces, en la parte de compras, pues sigue saliendo como un parcial porque no tiene permiso realmente a todo lo que
+10:5710 minutos y 57 segundoshay en el panel de compras, entonces sigue siendo parcial. ¿Listo? informes y documentos asociados [carraspeo] a las compras. ¿Listo? En las ventas.
+11:0911 minutos y 9 segundosEntonces, lo mismo le vamos a dejar hacer los diferentes documentos, cotizaciones, pedidos, remisiones,
+11:1711 minutos y 17 segundosfacturas, devoluciones de remisión, notas débito, notas crédito y listo. Y
+11:2411 minutos y 24 segundosen los informes, pues le vamos a dejar también el de por documento. ¿Listo?
+11:3011 minutos y 30 segundosEntonces tiene permiso en las compras de hacer los diferentes documentos y ver los informes por documento. En las ventas puede hacer los diferentes
+11:3811 minutos y 38 segundosdocumentos y también puede ver los informes de esas ventas por documento.
+11:4511 minutos y 45 segundosComisiones. No le voy a dar permiso de entrar a configurar ningún tipo de comisiones. Aquí esto es para configurar las comisiones y ver las diferentes
+11:5411 minutos y 54 segundosinformes. Generalmente no es un permiso que se le suela dar a un usuario como pudiera ser un vendedor, ¿no? Estos ya son las restricciones que manejemos.
+12:0512 minutos y 5 segundosLa contabilidad, tercer módulo. ¿Listo?
+12:0812 minutos y 8 segundosEntonces lo mismo. La contabilidad. Si desplegamos me muestra todo el tema de configuración de contabilidad, cuentas,
+12:1512 minutos y 15 segundosdocumentos y demás. Entonces él no va a poder modificar contabilizaciones o configuraciones de contabilidad. de
+12:2212 minutos y 22 segundospronto sí va a poder cargar recibos de caja porque pues si hace ventas pues que se la pagaron entonces el recibo de caja y como también hace compras entonces también que haga comprobantes de egreso.
+12:3412 minutos y 34 segundosLas notas de contabilidad para las cajas menores, legalizaciones de gastos, movimientos internos entre las cuentas, pues cada quien se le va dando los
+12:4312 minutos y 43 segundospermisos de acuerdo a lo que se requiera. costo de ventas, eso es un proceso automático. Entonces, pues generalmente son permisos más asociados
+12:5212 minutos y 52 segundosa lo que viene siendo las áreas contables. ¿Listo? Entonces, aquí lo vamos a dejar que no pueda hacer nóminas, que no puede hacer
+12:5912 minutos y 59 segundosdepreciaciones, cancelar cuentas, no puede ver informes contables ni de impuestos, empresas o personas.
+13:0713 minutos y 7 segundosEntonces, aquí sí le vamos a dar ciertos permisos. ¿Por qué? Porque pues si va a ser facturas de compra, va a ser facturas de venta, va a hacer recibos de
+13:1413 minutos y 14 segundoscaja, va a ser comprobantes de egreso, pues probablemente también requiera crear terceros, porque si es un tercero nuevo, un cliente nuevo, un proveedor
+13:2313 minutos y 23 segundosnuevo, pues entonces que pueda también crear los diferentes terceros. Entonces acá en gestión de empresas y personas,
+13:3013 minutos y 30 segundosen empresas y personas le activamos para que pueda crear terceros. ¿Listo? Y si ven que sale con un menos.
+13:3913 minutos y 39 segundos¿Por qué? porque no puede hacer nada más, trasladarles información tampoco ni generar informes de esos terceros.
+13:4713 minutos y 47 segundosMódulo de bancos para temas de conciliaciones bancarias, crear mis diferentes entidades bancarias y las cuentas asociadas a cada una de esas
+13:5513 minutos y 55 segundosentidades de ahorros corrientes o tarjetas de crédito.
+14:0014 minutosProductos y servicios. Recordemos que para el sistema todo es un producto o servicio, todo es un bien tangible o intangible. Ahorita más adelante vamos a
+14:0814 minutos y 8 segundosestar creándolos todos. Entonces, le vamos a dar permiso general de crear todo este tema de configuración de
+14:1514 minutos y 15 segundosproductos y servicios, la gestión y la actualización de los mismos. Por lo demás, pues no le vamos a dar permiso,
+14:2214 minutos y 22 segundosno puede hacer salidas, entradas y de inventarios, pues tampoco que pueda haber ningún tipo de informe. Temas
+14:3014 minutos y 30 segundosgenerales de configuración no necesito que entre. Seguridad tampoco, facturación electrónica pudiera ser porque pues hay empresas que sí le dan
+14:3914 minutos y 39 segundosese manejo a las personas responsables de las facturaciones, bien sea en compra para los documentos soporte o en venta para la facturación electrónica o post
+14:4814 minutos y 48 segundoselectrónico. Desde aquí podemos darles ese tipo de accesos. En este caso, pues no lo vamos a hacer con este usuario. El
+14:5514 minutos y 55 segundospost, las ventas por mostrador y los eventos de recepción de facturación electrónica. Aquí le voy a activar que maneje el post.
+15:0315 minutos y 3 segundosY listo. Aquí ya le dimos permisos gruesos. ¿A quién? Al rol masterclass.
+15:1015 minutos y 10 segundos¿Listo? Son los permisos gruesos del roll masterclass. Eso, ¿qué significa?
+15:1615 minutos y 16 segundosQue los usuarios que tengan ese roll masterclass van a poder ver ciertos campos de todo esto. No significa pues
+15:2515 minutos y 25 segundosque eh que lo puedan utilizar, pero esto ya es la generalidad. Entonces vemos el módulo y lo que hay dentro de cada
+15:3315 minutos y 33 segundosmódulo. Entonces los documentos, los informes y configuraciones asociadas a cada uno de los diferentes paneles.
+15:4315 minutos y 43 segundos¿Listo? No sé si de pronto hayan dudas eh repetitivas en la sala, algo, ¿no? Mira que por ahora vamos superb.
+15:5215 minutos y 52 segundosEh, les invitamos a todos los que nos ven en este momento a que [carraspeo] compartan este link con su amigo, con su colega, la persona que estaba
+16:0016 minutosanteriormente acompañándonos en esta en esta primera sesión y que de pronto también se desconectó, pues le invitamos a que usted también comparta este enlace
+16:0916 minutos y 9 segundospara que también pueda unirse y no se pierda los detalles de esta importante primera sesión. Por ahora vamos superb y
+16:1616 minutos y 16 segundosles recuerdo a todos los asistentes que pueden hacer sus preguntas. Acá estaremos leyéndolos muy atentos para poderla responder.
+16:2316 minutos y 23 segundosListo. Continuando, entonces ya creamos un rol y a ese rol le dimos unos
+16:2916 minutos y 29 segundospermisos gruesos. ¿Listo? Recordemos qué son los permisos gruesos, qué paneles puedo ver y qué documentos, informes o configuraciones dentro de cada panel.
+16:4016 minutos y 40 segundos¿Listo? Ahora le vamos a dar a ese rolos permisos detallados. Cuando yo entro a los permisos detallados, él me va a
+16:4816 minutos y 48 segundospermitir seleccionar entre los permisos gruesos que yo ya tenía creados antes de Vamos a actualizar aquí la página para
+16:5716 minutos y 57 segundosque tome los cambios que acabo de hacer en el roll masterclass e ingresamos acá detallados.
+17:0417 minutos y 4 segundosListo. Acá él me va a mostrar qué paneles le di acceso. Entonces, si vamos a mirar los permisos detallados de de
+17:1217 minutos y 12 segundosgenerales del usuario, pues entonces él aquí me va a mostrar, ya no me va a mostrar todo esta distribución, él me va
+17:1917 minutos y 19 segundosa mostrar ese en base a lo que el usuario tiene acceso o lo que el rol parte de su rol inicial. Vamos a
+17:2817 minutos y 28 segundosutilizar otro rol porque no sé si es que este me está generando en consistencia. Vamos a mirar de pronto el de almacén.
+17:3617 minutos y 36 segundosOkay.
+17:4217 minutos y 42 segundosVamos a entrar nuevamente. Masterclass, cerramos todo esto.
+17:4917 minutos y 49 segundosSeguridad, roles, nuestro rol masterclas, permisos detallados.
+17:5817 minutos y 58 segundosEn este momento no podemos validar esta información. Ya en ahorita en un ratico pues lo retomamos para que lo puedan validar. ¿Listo? Entonces, como les
+18:0718 minutos y 7 segundosvenía comentando, a cada rol se le asigna un permiso grueso y un permiso detallado. Entonces, ya, ¿qué implicaría el permiso detallado? Entonces, como
+18:1518 minutos y 15 segundosvieron que como permiso grueso, yo les di permiso de hacer, por ejemplo, facturas de compra, eh no eh órdenes de compra, remisiones.
+18:2618 minutos y 26 segundos¿A qué correspondería el permiso detallado? ¿Qué puedo hacer dentro de cada uno de esos documentos a los que ya tengo acceso? Entonces, por ejemplo,
+18:3418 minutos y 34 segundospudieran tener permiso para hacer órdenes de compra, pero en los
+18:4018 minutos y 40 segundosdetallados es donde yo voy a registrar que no va a tener permiso o que no va a ser visible el botón de eliminar el
+18:5018 minutos y 50 segundosdocumento. A pesar de que van a poder hacer las órdenes de compra, pues no me van a poder eliminar las órdenes de compra que elaboran. o editarlas o
+18:5918 minutos y 59 segundoscualquiera de los diferentes campos que hay dentro del documento, verlo, no verlo, hacerlo obligatorio o hacerlo eh
+19:0919 minutos y 9 segundosopcional. Ustedes son quienes deciden qué permiso se le dan detalladamente, pero él solo les va a mostrar en base a
+19:1719 minutos y 17 segundoslos que ya están gruesos. ¿Sí? Entonces, si por ejemplo yo por permiso detallado quisiera entrar, por ejemplo, a decirle
+19:2419 minutos y 24 segundosque por permiso detallado pueda entrar al módulo de seguridad, pues no voy a poder hacerlo. ¿Por qué? Porque como tal
+19:3219 minutos y 32 segundosen el permiso grueso a ni siquiera tengo acceso al módulo de seguridad. Entonces, acá en los permisos detallados cuando yo seleccione la pantalla aquí no me va a
+19:4119 minutos y 41 segundosmostrar el panel de seguridad porque me va a decir, "¿No tienes el permiso grueso?" pues no tiene, no tengo un
+19:4819 minutos y 48 segundospermiso detallado que asociarte a ese permiso grueso. Listo. Y ahorita le damos una repasada a esto. No sé si es
+19:5519 minutos y 55 segundosque de pronto se está corriendo un despliegue internamente eh para poder validar pues el tema de esos permisos detallados, pero la dinámica generalmente funciona de esa manera.
+20:0620 minutos y 6 segundosgruesos, qué documentos, puedo ver informes y configuraciones de cada panel y los detallados qué se puede
+20:1320 minutos y 13 segundoshacer en cada uno de esos eh eh de esos documentos a los que ya tengo acceso como permiso grueso.
+20:2220 minutos y 22 segundosAún así, cuando venimos a crear a los usuarios, vea que al usuario Martina Martínez, pues le vamos le dimos el permiso, el rol, le vamos a dar, le
+20:3020 minutos y 30 segundosvamos a asignar ahora que tiene el rol de masterclass. Entonces este usuario Martina Martínez Martina Martínez va a poder hacer esos diferentes documentos que veíamos en la parte de los permisos.
+20:4320 minutos y 43 segundos¿Listo? Pero le puedo dar permisos todavía más detallados. Ah, es que vea que resulta que Martina Martínez no es
+20:5020 minutos y 50 segundosla única usuaria que tiene el rol masterclass. De pronto, Constanza Castillo también va a tener un rol
+20:5820 minutos y 58 segundosmasterclass y Mayira Alejandra también va a tener un rol masterclass. ¿Qué pasa? Supongamos
+21:0621 minutos y 6 segundosque ese rol masterclass es el rol vendedor. Entonces resulta que oiga, sí, todos tres son vendedores, todos tres
+21:1321 minutos y 13 segundostienen rol de vendedor o rol comercial, pero yo necesito que cada uno de ellos me utilice un prefijo diferente.
+21:2121 minutos y 21 segundosEntonces, miren que acá le di al usuario Martina Martínez permisos de eh roll roll masterclass. Entonces, en Role
+21:2921 minutos y 29 segundosMasterclass me deja entrar a compras, hacer los diferentes documentos de compras, en ventas, los diferentes documentos de ventas, en contabilidad,
+21:3821 minutos y 38 segundosrecibos de caja y egresos, en empresas y personas, solo crearlos. Productos y servicios, configuración general y
+21:4621 minutos y 46 segundosgestión y pues si maneja temas del punto de venta. ¿Listo? Entonces acá yo puedo venir y decirle, listo. Pero resulta que
+21:5321 minutos y 53 segundosen las facturas de compra, en la sección del encabezado,
+22:0022 minutosyo necesito que ojo, Martina Martínez en la opción de prefijo,
+22:0822 minutos y 8 segundosprefijo interno, prefijo externo, prefijo del documento. Acá yo le puedo venir y decirle que necesito un valor
+22:1622 minutos y 16 segundospredeterminado, que ella siempre me va a utilizar el prefijo DSE, que son los prefijos de los documentos. Se pueden
+22:2322 minutos y 23 segundosutilizar para cualquier cosa que ustedes manejen. Este DCE que me está mostrando el sistema en el caso de una compra es para el manejo del documento soporte
+22:3122 minutos y 31 segundoselectrónico. Recuerden que ustedes pueden crear todo tipo de prefijos.
+22:3522 minutos y 35 segundosEntonces, de pronto ella es de la sucursal Bogotá y la la usuaria Constanza Castillo es de otra sucursal.
+22:4222 minutos y 42 segundosEntonces, pues podemos crear esos prefijos y desde acá, por ejemplo, asociarle que cada una de ellas tenga que manejar un prefijo específico.
+22:5222 minutos y 52 segundosEntonces vamos a utilizar ese ejemplo. Vamos a venir a buscar acá los prefijos.
+22:5622 minutos y 56 segundosYo no les voy a mostrar la ruta. El buscador también tiene esa facilidad.
+23:0123 minutos y 1 segundoEntonces digo, lléveme de una vez a los prefijos. Le voy a decir que vamos a agregar uno y vamos a decirle que el código es
+23:0923 minutos y 9 segundossucursal Bogotá, que el prefijo se va a llamar esec y en qué documentos lo voy a utilizar.
+23:1823 minutos y 18 segundosEntonces lo vamos a utilizar en las facturas de compra y en las facturas de venta y guardar.
+23:2923 minutos y 29 segundosYa existe un prefijo con eso. SB 1 SB 1 solo B.
+23:4123 minutos y 41 segundosListo. Entonces ya creamos el prefijo y se lo activé para uso en facturas de compra y facturas de venta. Entonces
+23:5023 minutos y 50 segundosnuevamente me regreso al prefijo detallado en el prefijo del documento del usuario Martina Martínez.
+23:5923 minutos y 59 segundosVengo al prefijo, le digo editar y aquí le voy a seleccionar el prefijo BC.
+24:0624 minutos y 6 segundosOkay. Ella factura desde la sucursal de Bogotá. Tiene que utilizarme siempre ese prefijo. Entonces, yo quiero evitar que
+24:1424 minutos y 14 segundosella de pronto se confunda al momento de diligenciar el documento, porque es que de pronto tenía muchos documentos que hacer en el día. Entonces, pues ya le
+24:2224 minutos y 22 segundospuedo parametrizar por defecto que todos los documentos que ella entre a hacer, el prefijo ya por defecto, cuando ella venga aquí a las compras y genere una
+24:3124 minutos y 31 segundosfactura de compra, el sistema le va a traer por defecto el prefijo que debe utilizar para que no lo pueda modificar.
+24:3924 minutos y 39 segundos¿Listo?
+24:4224 minutos y 42 segundosEsos son permisos que son todavía más detallados a cada usuario. Sí, recuerden que hay detallados del rol y detallados
+24:5024 minutos y 50 segundosdel usuario. ¿Por qué? Por lo que les decía también la señora Constanza pues va a ser de ese mismo de tiene ese mismo
+24:5824 minutos y 58 segundosrol de masterclass, pero ella está en otra sucursal, sucursal Medellín.
+25:0425 minutos y 4 segundosEntonces, necesito que utilice un prefijo que se va a llamar diferente.
+25:0825 minutos y 8 segundosEntonces, voy creo el prefijo,
+25:1325 minutos y 13 segundos[carraspeo]
+25:1525 minutos y 15 segundosagrego el prefijo y le voy a decir met, que se llame SMET 1.
+25:2525 minutos y 25 segundosY también lo voy a asociar en las compras y en las ventas. Compras y ventas. y guardo mi prefijo.
+25:3525 minutos y 35 segundosListo. Este, ese met 1 es el met agregar, pero al otro usuario. Entonces,
+25:4225 minutos y 42 segundosvean que el usuario Constanza Castillo también tiene mismo rol masterclass que la usuaria Martina Martínez, pero a ella
+25:5125 minutos y 51 segundosen el prefijo yo voy a venir a decirle que en el prefijo de documento externo ella tiene que utilizar es el prefijo de Medellín.
+26:0226 minutos y 2 segundosLe digo guardar y aquí ya me queda que el usuario Constanza Castillo pues tiene que usar el prefijo del documento en la
+26:0926 minutos y 9 segundosfactura de compra que es SMET. Mientras que la usuaria Martina Martínez ella
+26:1626 minutos y 16 segundosutiliza en lo que son las facturas de compra el prefijo en el encabezado, el prefijo de boca.
+26:2626 minutos y 26 segundosSi ven, a pesar de que ambas tienen el mismo rol, lo que les decía, ambas son vendedoras, ambas son de la misma área,
+26:3426 minutos y 34 segundosnecesito que tengan los mismos permisos, pero aquí le doy permisos todavía más detallados a cada uno de ellos. ¿Listo?
+26:4226 minutos y 42 segundosEntonces, ya vimos cómo crear un usuario. ¿Cómo es que se crea el usuario? Recordemos tiene que estar creado como un tercero y marcado con la
+26:5026 minutos y 50 segundospropiedad de empleado, sin importar si realmente hay un vínculo laboral con el empleado. Como les planteaba, el tema de pronto de nuestro contador externo.
+27:0127 minutos y 1 segundoPosterior a ello, venimos y desde la opción seguridad creamos el usuario. A ese usuario le vamos a asignar un rol.
+27:1127 minutos y 11 segundosLos roles previamente deben estar creados. Si es un usuario nuevo que va a tener un rol nuevo, pues primero creamos
+27:1927 minutos y 19 segundosel rol y después cuando creamos el usuario le asignamos el rol. ¿Listo? A cada rol sus permisos gruesos, permisos
+27:2627 minutos y 26 segundosdetallados. Vamos a ver si ahora aquí si nos si nos deja ver o si ya hicieron el despliegue. No, todavía no. Entonces, los permisos detallados del rol y
+27:3427 minutos y 34 segundosdespués a cada usuario al asignarle su rol ya va a quedar con esos permisos tanto gruesos como detallados. Y aún así
+27:4127 minutos y 41 segundosle podemos dar permiso todavía más detallados a cada usuario. Por ejemplo, el manejo de los de los prefijos por
+27:4927 minutos y 49 segundoscada uno de ellos. ¿Listo? Dudas, inquietudes, no duden en enviárnoslas a través del chat. Acá estamos atentos a responderles cualquiera de las inquietudes que nos planteen.
+28:0028 minutosContinuando, pues vamos a al segundo punto, el tema de la creación de cuentas y las contabilizaciones automáticas.
+28:0828 minutos y 8 segundos¿Listo? Esto lo preguntan bastante.
+28:1128 minutos y 11 segundosEntonces, por ejemplo, aquí podemos hacerlo de dos maneras. Aquí yo puedo escribir en el buscador asistentes de contabilizaciones.
+28:2028 minutos y 20 segundos¿Listo? Pero si quieren saber en dónde está eso, eso está en el panel contable.
+28:2428 minutos y 24 segundosEn el panel contable, en la parte inferior, vamos a encontrar todas las configuraciones asociadas al panel de contabilidad. Y aquí pues también vamos
+28:3428 minutos y 34 segundosa poder encontrar esos asistentes de contabilizaciones.
+28:3928 minutos y 39 segundosEstos asistentes de contabilizaciones es para crear las contabilizaciones masivas, las grandotas, no para crear
+28:4628 minutos y 46 segundoscuentas como tal. ¿Listo? Entonces, por ejemplo, aquí es para crear las plantillas de acuerdo a lo que yo me
+28:5428 minutos y 54 segundosdedique. Entonces, por ejemplo, vamos a crear una nueva contabilización. Ah, perdón, de crear. Ahí ya estaban
+29:0129 minutos y 1 segundocreadas. agregar una nueva. Entonces, me pide actividad económica de acuerdo a mi código
+29:1029 minutos y 10 segundosla descripción de la actividad comercio en general, cómo ustedes la vayan a
+29:1729 minutos y 17 segundosmanejar de pronto como venga en su discriminación. Entonces, el nombre que yo le vaya a poner que si esa actividad viene grabada al 19, al 5 o al cer.
+29:2929 minutos y 29 segundosOiga, pero yo vendo cosas eh eh artículos de ferretería, sigue siendo la misma actividad, pero hay cosas al CCO, al CER y al 19. Okay, marcamos las tres.
+29:4029 minutos y 40 segundosSí, todas las que le aplique. Sí, sigue siendo una actividad de comercio de electrodomésticos, de honorarios, de servicios, de
+29:4929 minutos y 49 segundosconstrucción. Entonces, si yo manejo productos que a veces vienen con 19, con CCO y con cer, selecciono todas las que
+29:5729 minutos y 57 segundosyo maneje, todas las tarifas que yo maneje. Acá no es solo una, porque muchas veces se presentan estas estos errores. Entonces, los clientes vienen y
+30:0530 minutos y 5 segundosdicen, "Voy a crear una, pero esta es la del 19 y después voy a crear la misma, pero solo para el cinco." Ya cuando la vaya a crear el sistema, le dice, "No,
+30:1330 minutos y 13 segundospero esto ya lo tiene creado." Entonces, no se lo va a permitir hacer. ¿Listo?
+30:1730 minutos y 17 segundosEntonces, desde acá al momento de la creación inicialmente ahí le incluimos todas las que maneje. Oiga, sí, nuevamente son elementos de ferretería.
+30:2730 minutos y 27 segundosEl mismo tornillo pudiera venir al 19, al 5 o al cero. ¿Okay? Entonces creamos con esas mismas dinámicas. La
+30:3430 minutos y 34 segundosagrupación, si esto es una actividad comercial, si es una actividad industrial o si es una actividad de servicios, ¿qué cuenta de ingreso voy a manejar?
+30:4530 minutos y 45 segundosEntonces, por ejemplo, si esto fuera una actividad de servicios y fueran arrendamientos, pues aquí utilizaríamos la 4120, ¿sí?, a nivel contable. Ah, no,
+30:5430 minutos y 54 segundosestos de fabricación, perdón, 4150, [resoplido] que son los alquileres y los arrendamientos y eso. Ubicamos la cuenta
+31:0331 minutos y 3 segundosque vamos a manejar. Ah, es comercialización 4135.
+31:0631 minutos y 6 segundosY aquí venimos y seleccionamos. ¿Por qué? para que cuando yo afecte en mis ventas, pues el sistema reconozca qué
+31:1431 minutos y 14 segundosfactur qué cuenta contable voy a manejar. Por ejemplo, acá si yo selecciono 41 35,
+31:2131 minutos y 21 segundosvan a ver si 30 34 en el 36 ya tengo algo que son los electrodomésticos.
+31:3131 minutos y 31 segundosDigamos que vamos a crearlo en la 42.
+31:3531 minutos y 35 segundosListo, como le dije que maneja tarifa del 19, del 5 y del 0 en que voy a utilizar la 41 35 42 de venta de
+31:4331 minutos y 43 segundosmateriales de construcción, fontanería y calefacción, él me va a crear una 41 35
+31:4931 minutos y 49 segundos42 01 para el 19, 415 42
+31:5531 minutos y 55 segundospara las del 5 y 41 35 42 03 para las del cero. Cuenta de de evolución en
+32:0432 minutos y 4 segundosventas. Acá se pone a cuatro dígitos solamente 4175.
+32:1032 minutos y 10 segundosBueno, si queremos de pronto buscar ah, no, esto estaba en la 42 415 42 para que él suba auxiliarice a partir de allí,
+32:1832 minutos y 18 segundospero generalmente solo se toman los cuatro primeros dígitos.
+32:2432 minutos y 24 segundosCuenta de compras. Oiga, cuando yo compre toda esta misma mercancía que comercializo, pues, ¿a dónde la quiero
+32:3132 minutos y 31 segundosllevar? Ah, bueno, una 1435 42 pudiera ser o 1435 y él me crea ahí la
+32:4032 minutos y 40 segundossuba auxailiar y la cuenta del costo de ventas.
+32:4432 minutos y 44 segundosEntonces, cuando eso se haga el proceso mensual de costo de ventas, que es el traslado de la 14 a la 6 automático que nos hace el sistema desde el módulo de
+32:5332 minutos y 53 segundoscontabilidad, pues de qué cuenta a qué cuenta lo voy a llevar. Entonces, vean acá, selecciono a seis dígitos la cuenta
+33:0033 minutosdel ingreso, pero lo que son devoluciones, compras y costo van a cuatro dígitos. ¿Para qué? Para que el
+33:0733 minutos y 7 segundossistema subauxiliarice de acuerdo a lo que seleccionamos en nuestra cuenta de ingreso. Entonces, le decimos guardar.
+33:1533 minutos y 15 segundosAquí ya me la creó. Si ven acá ya la incluyó. Esta la acabamos de incluir.
+33:1933 minutos y 19 segundosComercio en general. Como acá la incluye, ahora sí le digo, créelas.
+33:2433 minutos y 24 segundosY acá me dice que él me va a enviar una notificación cuando la creación esté, cuando la contabilización se haya
+33:3233 minutos y 32 segundoscreado. Acá me dice que justo ahora esto se creó correctamente. ¿Sí ven? Ahí me llegó la notificación. Es decir, que
+33:3933 minutos y 39 segundosesta plantilla ya la tengo disponible para asociarla a cualquiera de los productos o servicios que yo maneje.
+33:4833 minutos y 48 segundosOiga, pero es que ahora yo necesito es modificar esa plantilla para que contabilice diferente dependiendo x o y
+33:5833 minutos y 58 segundosforma de pago que yo maneje, que esto también se presenta mucho por solicitudes de soporte. Acá está la plantilla general. Oiga, pero si ese
+34:0634 minutos y 6 segundoscomercio general yo le digo que es con Neki, necesito que vaya a la 111501, que si es con David Plata que vaya a
+34:1334 minutos y 13 segundosotra cuenta. Entonces eso el sistema lo hace a través del que es se llama contabilizaciones.
+34:2234 minutos y 22 segundosNuevamente lo podemos buscar en la parte superior desde el buscador directamente contabilizaciones
+34:3134 minutos y 31 segundoso recordemos que eso vendría siendo parte de una configuración contable.
+34:3734 minutos y 37 segundosEntonces entramos al panel de contabilidad y en la parte inferior, como pueden ver acá tenemos el asistente, que era el que estábamos viendo ahorita, y el de las contabilizaciones.
+34:4734 minutos y 47 segundosEntonces, entramos al de las contabilizaciones. Vean que ahí él me creó. Si vieron que nosotros creamos una de comercio general, pues él me creó
+34:5534 minutos y 55 segundostres plantillas, las del cero que se asignarán a los productos que van al cero, la del cinco, que se asignarán a
+35:0235 minutos y 2 segundoslos productos que tienen IVA del CCO y la del 19 que se asignará a los productos que manejan el 19, que hacen
+35:1035 minutos y 10 segundosparte de mi actividad económica, comercio en general. Pero dentro de esta del 19 yo tengo la opción de editar la
+35:1935 minutos y 19 segundoscontabilización. Editar la contabilización el nombre deber o editar la contabilización en general. Entonces
+35:2635 minutos y 26 segundosél acá é me muestra es el detalle de contabilización. Yo acá le puedo decir, bueno, muéstreme cómo va a contabilizar
+35:3335 minutos y 33 segundosen una factura de compra cuando yo le compre a una persona jurídica
+35:4035 minutos y 40 segundoscon mi empresa a crédito.
+35:4435 minutos y 44 segundosEntonces él me dice, "Mira, pues la estructura básica dice que es la 14350703 de comercial general del 19 que
+35:5435 minutos y 54 segundosprobablemente un IVA descontable por compras del 19, una retención en la fuente que le practiques a la persona
+36:0136 minutos y 1 segundojurídica, un reteica si aplica, si eso ustedes saben que aplica es si estamos en la misma ciudad o municipio y si soy
+36:0936 minutos y 9 segundoso no responsable de ello y la cuenta por pagar. Aquí yo puedo modificar esa partida doble. Oiga, es que yo no les a mis proveedores pues yo no les hago
+36:1836 minutos y 18 segundosretención de Ica. Acá estoy en un municipio exento. Yo no estoy obligado, cualquiera que sea de pronto la dinámica. Entonces yo puedo venir y
+36:2636 minutos y 26 segundosdecirle, "Listo." Entonces de la plantilla, porque acá me está hablando que así va a contabilizar en todas las
+36:3336 minutos y 33 segundoscompras con todos los terceros que sean persona jurídica. Acá yo no le estoy diciendo, oiga, esto es con Pepito Pérez
+36:4036 minutos y 40 segundoso esto es con Juanito Juan. Entonces, eso no no aplica, ¿cierto? Dice, "Es para todo el que sea persona jurídica
+36:4836 minutos y 48 segundoscon mi empresa a crédito en factura de compra." Entonces muchas veces se quiere es, oiga, cuando yo modifique, cuando yo
+36:5536 minutos y 55 segundosregistre esto, yo no quiero tener en cuenta ese ICAP para nadie. Eso más bien yo son muy poquitos, entonces yo más bien prefiero hacerlos en cada factura y
+37:0437 minutos y 4 segundosque no lo tome como una generalidad. Ah, bueno, simplemente venimos y le eliminamos la cuenta que no vamos a
+37:1237 minutos y 12 segundosutilizar y entonces el en todas las compras con persona jurídica de mi empresa a
+37:2137 minutos y 21 segundoscrédito, lo que va a ser como partida contable va a ser la cuenta 14, el IVA descontable, solo rete fuente y la cuenta por pagar al proveedor. ¿Listo?
+37:3137 minutos y 31 segundosAquí la la modificamos así. Pero, ¿qué puede pasar también? Oiga, necesito que la replique. ¿Por qué? Porque acá él me
+37:3837 minutos y 38 segundosestá mostrando que eso es cuando es a crédito. Pero si yo le digo, "Muéstreme si es ADI, él no me no tiene nada." ¿Por
+37:4537 minutos y 45 segundosqué? Porque es una forma de pago que yo creé nueva, que yo voy a asociar nueva.
+37:5137 minutos y 51 segundosEntonces, acá en las contabilizaciones yo le puedo venir y decir, "Por favor, cópiamela, replícala. Quiero crear de
+37:5937 minutos y 59 segundosnuevo con la misma configuración, con otro código y con otro nombre para configurar la iguality. No, yo no quiero
+38:0738 minutos y 7 segundoshacer eso. Yo quiero duplicar en una nueva empresa. Ah, es que esta contabilización que tengo en sual Bogotá, quiero que me la replique en
+38:1538 minutos y 15 segundossucursal Medellín. Si yo tuviera sucursales o duplicar en una nueva forma
+38:2138 minutos y 21 segundosde pago. Ah, eso mismo que me hizo esa contabilización. 14, 24 de IVA descontable, 23 de RT y cuenta por
+38:2938 minutos y 29 segundospagar. Quiero que lo tome desde la forma de pago de crédito de esta plantilla y lo replique en la forma de pago ADI,
+38:3938 minutos y 39 segundosporque ADI se va a contabilizar exactamente igual que a crédito, pero como ADI, como vieron cuando yo filtré en la plantilla, ADI no está asociada
+38:4738 minutos y 47 segundosporque es una es una forma de pago que yo cree de acuerdo a mis necesidades, una que yo manejo. Entonces acá yo le digo, "Listo, cópialo." Y él me la
+38:5638 minutos y 56 segundoscopia. Listo. Entonces, si volvemos nuevamente al detalle de contabilización, contabilizaciones,
+39:0539 minutos y 5 segundosvenimos y ubicamos esta que estábamos validando, que es el comercio general del 19%.
+39:1139 minutos y 11 segundosSi yo vengo aquí a ver ese detalle, si yo vengo y le digo al sistema, bueno, muéstreme cómo va a contabilizar en
+39:1839 minutos y 18 segundosfactura de compra con persona jurídica de mi empresa o sucursal en la forma de pago ADI.
+39:3039 minutos y 30 segundosY vean que él me replicó justo lo que yo tenía configurado para la forma de pago crédito. Sí. Entonces, él me la replicó
+39:3939 minutos y 39 segundosacá de esta manera. Si yo le digo, "Listo, como ya la repliqué en AD, entonces ahora venga, muéstreme cómo va a contabilizar en todos los que todas
+39:4839 minutos y 48 segundoslas compras de todo tipo de contribuyente con la forma de pago ADI." Entonces acá él me va a mostrar cómo va
+39:5639 minutos y 56 segundosa contabilizar. Oiga, yo quiero que me ordene esas cuentas, por favor, muéstreme aquí.
+40:0440 minutos y 4 segundosIgual o contiene y le digo contiene 2205.
+40:0940 minutos y 9 segundosYa van a ver la dinámica que vamos a hacer. Me mostró todas las formas, todas las todo lo que se registra en factura de compra con todos los contribuyentes de mi empresa con la forma de pago ADI.
+40:2140 minutos y 21 segundosCuando se contabiliza va a ir a una 22.
+40:2440 minutos y 24 segundosAhí es donde muchas empresas suelen necesitar hacer cambios. Oiga, no es que eso no, yo no lo quiero en una 22, yo lo quiero es en una 28, una 27, una 23, lo
+40:3340 minutos y 33 segundosque sea que manejen, porque no es el proveedor como tal ADI y yo necesito tener ese control de esas compras que hice por ADI. Entonces, por aquí puedo
+40:4140 minutos y 41 segundosvenir y decirle, "Okay, entonces por favor cámbielo." Vamos a decirle que para jurídica. Y acá yo puedo venir y
+40:4940 minutos y 49 segundosseleccionar y le digo, utilíceme esta otra cuenta 2335 de gastos financieros, por decir
+40:5940 minutos y 59 segundosalgo, y le digo guardar. Entonces, aquí ya lo modifiqué para cuando yo le compre cuando yo le compre
+41:0741 minutos y 7 segundoscon ADI a una persona jurídica, no lo va a llevar a una 2205, sino a una 233505.
+41:1641 minutos y 16 segundos¿Listo? Y así puedo hacerlo con las diferentes formas de pago, si este crédito, NEI, cualquiera de las que yo
+41:2241 minutos y 22 segundosmaneje. Entonces, recordemos nuevamente asistente de contabilizaciones para crear la contabilización masiva, el el
+41:3041 minutos y 30 segundosgrande, el icono principal, las contabilizaciones para entrar y modificar esa plantilla específica de
+41:4041 minutos y 40 segundosacuerdo a mis necesidades en formas de pago, empresa sucursal, tipo de contribuyente o tipo de documento específico. ¿Listo? dudas, inquietudes.
+41:5341 minutos y 53 segundosBueno, muy bien. Sí, acá ya hay algunas inquietudes. Por supuesto, [carraspeo] nuestra especialista también que está en el chat ha estado muy juiciosa también
+42:0242 minutos y 2 segundosrespondiéndoles. Sin embargo, pues eh es muy importante poder aclarar que mañana ya entramos, digamos, en temas de
+42:0942 minutos y 9 segundosinformes, de soporte y demás. Cada día trae una temática totalmente diferente, ¿verdad? Entonces, para que estén ahí
+42:1742 minutos y 17 segundossuper pendientes, recuerden que para poder llevarse el certificado totalmente gratis es superimportante que llenen la asistencia. Más adelante estaremos
+42:2642 minutos y 26 segundoscompartiendo el link de la asistencia para que puedas completar ese 100%
+42:3342 minutos y 33 segundosde tu asistencia y puedas recibir tu certificado de World Office Cloud.
+42:3942 minutos y 39 segundosEntonces, acá nos están preguntando, para las cuentas de Ica, ¿cómo sería ese manejo en la versión de cloud? Querido Jonathan,
+42:4642 minutos y 46 segundospara las cuentas de Ica. Okay. Entonces, por ejemplo, si nos venimos por el panel de contabilidad, también vamos a encontrar todo lo que son nuestras
+42:5542 minutos y 55 segundoscuentas, ¿sí? El plan de cuentas o nuestro plan único de cuentas en la parte inferior en la configuración.
+43:0243 minutos y 2 segundosListo. El sistema por defecto ya trae creados una 2368.
+43:1043 minutos y 10 segundosYo entiendo la pregunta es se refiere más, oiga, es que yo discrimino en una 23680501 lo que va del 966,
+43:1943 minutos y 19 segundosen una 23680502 lo del 114 y en una 03 lo del 13,08 de acuerdo a las tarifas que yo practiqué.
+43:2743 minutos y 27 segundosSin embargo, ahí tendríamos es que inicialmente entrar a buscar las cuentas. Entonces acá yo le voy a decir empieza con 2368.
+43:4043 minutos y 40 segundosListo. Mira que acá está compras, servicios, honorarios y comisiones. Ahí no me está diciendo compras del 966, compras del 114, compras del 13,8.
+43:5143 minutos y 51 segundos¿Por qué? Porque esa retención se asocia cuando se crea el tercero, en este caso nuestro proveedor. Entonces, si yo vengo
+44:0044 minutosacá a consultar mis proveedores, vamos a decirle que me muestre los que son proveedor.
+44:1044 minutos y 10 segundosPor ejemplo, vamos a este almacén asociados. Cuando creamos
+44:1844 minutos y 18 segundosel acá cuando le activamos proveedor en temas de facturación impuestos es donde yo voy
+44:2744 minutos y 27 segundosa poner qué reteica le hago a este señor. Pues a este señor le hago 966 pero al otro le hago 4,14 porque es por
+44:3544 minutos y 35 segundosfletes y al otro le hago 11,04 y al otro 13,08 las que manejemos. Entonces, eso se asocia al tercero. Sin embargo, como
+44:4444 minutos y 44 segundosen la plantilla solo está la cuenta principal, lo que les mostraba acá, 23, porque eso es o es por compras o es por
+44:5144 minutos y 51 segundosservicios, pero él no tiene una subauxiliarización.
+44:5544 minutos y 55 segundos¿Qué hacen muchas empresas? Él para el certificado es indiferente. Yo puedo llevar en la misma cuenta retake por compras donde haya del 138, del 966, del
+45:0445 minutos y 4 segundos114 porque va a quedar en la misma cuenta. Sin embargo, hay empresas o contadores que lo manejamos de una
+45:1145 minutos y 11 segundosmanera diferente. Entonces, lo que les decía, yo creo una 01 para lo que es 13,08, una 02 para el 4,14 y así sucesivamente o voy subauxiliarizando.
+45:2345 minutos y 23 segundosEstas cuentas ya de por sí traen una asociación de cuenta de reteica, ¿cierto? Entonces dice concepto
+45:3245 minutos y 32 segundosretención compras Bogotá, que es reteica por compras. Entonces, si vamos a mirar en los conceptos bases y retenciones, que es desde ahí donde toma eso.
+45:4245 minutos y 42 segundosEntonces, acá en los conceptos bases y retenciones, él me va a mostrar esa.
+45:4745 minutos y 47 segundosVean que esa cuenta dice retención en la Reteica Compras Bogotá. Entonces, Reteica Compras Bogotá, él ya tiene acá
+45:5745 minutos y 57 segundoscuenta asociada. Cuando vamos a hacer esas modificaciones, ¿ven? Acá tiene las tarifas sobre cuál
+46:0646 minutos y 6 segundoshace y cuánto debe hacer y en compras y en Bogotá que es sobre el 115 96. Él ya
+46:1346 minutos y 13 segundostrae una generalidad. Aquí no podemos venir a incluir que servicios Cali, que bueno, Medellín, no podemos venir a incluir nuevas, si él ya las trae.
+46:2446 minutos y 24 segundosEntonces, ¿qué hacen muchos usuarios para este manejo? que es un manejo, como les decía, ya muy particular, porque yo quiero es desglosar por cuenta separada,
+46:3346 minutos y 33 segundosque el programa para él en este momento eso es indiferente porque él lo asocia a la tarifa que tiene el tercero. Entonces para su certificado va a salir con la
+46:4046 minutos y 40 segundostarifa que le hizo, a pesar de pues están en la misma cuenta contable 236801 que es de compras en Bogotá, entonces él
+46:5046 minutos y 50 segundosno lo va a discriminar. Lo que hacen muchas empresas es crear las diferentes cuentas y como en la plantilla general
+46:5746 minutos y 57 segundosél ya trae esa cuenta específica de retención por compras del del IC retenido, entonces ahí yo o entro y lo
+47:0547 minutos y 5 segundosmodifico en la plantilla, pero entonces va a modificarlo para todo el mundo y entonces el que es del 114 que va a otra cuenta y el del 966 que va a una cuenta
+47:1347 minutos y 13 segundosdiferente, ¿cómo voy a hacer? Entonces, por eso es que en cada documento, que hoy no lo vamos a ver eso porque no hemos entrado a ningún documento, pero
+47:2147 minutos y 21 segundosen cada documento ustedes saben que hay una opción después de contabilizarse donde se entra a la contabilización general. Entonces, yo voy y le pongo al
+47:2847 minutos y 28 segundostercero Pepito su tarifa efectivamente 114. Pero cuando entro y contabilizo la factura de Pepito, entonces simplemente
+47:3547 minutos y 35 segundosen la contabilización general o en la contabilización avanzada dentro y le digo, "Okay, entonces esto no va a la 236801,
+47:4347 minutos y 43 segundossino a la que yo haya creado para manejar solo los que van del 1308 o del 966, lo que les aclaraba por las
+47:5247 minutos y 52 segundoscuentas. ¿Listo? Entonces se tendría que entrar a modificar en la contabilización avanzada para no hacerlo a través de la plantilla, que es una generalidad.
+48:0148 minutos y 1 segundoListo. No sé si eso va clara la duda de pronto para el participante. Yo entiendo que de pronto es un poquito engorroso, pero es por las dinámicas que maneja el
+48:1048 minutos y 10 segundosprograma, porque el programa como te contabiliza automático y lo asocia automáticamente a la tarifa que tiene el
+48:1748 minutos y 17 segundosproveedor, por eso es que él no ve la necesidad de manejar diferentes cuentas o subauxiliares para cada tipo de
+48:2548 minutos y 25 segundostarifa. ¿Listo? que hay contadores que de acuerdo a su manejo y su eh pues las dinámicas contables que utilizan, pues sí lo quieren ver en cuentas separado.
+48:3548 minutos y 35 segundosEntonces, pues tendríamos que hacerlo a través de la contabilización avanzada.
+48:3948 minutos y 39 segundosRecuerden que el tercero tiene asociado directamente pues una tarifa. ¿Listo?
+48:4748 minutos y 47 segundosDe pronto, ¿alguna otra duda? Todo claro por ahí.
+48:4948 minutos y 49 segundosSí, claro que sí. Gracias por tu respuesta. Esperamos que pues haya quedado solventada la duda. Acá estamos muy pendientes leyéndolos. Recuerden
+48:5748 minutos y 57 segundoscompartir este enlace, todavía están a tiempo sus amigos, familiares, colegas, empresarios, emprendedores, amigos, para que se puedan unir a esta masterclass.
+49:0649 minutos y 6 segundosSolamente comparte este enlace para que puedan también sumarse a este streaming.
+49:1049 minutos y 10 segundosY acá nos preguntan, creo que eh quedó ahí como un poquito en suspenso cómo crear eh por ejemplo si el pago es consiste crédito bol, Dav Plata, Niki.
+49:2249 minutos y 22 segundosAh, okay. Primero creamos pues las formas de pago, ¿no? Entonces, ¿dónde vamos a encontrar eso? Buscador. Y también podemos venir y decirle formas de pago.
+49:3249 minutos y 32 segundosY él nos nos envía a las formas de pago.
+49:3549 minutos y 35 segundosPero pues generalmente eso también es una configuración contable. Nos vamos al panel de contabilidad y en la parte
+49:4349 minutos y 43 segundosinferior vamos a encontrar grupos de formas de pago y formas de pago. ¿Listo?
+49:4949 minutos y 49 segundosCuando vamos a crear las formas de pago, el programa ya trae por defecto las de uso más común en Colombia, ¿no? Bonos,
+49:5749 minutos y 57 segundoscheques, cheque certificados, cheque local, crédito contado, transferencia ACH, Davi Plata, NEX, desembolso
+50:0650 minutos y 6 segundosefectivo, ya trae varios letras, vales y pues podemos crear todas las que queramos. Entonces, aquí lo que vamos a
+50:1550 minutos y 15 segundoshacer es venir a incluirla. Entonces yo vengo y le digo, "Listo. ¿Y cómo se va a llamar esa forma de pago?" Ah, no, yo la manejo y se llama sist crédito.
+50:2450 minutos y 24 segundosApert acá.
+50:2850 minutos y 28 segundosListo. ¿Para qué documentos aplica esa forma de pago? ¿En qué documentos lo voy a utilizar? En los recibos, en las
+50:3750 minutos y 37 segundosfacturas, en los egresos y en las y en las compras. Ah, listo. Perfecto.
+50:4350 minutos y 43 segundosEntonces, acá selecciono en qué documentos voy a afectar con ese esa forma de pago. No me interesa ver esa
+50:5150 minutos y 51 segundosforma siste crédito en una salida de almacén, en una depreciación, en una devolución de remisión, en una entrada
+50:5850 minutos y 58 segundosde producto terminado. Entonces yo puedo decir, oiga, entonces es para las facturas de venta y como necesito saber qué ventas tengo asociadas a esa forma
+51:0751 minutos y 7 segundosde pago, pues también entonces puedo decirle que para los recibos de caja lo que me paguen de siste crédito, pues que
+51:1451 minutos y 14 segundostambién en el recibo vaya con el mismo con la misma forma de pago. ¿Y qué grupo? ¿Qué grupo voy a asociar? este
+51:2251 minutos y 22 segundosgrupo de forma de pago es si esto es un crédito, si es un contado, si es un bono, si es eso es hace parte de los
+51:3051 minutos y 30 segundosgrupos de formas de pago. Entonces esto es un bono, esto es un cheque, es una consignación. Realmente pues si crédito si lo analizamos también es un crédito.
+51:3951 minutos y 39 segundosLo que pasa es que ah sí me desembolsa Siste crédito y yo le financio a la persona XY, pero sigue siendo como una
+51:4651 minutos y 46 segundosforma de pago crédito. Ya esto es más para el detalle del XML que se envía la Dian en temas de manejo de facturación
+51:5351 minutos y 53 segundoselectrónica y si esta forma de pago va o no a manejar cupo de crédito
+52:0252 minutos y 2 segundosy le decimos guardar. el sistema pues nos va a crear esa forma de pago. Ahora vamos a ir a la plantilla y decirle,
+52:0952 minutos y 9 segundoslisto, ahora como hicimos con lo de ADI, lo vamos a hacer igual para Ciste Crédito. Entonces me voy a la plantilla
+52:1652 minutos y 16 segundosy lo voy a replicar para que contabilice igual a como contabiliza crédito, lo contabilice para siste crédito que fue
+52:2452 minutos y 24 segundosla nueva forma de pago que yo acabo de crear. Entonces ya estando nuestra forma de pago creada, ¿qué tenemos que hacer?
+52:3352 minutos y 33 segundosRecordemos panel de contabilidad o por el buscador buscamos las contabilizaciones.
+52:4252 minutos y 42 segundosEn las contabilizaciones encontraremos pues las que vamos a utilizar del 19, del cer y del 5 de la misma plantilla
+52:4952 minutos y 49 segundosgeneral que es la comercialización en general.
+52:5452 minutos y 54 segundosEntro y le digo, "De esta plantilla, replícame qué, una nueva con la misma configuración en otra empresa o por la
+53:0253 minutos y 2 segundosforma de pago, lo que hicimos hace un rato. La forma de pago, ¿de cuál forma de pago origen?" Ah, no, es que eso es igualito a crédito.
+53:1153 minutos y 11 segundosY eso que es igualito a crédito, ¿en qué forma de pago de destino se lo replico? Replíquemela en la de siste crédito.
+53:1953 minutos y 19 segundosCopiar. Y ahí me lo replico. Si vamos y buscamos en el detalle de contabilización, ¿cómo me va a contabilizar en una
+53:2953 minutos y 29 segundosfactura de venta con una con cualquier tipo de contribuyente de mi empresa en la forma de pago siste crédito?
+53:4153 minutos y 41 segundosPues el sistema nos va a mostrar eso que acabamos de replicar. Ah, listo. Es lo mismo que si fuera crédito. Y entonces
+53:4953 minutos y 49 segundosacá es donde yo selecciono. Okay, es a crédito, pero yo no lo voy a llevar a una cuenta 1305 de deudores, sino que voy a utilizar una cuenta diferente.
+54:0054 minutosEntonces, 1305 contiene, le digo filtrar, él me muestra dónde queda la cuenta por cobrar y yo puedo venir y decirle, listo, edítelo.
+54:0854 minutos y 8 segundosEsto es para con persona natural.
+54:1054 minutos y 10 segundosEntonces, ah, no, yo no lo quiero en la 130501, sino lo quiero de pronto manejar en otra
+54:1754 minutos y 17 segundosde mis cuentas. Ah, listo. Que si la pregunta es, ¿y cómo creo esas cuentas?
+54:2254 minutos y 22 segundosAh, esas cuentas se crean desde el plan de cuentas que también está en el panel de contabilidad. Entonces, aquí el programa, recuerden que ya trae pug
+54:3154 minutos y 31 segundosestándar comercial. Entonces, digo, no, pero yo voy a manejar una diferente.
+54:3454 minutos y 34 segundosEntonces vengo y busco la cuenta que vamos a utilizar. Entonces íbamos que estábamos en la 1305
+54:4254 minutos y 42 segundos11 12 Vamos a seguir.
+54:5454 minutos y 54 segundos12 99 13 Listo. Miren, 130502.
+55:0155 minutos y 1 segundoVamos a crear una 03. ¿Cómo creo esa cuenta? ¿Será que me paro aquí en la 02 y le digo nueva editar o nueva? No, esto
+55:1155 minutos y 11 segundoses para crear subenta. Como la 03 es la que va a seguir, ¿de cuál depende? De la principal, la que viene a seis dígitos.
+55:1955 minutos y 19 segundosEntonces, a esto le digo, créeme una subauxiliar.
+55:2255 minutos y 22 segundosÉl ya reconoce que va a ser la 13053, que es la que sigue, y le digo deudores siste crédito.
+55:3555 minutos y 35 segundosEsa es la que yo voy a manejar, que depende de la cuenta 1305 que hace parte de las cuentas por cobrar, que es un grupo de cuentas de tesorería del activo
+55:4455 minutos y 44 segundoscorriente en NIF y cuentas comerciales por cobrar. Y si maneja tercero, guardar.
+55:5055 minutos y 50 segundosYa quedó creada la cuenta. Entonces acá en el detalle de contabilización voy a entrar y decirle listo. Entonces tú
+55:5755 minutos y 57 segundoscuando sean estas ventas consiste crédito, por favor envíalo a la cuenta
+56:0556 minutos y 5 segundos1305 deor existe crédito. Guardar y hago lo mismo pues con todos los tipos de
+56:1356 minutos y 13 segundoscontribuyente en mi cuenta 1305. Ah, ¿hay forma de cambiarlo masivamente? No, en este momento no. Se está trabajando
+56:2256 minutos y 22 segundospara ello, para el tema de las actualizaciones masivas desde archivos de Excel en las cuentas del PUC. Por ahora, pues esta sería la dinámica que debemos manejar.
+56:3356 minutos y 33 segundosEh, pues espero que haya sido clara la información. ¿Alguna otra duda por ahora en general?
+56:4256 minutos y 42 segundosBueno, ¿qué es? Sí, están preguntando sobre el traslado de cuentas en este momento para que por favor pues también los puedas como eh adentrar en este módulo.
+56:5356 minutos y 53 segundosClaro que sí. Entonces, en este caso de el traslado de cuentas contables, acá van a encontrar dos maneras de
+57:0157 minutos y 1 segundotraslados. Entonces dice traslado de cuentas contables. Importante muy pues yo sí lo recalco bastante, leamos todos
+57:0957 minutos y 9 segundoslos campos, los la mayoría de estos procesos, bien sea acá el traslado de cuentas contables o de tercero, lo mismo
+57:1657 minutos y 16 segundosque en las en el módulo de cuentas. Eh, pues aquí nos aclara para qué sirve cada
+57:2357 minutos y 23 segundosuno de esos procesos. Entonces, para que lo tengan muy presente, dice, traslado de cuentas contables. Esta herramienta
+57:3057 minutos y 30 segundosles permite trasladar los movimientos de una cuenta contable a otra. Oiga, es que yo tenía todo creado en la 413502
+57:3957 minutos y 39 segundoso lo que hablábamos, todo me quedó en la 13053 de siste crédito y ahora por políticas vamos a dejar todo en una sola cuenta. Para el jefe es indiferente.
+57:5057 minutos y 50 segundosNosotros queremos que todo quede en una cuenta. Entonces podemos trasladar esos movimientos para documentos antiguos ya
+57:5757 minutos y 57 segundoscontabilizados como para documentos futuros. Ah, bueno, de una vez que de aquí en adelante pues eso quede con la configuración que yo le estoy dando.
+58:0858 minutos y 8 segundosTambién que presenten errores de diferencias por digitación. Ah, es que yo lo digité, lo y entré a la contabilización avanzada, lo modifiqué
+58:1658 minutos y 16 segundosantes de enviarlo electrónicamente y pues ya no puedo entrar a hacerle nada.
+58:2058 minutos y 20 segundosEntonces puedo ir a hacer esos traslados de muévame de esta cuenta a esta cuenta.
+58:2558 minutos y 25 segundos¿Listo? Ten en cuenta que no se trasladará el movimiento contable de los documentos bloqueados. ¿Listo? Entonces,
+58:3358 minutos y 33 segundos¿qué qué voy a trasladar? El movimiento de una cuenta a otra de la 413506 a la 413507.
+58:4058 minutos y 40 segundosEso es el movimiento. La parametrización. Oiga, es que esta cuenta 41350 está marcada como de ingresos que maneja centro de costos y que maneja tercero.
+58:5058 minutos y 50 segundosTrasládeme esa parametrización a la 413507.
+58:5558 minutos y 55 segundosEso es parametrización, parametrización y movimiento. Todo lo que había en esa cuenta 41 3506, muévalo a la 37 y de
+59:0359 minutos y 3 segundospaso la 37 déjela configurada como estaba la 36. ¿Listo? Entonces, el movimiento, la parametrización o la parametrización y el movimiento.
+59:1459 minutos y 14 segundos¿De qué sucursal? Entonces, si yo tengo varias sucursales, no es que solo vamos a mover las de la las de las de Cali.
+59:2159 minutos y 21 segundosTambién esto lo usan mucho, ya ya es irme muy lejos, pero es el tema de esa 2368 que hablábamos. Como el sistema lo hace todo en una, entonces yo voy
+59:2959 minutos y 29 segundosdespués y traslado ciertos documentos de cierta sucursal a tal cuenta contable.
+59:3659 minutos y 36 segundosY el tipo de documento, oiga, que en las compras, que en las ventas, que en los recibos de caja, que en los egresos, en las depreciaciones, todo de acuerdo a lo
+59:4459 minutos y 44 segundosque ustedes manejen. Entonces, le digo que en las facturas de venta, acá, ¿qué tipo de traslado voy a hacer?
+59:5659 minutos y 56 segundosEntonces, voy a trasladar unos documentos. Recordemos que acá les dije el movimiento. El movimiento de ¿qué? de las facturas de venta. Okay. Unos unas
+1:00:051 hora y 5 segundosfacturas no más, unas fechas no más o todos los documentos. Entonces, ah, no, es que la que me quedó mal fue de la
+1:00:121 hora y 12 segundosfactura uno a la seis. Ah, pues entonces rango de documentos y selecciono. No, lo que me quedó mal fue el mes de abril.
+1:00:201 hora y 20 segundosAh, bueno, entonces rango de fechas del primero al 30. Sí. Cuenta origen. Ah, es que está en la 413507 y lo necesito en la 41350.
+1:00:321 hora y 32 segundosy iniciar traslado. El sistema, ¿qué hace?
+1:00:361 hora y 36 segundosCaso. Lo mismo que los terceros. Los terceros es más para trasladar. Miren, esta herramienta es para mover y
+1:00:431 hora y 43 segundosconsolidar los registros de un tercero, o sea, los documentos a otro tercero.
+1:00:481 hora y 48 segundosOkay. A final de año, ciérreme los terceros de la 2365 y consolíemelos en cabeza de la Dian. Se puede utilizar para esa dinámica que sería lo que sería el cierre de cuentas de impuestos.
+1:01:001 hora y 1 minuto¿Listo? corregir errores de digitación que en el NI, oiga, es que esto quedó en cabeza de Estefanía, pero era en cabeza de Sebastián. Entonces, podemos
+1:01:091 hora, 1 minuto y 9 segundostrasladar los movimientos de un tercero a otro para poder eliminar terceros duplicados. Oiga, es que me crearon dos
+1:01:161 hora, 1 minuto y 16 segundosveces el mismo tercero, lo crearon como almacenes Pepito y por otro lado como Pepito Pérez, pero son la misma persona,
+1:01:231 hora, 1 minuto y 23 segundoscambia un numerito en el en el en la identificación. Entonces, necesito que me unifique esa información, que me
+1:01:301 hora, 1 minuto y 30 segundostraslade del que está mal al que está bien para que el que quedó mal no tenga movimientos y pueda eliminar ese que está mal. ¿Listo?
+1:01:411 hora, 1 minuto y 41 segundosAcá no trasladará movimientos de documentos que ya hayan sido reportados a la Dian. Es decir, yo hice la factura
+1:01:481 hora, 1 minuto y 48 segundosa nombre de Estefanía y la envía la Dian. Yo eso sí ya no lo voy a poder hacer porque en la Dian el reporte quedó a Estefanía. Yo no puedo entrar a
+1:01:561 hora, 1 minuto y 56 segundosdecirle al sistema, "Venga, ahora cárguemelo aquí contablemente a nombre de Sebastián, porque cuando vaya a generar exógena, pues ahí van a empezar
+1:02:051 hora, 2 minutos y 5 segundosa aparecer las inconsistencias, tanto en lo que reporté inicialmente electrónico cuando le facturé a Estefanía, que lo que estoy reportando de pronto a final
+1:02:131 hora, 2 minutos y 13 segundosde año en exógena de diciendo que se lo facturé fue a Sebastián." Entonces eso ya no aplicaría para documentos electrónicos. Y lo mismo que en qué
+1:02:221 hora, 2 minutos y 22 segundossucursal entonces mi empresa o sucursal, que qué tipo de documento? Las facturas de venta, de compra, lo que sea. El tipo de traslado, ciertos documentos, unas
+1:02:311 hora, 2 minutos y 31 segundosfechas o todos los documentos. Y aquí ya no me pide cuenta destino y cuenta origen, lo que me pide es tercero origen
+1:02:381 hora, 2 minutos y 38 segundosy tercero destino. Trasládeme de Almacén Pepito a el tercero Pepito Pérez. ¿Listo?
+1:02:461 hora, 2 minutos y 46 segundosEspero pues que haya sido clara la la información.
+1:02:521 hora, 2 minutos y 52 segundosAcá vamos pues ya a continuar con el siguiente tema. Son creación de productos, servicios y activos fijos.
+1:02:591 hora, 2 minutos y 59 segundos¿Listo? Que recordemos pues todo es una referencia de inventario en el sistema, un gasto, todo es una referencia de inventario. Entonces, aquí vamos a crear productos, servicios y un activo fijo.
+1:03:091 hora, 3 minutos y 9 segundosUn producto, un servicio y un activo fijo. ¿Listo? Entonces, ¿qué hemos visto hasta ahora?
+1:03:161 hora, 3 minutos y 16 segundosCrear usuarios. Recuerden, a ustedes pues a la mayoría les entregaron parametrizado, entonces pues ya tienen sus usuarios, sus productos, sus
+1:03:241 hora, 3 minutos y 24 segundosservicios, pero pues esto es para que ustedes lo puedan hacer a medida de de de su día a día. ¿Listo? Entonces, ya
+1:03:321 hora, 3 minutos y 32 segundoscreamos un usuario, le dimos permisos tanto gruesos como detallados, contabilizaciones, formas de pago, replicar una forma de
+1:03:401 hora, 3 minutos y 40 segundospago en otro tipo de forma de pago, una contabilización en otra forma de pago, crear una cuenta y las modificaciones de
+1:03:481 hora, 3 minutos y 48 segundosesas cuentas. Ahora vamos a crear lo que son productos, servicios y activos fijos. Como les decía, pues todo en el sistema es un producto o servicio.
+1:03:561 hora, 3 minutos y 56 segundosEntonces, aquí también tenemos ese módulo que es el de productos y servicios.
+1:04:011 hora, 4 minutos y 1 segundoAcá tenemos la opción para crearlos, consultarlos, importarlos. Oiga, es que yo manejo muchos, ¿puedo cargarlos masivamente? Claro que sí. Todos los
+1:04:101 hora, 4 minutos y 10 segundosprocesos de migración se hacen de la misma manera. En la sesión del día 3 del 13 de mayo vamos a estar viendo lo que serían esas migraciones. ¿Listo?
+1:04:201 hora, 4 minutos y 20 segundosEntonces, para que estén muy pendientes, toda la creación de productos y servicios, cargarlos masivamente. El video tutorial, yo necesito ayuda sobre
+1:04:281 hora, 4 minutos y 28 segundosello. Entonces me envía a un video tutorial de cómo hacer esas creaciones o la marcación de favoritos para de pronto
+1:04:361 hora, 4 minutos y 36 segundosmis colaboradores de las áreas de almacén que son los responsables de la creación de esos productos y servicios, pues que tengan acceso a ellos aquí
+1:04:441 hora, 4 minutos y 44 segundosdirectamente en el panel inicial que si los vamos a crear, consultar, importar o ver el video. Vamos a crear uno nuevo. Entonces vamos a arrancar con
+1:04:531 hora, 4 minutos y 53 segundosproductos, un producto cualquiera. Entonces vamos a ponerle el código que queramos. Entonces
+1:04:591 hora, 4 minutos y 59 segundosle vamos a poner producto masterclass para poder identificarlo.
+1:05:071 hora, 5 minutos y 7 segundosEs indiferente. Si aquí tenemos si es numérico de letras o es alfanumérico, lo podemos manejar. La descripción entonces
+1:05:171 hora, 5 minutos y 17 segundosse va a llamar producto masterclass. Listo.
+1:05:251 hora, 5 minutos y 25 segundosUnidad de medida. Si esto viene por bultos, por cajas, por toneladas, recordemos que el sistema nos maneja lo
+1:05:321 hora, 5 minutos y 32 segundosque es la conversión. Pasa mucho con los supermercados. Oiga, si esto acá fuera cerveza, águila en paca, pues acá la
+1:05:401 hora, 5 minutos y 40 segundosunidad de medida sería paca para poder decirle que una paca son 28 unidades y poder comercializar eso en paca o en
+1:05:471 hora, 5 minutos y 47 segundosunidad. También pasa mucho en las ferreterías, ¿no? El cable viene por rollos, se vende por metros, yardas, el cemento llega por bultos y de pronto que
+1:05:551 hora, 5 minutos y 55 segundospor libras o kilos o por ejemplo lo que es el tiner. Entonces llega por galones y el cliente lo necesita de pronto por
+1:06:031 hora, 6 minutos y 3 segundoslitros o mililitros. Entonces todas esas conversiones que manejemos. Su clasificación, que esto que estoy creando, ¿qué es entonces? que si es un
+1:06:111 hora, 6 minutos y 11 segundosproducto, que si es un diferido, una dotación, un intangible, un gasto, un activo fijo, pues yo le digo que esto es un producto en base a la dinámica que
+1:06:201 hora, 6 minutos y 20 segundosvamos a manejar. Su agrupación de inventario, entonces el grupo principal, recordemos que esto también lo podemos subauxiliarizar.
+1:06:281 hora, 6 minutos y 28 segundosEntonces, acá el sistema ya trae lo que son mano de obra, si es un activo fijo, si esto es un producto terminado, si
+1:06:351 hora, 6 minutos y 35 segundosesto es una materia prima. es un producto que yo no fabrico, simplemente me dedico a su comercialización.
+1:06:421 hora, 6 minutos y 42 segundosEs una contabilización automática para el tema de los gastos y los diferidos o temas de servicio. Entonces, en este
+1:06:501 hora, 6 minutos y 50 segundoscaso estamos creando un producto, un producto que, ¿qué? Yo no fabrico, yo lo comercializo. Entonces, le voy a decir
+1:06:571 hora, 6 minutos y 57 segundosque son productos no fabricados por la empresa. ¿A qué me refería con que a eso le puedo agregar un grupo? Ah, pues imaginémonos un supermercado. Todo lo
+1:07:051 hora, 7 minutos y 5 segundosque hay en un supermercado pues ellos no lo fabrican, pero allí hay agrupaciones, lácteos, belleza, aseo, cafetería, eh en
+1:07:151 hora, 7 minutos y 15 segundosgeneral, pues, pero siguen siendo parte de los productos no fabricados por la empresa. Entonces, acá tenemos el grupo
+1:07:221 hora, 7 minutos y 22 segundosprincipal, pero recuerden que eso se puede sub auxiliarizar.
+1:07:271 hora, 7 minutos y 27 segundossu porcentaje de IVA, que este producto específico viene grabado al 19, al 5 o
+1:07:331 hora, 7 minutos y 33 segundosal cer. De acuerdo a esto mismo, pues seleccionaremos la plantilla. Entonces, vean que acá en nuestras plantillas lo
+1:07:411 hora, 7 minutos y 41 segundosque creamos el día de hoy, nosotros tenemos comercialización en general, creo que creo para eso es una actividad
+1:07:491 hora, 7 minutos y 49 segundoscomercial. ¿Listo? Entonces acá, por ejemplo, yo le digo, listo. Entonces esto es un producto, una comercialización. Si es del 19, le asigno mi plantilla del 19%.
+1:08:011 hora, 8 minutos y 1 segundoAcá no sé si está la de comercio general. Vamos a buscarla porque creo que como tiene el mismo número 47.
+1:08:151 hora, 8 minutos y 15 segundosEntonces vamos a dejarle esta del 19. Listo.
+1:08:201 hora, 8 minutos y 20 segundosEso es lo que creamos hace un rato en las plantillas. Entonces ahí se le asocia qué plantilla va a manejar para
+1:08:271 hora, 8 minutos y 27 segundosque él reconozca, recuerden esas cuentas de la 4, de la 14, de la 61 y las
+1:08:341 hora, 8 minutos y 34 segundosdevoluciones de mercancías, que si el producto está activo o no, que si a este producto le vamos a asociar un
+1:08:421 hora, 8 minutos y 42 segundoscentro de costos. Siempre que yo comercialice este producto, este producto es de un centro de costos de los edificios, de las obras de los
+1:08:501 hora, 8 minutos y 50 segundosedificios del edificio Colombia para el apartamento 104. Si lo quiero dejar asociado directamente a un centro de
+1:08:571 hora, 8 minutos y 57 segundoscostos, siempre que compre o venda este producto ya va a ir por defecto a ese centro de costos, excepto que en el documento pues yo entré a modificarlo.
+1:09:061 hora, 9 minutos y 6 segundos¿Listo? Eso es cuando le quiero dejar ese campo predeterminado. ¿Listo?
+1:09:141 hora, 9 minutos y 14 segundosSi lo voy a facturar en base al costo más utilidad estimada. Esto es en temas de la valoración de inventario, que si me costó 1000 y yo lo quiero vender en
+1:09:211 hora, 9 minutos y 21 segundosbase a al costo más una utilidad, entonces acá yo le digo, véndame lo que yo quiero utilidad del 20%. Entonces si el costo fue de 1000, el sistema
+1:09:301 hora, 9 minutos y 30 segundosvalidará que cuando menos lo vendamos en 100. Sí, diferente a si yo manejo listas de precios porque son temas separados.
+1:09:411 hora, 9 minutos y 41 segundosEntonces yo puedo decir, "Oiga, yo quiero vender en base a lo que me costó más mi utilidad, que es el 20%." ¿Cómo también yo pudiera decir, "No, pues a mí me costó 1000, pero es que yo vendo en
+1:09:501 hora, 9 minutos y 50 segundos5,000, 6,000 y 7,000 dependiendo a quién. Y es que yo financio con cistecédito y ahí es 8,000." Ah, bueno, eso es en base a listas de precios.
+1:09:581 hora, 9 minutos y 58 segundos¿Listo? Entonces, aquí es solamente si lo vamos a hacer en base al costo más una utilidad estimada. que yo exporto este producto y lo envío internacionalmente.
+1:10:091 hora, 10 minutos y 9 segundosSi lo voy a manejar con código de barras, acá en el código de barras puedo incluir el número del código de barras.
+1:10:141 hora, 10 minutos y 14 segundosRecuerden que el programa no les genera el diseño del código de barras, pero al ser una versión en nube tienen la
+1:10:211 hora, 10 minutos y 21 segundosfacilidad de descargar en el App Store esa esos esos esas aplicaciones que convierten ese número o ese consecutivo
+1:10:291 hora, 10 minutos y 29 segundosalfanumérico que ustedes incluyen aquí en un código de barras que podrán imprimir en las impresoras que ustedes manejen térmicas para rotular sus
+1:10:381 hora, 10 minutos y 38 segundosdiferentes productos. que si yo aparte de eso le con maneja un nombre para nosotros, pero tiene un código de
+1:10:461 hora, 10 minutos y 46 segundosfábrica. Sí, en la fábrica se llama de una manera diferente. Entonces, yo aquí lo vendo como masterclass, pero en la
+1:10:551 hora, 10 minutos y 55 segundosfábrica funciona como máster o lo reconocen como máster, que si lo quiero facturar sin existencias, esto pues
+1:11:031 hora, 11 minutos y 3 segundoscuando son servicios, que ahorita que creemos un servicio lo verán, o algunas empresas que dicen, "Oiga, es que yo facturo sobrepedido, primero le vendo,
+1:11:111 hora, 11 minutos y 11 segundosdespués mando traer y ahí sí, pero necesito enviarle al cliente la factura." Entonces, acá yo le activo facturar sin existencias o no. Eso es de
+1:11:191 hora, 11 minutos y 19 segundosacuerdo a mis dinámicas. En caso de que ustedes activen eso, ¿qué hará el sistema? Caso. Entonces, muchas veces también pasa mucho en soporte que dicen,
+1:11:281 hora, 11 minutos y 28 segundos"Oiga, venga, es que el producto no está." Le activan facturar sin existencias, no se tiene la precaución después de de la carga. Entonces,
+1:11:361 hora, 11 minutos y 36 segundosdespués es cuando llegan las solicitudes de, oiga, no me cuadra el costo promedio. Cuando yo voy corro el costo de ventas, me genera error. Oiga, ¿y ese
+1:11:441 hora, 11 minutos y 44 segundosproducto lo facturó en algún momento sin existencias? Sí, claro, ahí le afectó el costo. Entonces, pues para que lo tengan muy presente, ¿no? El sistema simplemente con activarlo él obedece.
+1:11:541 hora, 11 minutos y 54 segundosEntonces, así yo tenga este producto en negativo, él me lo va a seguir facturando. ¿Qué va a pasar? Que si yo no tengo un costo, el sistema va a decir, "Pero yo no sé dónde lo sacó. Eso
+1:12:031 hora, 12 minutos y 3 segundosle valió cero. Eso usted se lo regalaron. Yo no tengo ni idea.
+1:12:071 hora, 12 minutos y 7 segundosEntonces, no tiene un costo cuando se corre el costo de ventas, porque yo sí lo cargué, lo vendí, pues cuando corre el costo de ventas me va a decir, "Pero
+1:12:141 hora, 12 minutos y 14 segundosesto no tiene costo. Es todo es utilidad para usted, porque esto yo no sé usted dónde lo sacó." Listo.
+1:12:211 hora, 12 minutos y 21 segundosQue si maneja seriales. Ah, es que son televisores, celulares, aparatos que manejan temas de serial. Maneja talla y color. No, es que este producto
+1:12:301 hora, 12 minutos y 30 segundosmasterclass lo que son es camisas, pantalones, tenis. Ah, bueno, maneja talla y color, maneja lotes, no es que yo comercializo son medicamentos,
+1:12:391 hora, 12 minutos y 39 segundosentonces ah, eso maneja lotes lo que manejen, si es favorito en el post, si lo quiero ver en el post o si pertenece a un
+1:12:481 hora, 12 minutos y 48 segundosproducto. Esto pertenece a un producto, ¿para qué es? Ah, es que si lo que estoy creando este producto es una materia prima con la que ensamblo otro producto,
+1:12:571 hora, 12 minutos y 57 segundospues acá yo le digo, oiga, si esto pertenece a otro porque lo utilizo para hacer o alistar otro. Sí, que de pronto
+1:13:051 hora, 13 minutos y 5 segundosvendemos kits. Entonces yo le activo acá que esto hace parte de un kit porque de pronto yo tengo otra referencia que se llama kit dos o kit mayo y ese kit mayo
+1:13:151 hora, 13 minutos y 15 segundosincluye un producto masterclass, un servicio masterclass y unas obras masterclass, por decir algo. Tres
+1:13:221 hora, 13 minutos y 22 segundoscomponentes completamente diferentes en ese kit. Entonces, pues a estos les tengo les tuve que haber marcado que pertenecen a un producto para que a
+1:13:311 hora, 13 minutos y 31 segundostravés de una entrada de producto terminado el sistema descargue esa receta o componentes y me cargue ese producto que al final es lo que le voy a facturar a mi cliente.
+1:13:421 hora, 13 minutos y 42 segundos¿En qué bodegas lo encuentro? Pues acá para hay empresas que que a veces dicen, "Oiga, es que yo tengo inventarios
+1:13:491 hora, 13 minutos y 49 segundosespecíficos en bodegas específicas." Entonces acá pues podemos decirle a este al programa le vamos a indicar este
+1:13:571 hora, 13 minutos y 57 segundosproducto masterclass en cuál de mis bodegas lo voy a encontrar. Sí, si yo solo le dejo la bodega principal en
+1:14:061 hora, 14 minutos y 6 segundostodos los documentos que yo utilice este producto no me va a dejar seleccionar que la bodega uno, que la bodega dos, solo la principal. Entonces, vamos a
+1:14:141 hora, 14 minutos y 14 segundosagregarle otra bodega. Entonces, vean todas las que yo tengo creadas.
+1:14:181 hora, 14 minutos y 18 segundosEntonces, le voy a decir, "Listo, agrégueme también la bodega punto2.
+1:14:221 hora, 14 minutos y 22 segundosubicación. Si le voy a poner ubicación allá en en esa bodega está ubicado en E52
+1:14:301 hora, 14 minutos y 30 segundospor inventarme alguna cosa. ¿Cuánto es lo mínimo que puede haber de ese producto en esa bodega? Mínimo cinco,
+1:14:371 hora, 14 minutos y 37 segundosmáximo 20. Existencia mínima para el reorden 10. Listo.
+1:14:461 hora, 14 minutos y 46 segundosSi está su bodega principal, si está activo y si le quiero incluir una foto. Listo. Y ahí ya quedó incluido.
+1:14:531 hora, 14 minutos y 53 segundosEntonces, ya voy a poder utilizar este producto en ambas bodegas, tanto en la principal como en el punto del sur.
+1:15:011 hora, 15 minutos y 1 segundoListas de precios también, todas las que yo quiera crear las puedo llamar como yo quieran, recuerden. Entonces, acá pues vengo y le digo, ¿cuál le voy a asociar?
+1:15:101 hora, 15 minutos y 10 segundosEntonces este producto Masterclass solo se vende para mayoristas. Entonces en mayoristas vale ,000 dees.
+1:15:191 hora, 15 minutos y 19 segundosListo. Guardar y ya me lo asoció.
+1:15:231 hora, 15 minutos y 23 segundosTambién maneja otro tipo de listas para los minoristas o de pronto pudiéramos crear listas también para lo que sería
+1:15:321 hora, 15 minutos y 32 segundosSist Crédit o ADI. Recordemos que si lo creamos como forma de pago también pudiera establecerse como una lista de precios. Sí. Entonces, si es lo pagas
+1:15:401 hora, 15 minutos y 40 segundoscon ADI, pues vale tanto, pero si lo pagas con siste crédito, vale tanto.
+1:15:441 hora, 15 minutos y 44 segundosEntonces, todas esas listas se pueden llamar como nosotros queramos.
+1:15:501 hora, 15 minutos y 50 segundosImpuestos adicionales. Vean que en la parte superior yo le incluí el IVA, que es el básico. O tiene IVA o no tiene IVA. Pero es que resulta que esto es son
+1:15:591 hora, 15 minutos y 59 segundosbebidas eh alcohólicas, entonces pues adicionalmente yo puedo venir y agregarle más impuestos. Vean que él ya por defecto me mostró el IVA, pero yo le
+1:16:081 hora, 16 minutos y 8 segundosdigo, vea, es que aparte de eso maneja el de fomento a la horticultura, el de el Advalorem, el Advalorem en
+1:16:151 hora, 16 minutos y 15 segundosporcentaje, el impoconsumo a la bolsa, el impoconsumo distrital, el impoconsumo nacional, maneja impuestos saludable o
+1:16:241 hora, 16 minutos y 24 segundosalimentos ultraprocesados, bebidas azucaradas, ACPM, gasolina. Entonces acá yo puedo venir a configurarle los
+1:16:321 hora, 16 minutos y 32 segundosdiferentes impuestos que maneje. Oiga, ¿y si lo que estoy creando arriba es un servicio, pues temas de ahí? Ahorita que vayamos a crear un servicio, lo
+1:16:401 hora, 16 minutos y 40 segundosvalidamos. ¿Listo? Descuentos por cantidad. Entonces, pues yo puedo establecer también que si el cliente
+1:16:491 hora, 16 minutos y 49 segundosviene y me compra, vea que a eso le asignamos una lista de precios. Entonces yo le digo, vea, si usted me compra entre cinco y 10 de esos productos
+1:16:581 hora, 16 minutos y 58 segundosmasterclass, se lo dejo a la lista de precios de mayoristas, que es la única que le asocié, pero le voy a dar un descuento del cinco sobre esa lista.
+1:17:071 hora, 17 minutos y 7 segundosEntonces, ya el sistema cuando yo facture, bien sea 5, 6, 7, 8, 9 o 10 unidades de esto, sabe que sin importar
+1:17:151 hora, 17 minutos y 15 segundosel tercero va a traerlo con lista de mayoristas y le va a dar un descuento del 5%. ¿Por qué? porque es una
+1:17:221 hora, 17 minutos y 22 segundosconfiguración específica del producto, ya no del tercero como tal. Oiga, ¿y qué pasa si yo tengo un tercero que le tengo configurado un descuento del 5% siempre?
+1:17:321 hora, 17 minutos y 32 segundosPorque es que ese señor es muy buen cliente y yo vengo y le pongo este descuento ahí, ¿lo suma? Sí, pudiéramos
+1:17:391 hora, 17 minutos y 39 segundosestablecer que se sumen o pudiéramos entrar al momento de facturar y editarlo, porque una cosa es el descuento que tiene el señor Sebastián
+1:17:471 hora, 17 minutos y 47 segundospor ser tan buen cliente y otro el que yo le configuro al producto de, oiga, es que no es para don Sebastián, es para si usted me compra entre 5 y 10, va con
+1:17:551 hora, 17 minutos y 55 segundoseste precio. Entonces, él reconoce y podría configurarse para sumar o no esas diferentes eh variables.
+1:18:061 hora, 18 minutos y 6 segundostodo el tema de la ficha técnica.
+1:18:081 hora, 18 minutos y 8 segundosEntonces, acá recuerden que el sistema maneja producción simplificada.
+1:18:121 hora, 18 minutos y 12 segundosEntonces, producción simplificada es carga de los componentes de los productos a partir de sus componentes, lo que sería la ficha técnica o la
+1:18:191 hora, 18 minutos y 19 segundosreceta. Ah, que para hacer un producto de estos masterclass, pues yo necesito x subproductos o lo que son los kits.
+1:18:271 hora, 18 minutos y 27 segundosEntonces, voy a necesitar tanta materia prima uno, dos, lo que sea, que estos previamente debieron sidon haber sido
+1:18:341 hora, 18 minutos y 34 segundoscreados y debieran tener marcación como cuál pertenece a producto. ¿Para qué?
+1:18:401 hora, 18 minutos y 40 segundosPara que yo las pueda asociar acá como componentes de un producto final.
+1:18:481 hora, 18 minutos y 48 segundosConversión. Entonces, si yo en la parte superior le dije, este producto masterclass viene por bultos, pues yo acá podría venir y decirle al sistema,
+1:18:561 hora, 18 minutos y 56 segundosoiga, es que un bulto en la en las conversiones le digo un bulto que si ves que acá tengo como unidad,
+1:19:041 hora, 19 minutos y 4 segundosentonces dice una unidad le equivale a, entonces una unidad pudieran ser 20 g.
+1:19:091 hora, 19 minutos y 9 segundosEntonces acá puedo seleccionar esa información. Si en la parte de arriba le pongo a bulto, entonces acá él me va a decir un bulto a qué le equivale.
+1:19:151 hora, 19 minutos y 15 segundosEntonces un bulto pudieran ser 100 kg o 10,000 libras o 100,000 eh mg. Entonces, pues ahí lo puedo
+1:19:241 hora, 19 minutos y 24 segundosmanejar para poder utilizar este producto en paquete, en bulto, en libras, en kilogramos, en miligramos,
+1:19:311 hora, 19 minutos y 31 segundostodos los factores que yo le incluya aquí. Lo que les comentaba de la cerveza, por ejemplo, la referencia se llama cerveza águila. viene por paca de
+1:19:401 hora, 19 minutos y 40 segundosa 20, de a 28. Entonces, acá en la parte superior la creo como paca y aquí entonces el que me va a preguntar a qué
+1:19:471 hora, 19 minutos y 47 segundosme equivale una paca. Si yo le digo una paca son 30 unidades, 28 unidades, pues ya puedo utilizar al momento de facturar, bien sea compra o venta, pues
+1:19:561 hora, 19 minutos y 56 segundospuedo cargar, oiga, es que llegaron cuatro pacas y dos cervezas o estoy vendiendo dos pacas y tres cervezas o
+1:20:031 hora, 20 minutos y 3 segundosestoy vendiendo cervezas sueltas. Sí, como para plantearles un ejemplo, observaciones, datos personalizados o imágenes de esos diferentes productos.
+1:20:141 hora, 20 minutos y 14 segundosEntonces acá no le vamos a incluir imagen, no le vamos a incluir observaciones, de pronto observaciones de qué tipo, lo que queramos incluir y
+1:20:211 hora, 20 minutos y 21 segundosnos muestra qué usuario le incluyó la nota.
+1:20:251 hora, 20 minutos y 25 segundosEntonces, producto descontinuado o a la fecha de hoy que el producto no está o que no se encuentra en la bodega a pesar de que muestra que sí hay existencias,
+1:20:331 hora, 20 minutos y 33 segundostodo ese tipo de comentarios internos que suelen manejar las empresas. ¿Listo?
+1:20:381 hora, 20 minutos y 38 segundosEntonces, regresando, imágenes, datos personalizados, los que quieran. Vean que acá yo tengo creado que el registro
+1:20:451 hora, 20 minutos y 45 segundosBima, que el resta PPC, que es la familia, que ficha técnica, variables que se han ido incluyendo de acuerdo a
+1:20:521 hora, 20 minutos y 52 segundoslas necesidades y se pueden incluir todos los que necesitemos.
+1:20:581 hora, 20 minutos y 58 segundosObservaciones, conversión, ficha técnica, descuentos por cantidad, impuestos, lista de precios, bodega, más
+1:21:061 hora, 21 minutos y 6 segundosopciones y el detalle de atrás para adelante. Cuando ya tenemos todo diligenciado o al menos los campos
+1:21:131 hora, 21 minutos y 13 segundosobligatorios, recuerden que hay unos obligatorios que traen marcado un asterisco, entonces esos no los puedo dejar vacíos.
+1:21:211 hora, 21 minutos y 21 segundosPor ejemplo, el código internacional, esto pudiera no tener código internacional, entonces pues no pasa nada, no lo voy a facturar en base al costo, no le tengo un código de fábrica,
+1:21:301 hora, 21 minutos y 30 segundosno lo quiero asociar a un centro de costos, pero sí obligatoriamente tiene que tener un código, un nombre, una unidad de medida, una clasificación,
+1:21:391 hora, 21 minutos y 39 segundosuna plantilla de contabilización, eso sí es obligatorio. Listo, le decimos guardar y el sistema pues nos va a crear nuestro producto o servicio. ¿Listo?
+1:21:501 hora, 21 minutos y 50 segundosVamos a verificar que esto haya quedado bien creado. Entonces, nos vamos, cerramos todo y vamos a ir a revisar
+1:21:571 hora, 21 minutos y 57 segundospanel, productos y servicios o como lo marqué como un favorito, puedo irme desde acá directamente para ir a crear productos y servicios como yo lo manejo.
+1:22:081 hora, 22 minutos y 8 segundosListo. Entonces, venimos y productos y servicios, consultar. ¿Cuál vamos a consultar? Pues el código que acabamos de crear, Prod Masterclass. Vamos a ver.
+1:22:181 hora, 22 minutos y 18 segundosY acá efectivamente me dice que ese código corresponde al producto de la masterclass, que es un producto que viene por unidad, está activo, es grabado y está grabado al 19%.
+1:22:311 hora, 22 minutos y 31 segundos¿Listo?
+1:22:331 hora, 22 minutos y 33 segundosVamos a seguir de una vez con servicios y después con activos fijos y miramos si de pronto hay dudas en cualquiera de
+1:22:401 hora, 22 minutos y 40 segundosellos, porque pues recuerden que todo es lo mismo, todo es un producto o servicio. Entonces aquí vamos ahora a crear un servicio y ese servicio también
+1:22:491 hora, 22 minutos y 49 segundosse va a llamar masterclass. Entonces, ¿qué código le pondremos? Pues en base a esa lógica le vamos a poner servicio master class.
+1:23:001 hora y 23 minutosY que esto es un ¿qué? un servicio que se llama masterclass, que viene por unidad. Aquí podrían haber
+1:23:081 hora, 23 minutos y 8 segundosvarias variables en cuanto a lo que son servicios, ¿no? Recordemos que pudiera ser semestre, anualidad, curso, entonces pues ya ustedes lo manejan, ¿no? En
+1:23:171 hora, 23 minutos y 17 segundostemas de servicios, al ser bienes no tangibles, pero en general lo que son servicios, pues viene como unidad, ¿no?
+1:23:231 hora, 23 minutos y 23 segundosUn servicio de honorarios, un servicio de aseo, un servicio de transporte.
+1:23:291 hora, 23 minutos y 29 segundosEntonces, pues lo podemos manejar de esa manera. Un servicio de construcción. Ya si ustedes tienen variables, como les
+1:23:351 hora, 23 minutos y 35 segundosdecía, de proyecto que dura 6 meses, un año, o que le vendo la anualidad, pero le facturo mensualmente. Entonces, pues
+1:23:431 hora, 23 minutos y 43 segundosya son dinámicas que habría que entrar más a detalle, pero le pueden manejar el tema de la conversión, así sea un servicio. Entonces, lo puedo crear como
+1:23:511 hora, 23 minutos y 51 segundosanualidad y le digo allá en la conversión que un año son 12 meses y entonces ya este servicio lo puedo facturar por año y por mes. ¿Listo?
+1:24:001 hora y 24 minutossu clasificación. Entonces, en el momento que le digo que esto es un servicio, él automáticamente en la parte de abajo
+1:24:081 hora, 24 minutos y 8 segundosme activa facturar sin existencias. ¿Por qué? Porque yo no tengo una estantería llena de de fletes, no tengo una estantería llena de honorarios, esos son
+1:24:161 hora, 24 minutos y 16 segundosbienes no tangibles. Entonces, acá le voy a asociar su grupo de inventarios, que el sistema ya trae servicios.
+1:24:231 hora, 24 minutos y 23 segundosRecuerden, esto lo podríamos subbauxiliarizar. Oiga, es que yo presto servicios de aseo, yo presto servicios de honorarios, yo presto servicios de
+1:24:311 hora, 24 minutos y 31 segundosinstalaciones, pero todo sigue siendo servicios y lo quiero poder discriminar.
+1:24:351 hora, 24 minutos y 35 segundosAh, perfecto. Entonces, puedo subauxiliarizar esos grupos. ¿Qué tarifa de IVA maneja? La plantilla de
+1:24:441 hora, 24 minutos y 44 segundoscontabilización que pues me va me va a mostrar son las plantillas referentes a eh servicios. Entonces, yo le voy a poner aquí una de honorarios del 19.
+1:24:551 hora, 24 minutos y 55 segundos[carraspeo]
+1:24:571 hora, 24 minutos y 57 segundosListo, que si lo voy a asociar a un centro de costos en base a una a su costo promedio más utilidad estimada.
+1:25:031 hora, 25 minutos y 3 segundosAquí ya sí es indiferente porque es un servicio. Entonces, pues como tal no es que tenga de entrada un costo promedio,
+1:25:091 hora, 25 minutos y 9 segundosun código internacional, un código de de barras, un código de fábrica, facturarlo sin existencias,
+1:25:171 hora, 25 minutos y 17 segundosperdón, que lo activa automáticamente cuando yo le doy la clasificación servicio. Él entiende que los servicios
+1:25:241 hora, 25 minutos y 24 segundosyo no voy a tener cargado una estantería llena de fletes. Como les decía, si pertenece a un producto, un código de fábrica, en qué bodegas no aplica.
+1:25:351 hora, 25 minutos y 35 segundosListas de precios, bueno, ahí sí aplica.
+1:25:371 hora, 25 minutos y 37 segundosEntonces, este servicio tiene un precio, si es para mayoristas, tiene un precio si es para minoristas, tiene un precio si es con convenio, todas las las listas
+1:25:471 hora, 25 minutos y 47 segundosde precios que queramos crear. Entonces yo le voy a decir que es para particulares. Este este servicio solo maneja precio de particulares y que el
+1:25:541 hora, 25 minutos y 54 segundosprecio a particulares es de 250,000 pes.
+1:26:021 hora, 26 minutos y 2 segundosLe puedo agregar más listas. Entonces, ah, bueno, eso para particulares, pero afiliados, ¿cuánto vale? No, afiliados valen solo 200.
+1:26:121 hora, 26 minutos y 12 segundosListo.
+1:26:151 hora, 26 minutos y 15 segundosY de ahí para adelante lo que le quiera incluir. Listo.
+1:26:191 hora, 26 minutos y 19 segundos[carraspeo] Impuestos adicionales. Ya vieron que en la parte superior pues eso tiene IVA del 19%.
+1:26:251 hora, 26 minutos y 25 segundosEntonces, ¿qué vamos a encontrar en la parte inferior? Pues la opción para incluir si de pronto es una IU.
+1:26:301 hora, 26 minutos y 30 segundosEntonces, que de pronto allá arriba no dice servicio pro eh masterclass, sino dice servicio de construcción. Esas
+1:26:381 hora, 26 minutos y 38 segundosempresas generalmente manejan. Entonces acá yo puedo decirle, "Oiga, sí, esto maneja IU y después de activarle el
+1:26:451 hora, 26 minutos y 45 segundosmanejo de AU, puedo seleccionar qué tipo de IU, construcción o IU aseo, cafetería y vigilancia. ¿Listo? y puedo facturar, hay un incluido o hay un no incluido.
+1:26:571 hora, 26 minutos y 57 segundosDescuentos por cantidad, ficha técnica, conversión, observaciones, datos personalizados o
+1:27:041 hora, 27 minutos y 4 segundosimágenes y le decimos guardar y ya quedó creado nuestro servicio. Listo, ya en el servicio pues hay menos variables que tenemos que que abarcar. ¿Por qué?
+1:27:141 hora, 27 minutos y 14 segundosPorque por ejemplo a esto yo pudiera no tener que incluirle una imagen, no le puedo no no necesariamente una conversión, no requeriría una ficha
+1:27:231 hora, 27 minutos y 23 segundostécnica. De pronto descuentos por cantidad sí, pero la mayoría de los campos pues podemos saltarlos, excepto
+1:27:301 hora, 27 minutos y 30 segundoslos obligatorios. Nuevamente tiene que tener un código, tiene que tener un nombre, una unidad de medida, una clasificación y una plantilla de contabilización como mínimo esos datos.
+1:27:421 hora, 27 minutos y 42 segundos¿Listo? Y ahí ya creamos un producto y un servicio. ¿Cómo los vamos a a buscar acá? Vean los filtros. Pues acá yo le
+1:27:501 hora, 27 minutos y 50 segundosvoy a decir ahora filtreme lo que diga masterclass sin clasificación. Solamente yo necesito
+1:27:571 hora, 27 minutos y 57 segundosver todo lo que diga masterclass. Como el producto y el servicio lo creé como masterclass, pues me muestra ambos. Vea, ahí ya tenemos creado nuestro producto
+1:28:051 hora, 28 minutos y 5 segundosmasterclass y nuestro servicio de la masterclass. Acá ve facturar sin existencias, uno no. y el otro sí. ¿Cuál
+1:28:131 hora, 28 minutos y 13 segundossí tiene activo eh facturar sin existencias? El servicio. En el producto no lo tiene activo, significa que debo
+1:28:211 hora, 28 minutos y 21 segundoscontrolar las existencias o el sistema me va a controlar las existencias, no me va a dejar facturar si no tengo
+1:28:271 hora, 28 minutos y 27 segundosexistencias de esa mercancía. ¿Listo? Y ahora vamos a crear el activo fijo. Ya creamos un producto, creamos un servicio y ahora vamos a crear un activo fijo.
+1:28:381 hora, 28 minutos y 38 segundosEse activo fijo, pues también hace parte de mis productos y servicios. Lo que pasa es que hace parte del mismo panel, pero tiene un acceso diferente.
+1:28:471 hora, 28 minutos y 47 segundosEntonces, aquí vamos a decirle que vamos a crear un activo fijo.
+1:28:521 hora, 28 minutos y 52 segundosEl código nuevamente, lo que ustedes quieran. Yo utilizo una estructura, pues, en base a mi criterio contable.
+1:28:581 hora, 28 minutos y 58 segundosUstedes pueden utilizar la que ustedes quieran, la que ustedes consideren. Yo voy a utilizar AF de activo fijo GU Compc.
+1:29:101 hora, 29 minutos y 10 segundosel activo fijo computador de la masterclass. Listo. El nombre. Entonces que eso es el PC Hulet Packer Masterclass.
+1:29:241 hora, 29 minutos y 24 segundosEse es el computador Hulet Packer que se utiliza para la masterclass.
+1:29:301 hora, 29 minutos y 30 segundosViene por unidad. Efectivamente, aquí no podemos crear los activos en bloques. Yo acá no le puedo poner AFCEL01 y decirle
+1:29:391 hora, 29 minutos y 39 segundos20 celulares, ¿no? Porque digamos que sí lo pueden hacer. Lo que pasa es que lo va el sistema a reconocer como si fuera un activo fijo. Entonces, ahí es donde
+1:29:471 hora, 29 minutos y 47 segundosyo les planteo. Y si uno de los celulares se pierde o si se vende o si se daña, ¿cómo le da de baja? Entonces
+1:29:541 hora, 29 minutos y 54 segundostoca por separado. Lo ideal es que se lleve por separado. Cada uno es un activo. También la vez pasada tuve una oportunidad de manejarlo con un cliente.
+1:30:041 hora, 30 minutos y 4 segundos[carraspeo] Ellos lo manejaban como estantería, toda la estantería, oiga. Y si se parte, si se si daña, si se
+1:30:111 hora, 30 minutos y 11 segundosdeteriora, si se desaparece un parcial de toda esa estantería, usted cómo le da de baja eso? ¿Cómo cambia o o modifica
+1:30:201 hora, 30 minutos y 20 segundosesa información? Entonces, pues ya de acuerdo a su criterio, ténganlo presente siempre esta información, ¿cómo lo va a dar de baja, si los va a mandar
+1:30:281 hora, 30 minutos y 28 segundosacumulados? Después, ¿cómo hace para darlos de baja en caso de que se pierda uno de ellos? Entonces, lo ideal siempre es que cada uno tenga su código por
+1:30:361 hora, 30 minutos y 36 segundosseparado. Oiga, que yo tengo cuatro computadores, entonces cree la FCOM 01, 02, 03, como los quiera manejar para que pueda tener el control tanto de
+1:30:451 hora, 30 minutos y 45 segundosmantenimientos como de depreciación de cada uno de ellos.
+1:30:511 hora, 30 minutos y 51 segundosListo. La unidad de medida, la clasificación por defecto me trajo que era un activo fijo. Aquí ya me lo trajo automático. ¿Por qué? Por donde entré.
+1:30:591 hora, 30 minutos y 59 segundosPorque yo entré aquí en el módulo de productos y servicios, le estoy diciendo que voy a entrar a crear un activo.
+1:31:041 hora, 31 minutos y 4 segundosEntonces, él de una vez me dijo, "Okay, si estás creando un activo, ya te alimento esta información." ¿Listo? Que esto hace parte de qué. Esto sería una contabilización automática.
+1:31:181 hora, 31 minutos y 18 segundosAh, no, perdón, esto es un activo fijo.
+1:31:201 hora, 31 minutos y 20 segundosPerdónenme. Le digo que esto es un activo fijo. Su porcentaje de IVA, efectivamente, acá habrá muchas personas que me dicen, "Oiga, ojo ahí porque es
+1:31:281 hora, 31 minutos y 28 segundosque el IVA va como mayor valor del activo." Sí, efectivamente, el sistema lo reconoce, pero igual el computador cuando yo llego a comprarlo allá en
+1:31:351 hora, 31 minutos y 35 segundosCatronics va a venir con IVA. Entonces, IVA del 19.
+1:31:391 hora, 31 minutos y 39 segundos¿Qué plantilla voy a utilizar? Ah, bueno, es que los computadores van en la 1528 de equipo de procesamiento de datos.
+1:31:481 hora, 31 minutos y 48 segundosEntonces, él ya trae esas plantillas estándar. Si ven que lo que fue para el producto que manejamos lo asociamos a
+1:31:571 hora, 31 minutos y 57 segundosuna plantilla que creamos porque a eso me dedico yo. Sin embargo, las plantillas que son estándar, los activos fijos, todas las empresas tienen activos
+1:32:051 hora, 32 minutos y 5 segundosfijos. Las de gastos, todas las empresas manejan gastos sin importar, todas pagan arriendo de pronto o servicios públicos
+1:32:121 hora, 32 minutos y 12 segundoso el útiles papelería y fotocopias, eh taxis y buses, combustible, que hacen parte de lo que conocemos como el plan
+1:32:201 hora, 32 minutos y 20 segundosúnico de cuentas. Esas son plantillas que ya vienen asociadas. Sí. Entonces yo le digo, si esto es un activo fijo
+1:32:261 hora, 32 minutos y 26 segundoscomputador, que va a ir a la 152805 de equipos de procesamiento de datos.
+1:32:321 hora, 32 minutos y 32 segundos¿Listo? Y él lo va a crear y lo va a asociar a esa cuenta. ¿Para qué? Cuando lo compre, pues el costo histórico va a ir a la 1528 y cuando haga las
+1:32:391 hora, 32 minutos y 39 segundosdepreciaciones, pues va a mover las de la 1528 92 contra el costo o gasto correspondiente, si está activo o no. Y lo mismo que si
+1:32:491 hora, 32 minutos y 49 segundosese activo fijo va a ir asociado a un centro de costos. Sí, claro. Eso es de el centro de costos de los centros comerciales. Ese activo fijo está en
+1:32:581 hora, 32 minutos y 58 segundosgran estación. No lo voy a manejar con utilidad estimada porque no es algo que yo ande vendiendo mis activos fijos no es que todo el tiempo los esté
+1:33:061 hora, 33 minutos y 6 segundosvendiendo. Internacional, código de barras, código de fábrica, no aplica de facturar sin existencias. ¿Por qué? Lo que les decía, no es algo que yo ande comercializando.
+1:33:161 hora, 33 minutos y 16 segundosPertenece a un producto, en qué bodegas lo encuentro, en qué ubicación.
+1:33:221 hora, 33 minutos y 22 segundoslistas de precios, no ando vendiendo mis activos fijos, los impuestos. Entonces, acá en los impuestos, vean que él me trae el IVA y acá yo puedo venir y
+1:33:311 hora, 33 minutos y 31 segundosdecirle que ese IVA se vaya como mayor valor del costo. ¿Por qué? Porque la normativa así
+1:33:381 hora, 33 minutos y 38 segundosme lo exige. Todos mis activos fijos, el IVA de esos activos fijos van como mayor valor del costo. Entonces acá le digo,
+1:33:451 hora, 33 minutos y 45 segundossúmelo al costo. Guardar temas de Ayu, descuentos por cantidad, ficha técnica, conversión,
+1:33:531 hora, 33 minutos y 53 segundosobservaciones, datos personalizados o imágenes. Si lo analizamos, pues puede que no lo necesite para mis activos fijos.
+1:34:031 hora, 34 minutos y 3 segundosListo. Y acá le decimos guardar. Listo.
+1:34:141 hora, 34 minutos y 14 segundosEntonces ahí ya quedó nuestro producto, nuestro servicio. Le vamos a decir que eso se va a llamar masterclass. Pírteme por masterclass.
+1:34:231 hora, 34 minutos y 23 segundos¿Cómo le pusimos ese activo? Ah, bueno, es que está separado.
+1:34:271 hora, 34 minutos y 27 segundosContiene master. Vamos a decirle que contiene la palabra má.
+1:34:381 hora, 34 minutos y 38 segundosAh, perdón. Acá af gu
+1:34:491 hora, 34 minutos y 49 segundosSí, claro. Es que en el código no le puse ese má. La palabra má fue en el la descripción. Entonces, acá vamos a editar.
+1:35:011 hora, 35 minutos y 1 segundoUna vez he creado el activo fijo, entonces acá en la parte inferior, cuando ya queda creado, nos activa la opción para la ficha de activos fijos.
+1:35:121 hora, 35 minutos y 12 segundosLa ficha es donde vamos a para que nos haga esa depreciación automática.
+1:35:171 hora, 35 minutos y 17 segundosEntonces, ¿en qué fecha se compró? ¿Qué placa le voy a manejar? Y es obligatorio. Oiga, ¿y si eso no tiene placa, ¿qué hago? Pues la sugerencia,
+1:35:261 hora, 35 minutos y 26 segundospóngale el mismo código que ya conocemos. Entonces, af com
+1:35:351 hora, 35 minutos y 35 segundosgu MC. Listo. El mismo, oiga, un serial.
+1:35:401 hora, 35 minutos y 40 segundosDe pronto ese computador tampoco maneja seriales, entonces pues le pongo la misma marca al ser campos obligatorios.
+1:35:471 hora, 35 minutos y 47 segundosque si le quiero incluir la marca, el modelo, mi empresa, el responsable del
+1:35:541 hora, 35 minutos y 54 segundosel empleado responsable de de mi de mi activo fijo, la categoría,
+1:36:041 hora, 36 minutos y 4 segundosel tipo, si esto es una adición, una reforma, no es la creación, pertenece a eso pertenece a es cuando hay mejoras a
+1:36:121 hora, 36 minutos y 12 segundoslos activos fijos. Entonces, si digamos que más adelante yo le tengo que cambiar el disco duro a este activo fijo. Cuando cree, compre el activo fijo y se lo
+1:36:201 hora, 36 minutos y 20 segundosmande a instalar, pues lo creo como un activo aparte, solo que se va a llamar es disco duro del computador de masterclass. Y acá le digo que eso
+1:36:281 hora, 36 minutos y 28 segundospertenece al computador masterclass para que lo tome como una adición o una reevaluación.
+1:36:361 hora, 36 minutos y 36 segundos¿Listo? Si está ignorado o no. temas de la depreciación, si es depreciable, si está activo para depreciación o no, qué
+1:36:451 hora, 36 minutos y 45 segundosmétodo voy a utilizar, línea recta, suma de dígitos, reducción de saldos, unidades producidas. ¿Cuánto me costó el
+1:36:521 hora, 36 minutos y 52 segundosactivo aquí? Ojo, ah, es que el activo en su momento me costó 10,0000. Ahorita vamos a registrar a 2026, pero pues ya trae 2,000000 3,000000 de depreciación.
+1:37:031 hora, 37 minutos y 3 segundosAh, bueno, no pasa nada. Aquí va el costo histórico real. 10,0000 de pesos del activo fijo. Valor residual, ¿hasta dónde quiero que lo deprecie el sistema?
+1:37:141 hora, 37 minutos y 14 segundosAños de depreciación, de acuerdo a la normativa, 5 años inicia este mes y termina en 2031. ¿Y cuándo lo daría de
+1:37:221 hora, 37 minutos y 22 segundosbaja? Teoría, pues la misma fecha de cierre de, perdón, 2031 de depreciación.
+1:37:331 hora, 37 minutos y 33 segundosListo. Y en base a estos años yo le digo, "Créeme los factores." Recuerden que la depreciación es automática.
+1:37:421 hora, 37 minutos y 42 segundosEntonces el sistema dice, "Ah, bueno, me estás diciendo que son 5 años, entonces para este año tanto, para este año tanto, tanto, tanto y tanto." Listo.
+1:37:501 hora, 37 minutos y 50 segundosDesde mayo hasta abril, de mayo hasta de 2026 al 27, 27 al 28, 28 al 29. ¿Y
+1:37:581 hora, 37 minutos y 58 segundoscuánto me va a depreciar por año? un 20% en este caso por cada año para un total de 100% en los 5 años. Si maneja póliza,
+1:38:081 hora, 38 minutos y 8 segundosel histórico de pólizas y el histórico de mantenimientos y le digo guardar y ya quedó creado nuestro activo fijo junto con la ficha del activo fijo. ¿Listo?
+1:38:191 hora, 38 minutos y 19 segundosEntonces, ¿qué hicimos? Ya creamos un producto, creamos un servicio y creamos nuestro activo fijo. Vamos a decirle que me muestre todo lo que dice master.
+1:38:341 hora, 38 minutos y 34 segundosListo. Producto masterclass, servicio masterclass y el activo fijo de nuestra
+1:38:401 hora, 38 minutos y 40 segundosmasterclass. ¿Listo? Entonces eso ya ahí eh queda creado. ¿Listo? No sé si hayan
+1:38:471 hora, 38 minutos y 47 segundosdudas, inquietudes puntuales en cuanto a creación de productos, servicios o activos fijos.
+1:38:531 hora, 38 minutos y 53 segundosBueno, muy bien. Sí, acá estamos super pendientes leyéndolos. Claro que sí. Y queremos eh trasladarte una pregunta,
+1:39:001 hora y 39 minutosJonathan, porque eh hay como dudas sobre el tema del AIU. ¿Podrías repetir, repasar esa parte, por favor?
+1:39:061 hora, 39 minutos y 6 segundosClaro que sí. Entonces, vamos a ir a buscar un servicio que yo ya tengo de construcción, que son los que manejan generalmente para poder validarlo.
+1:39:201 hora, 39 minutos y 20 segundosVamos a crear, buscarlo por el código para poder mostrarles unos que tengo acá.
+1:39:311 hora, 39 minutos y 31 segundosListo. Entonces, miren, yo acá tengo un servicio de construcción, construcción con Ayu, eh aseo incluido o no incluido.
+1:39:391 hora, 39 minutos y 39 segundosListo. Entonces, nos vamos para el servicio de construcción.
+1:39:451 hora, 39 minutos y 45 segundosNuevamente lo mismo. Entonces, acá pues venimos y le decimos detalle del producto o servicio. ¿Qué código maneja
+1:39:521 hora, 39 minutos y 52 segundosese producto o servicio? ¿Qué descripción le voy a poner? La unidad de
+1:39:591 hora, 39 minutos y 59 segundosmedida. Si esto es un servicio, su agrupación, su porcentaje de IVA. Oiga, sí es el 19. Oiga, sí, pero es que es
+1:40:071 hora, 40 minutos y 7 segundossobre la utilidad. Sí, aquí esto es indiferente. Está grabada el 19. La cuenta que voy a utilizar 4130 9501 de
+1:40:151 hora, 40 minutos y 15 segundosservicios de obra, más opciones, bodegas, listas de precios, impuestos, que esto es lo que nos atañe. Entonces acá le decimos configuración de Aiu.
+1:40:261 hora, 40 minutos y 26 segundosVean que yo le activé que maneja Aiu y le dije que es de construcción. ¿Por qué? Porque pues es un servicio de construcción. Entonces le digo que es
+1:40:341 hora, 40 minutos y 34 segundoscon AU. Cuando yo le activo au, él me activa la opción de administración, imprevistos y utilidad para que yo pueda
+1:40:411 hora, 40 minutos y 41 segundosentrar por cada una de esas y le diga cómo lo quiero manejar. Muchas veces esos son variables, ¿no? Entonces acá yo
+1:40:481 hora, 40 minutos y 48 segundoslo tengo 5 2,2, pero pudiera ser 1071, 1072, lo que ustedes manejan con sus clientes dependiendo la situación.
+1:40:561 hora, 40 minutos y 56 segundosEntonces, acá él me pregunta por cada uno de ellos, ¿cuánto va a ser de administración? ¿Cuánto de imprevistos y cuánto de utilidad? Digamos que acá le
+1:41:041 hora, 41 minutos y 4 segundosvoy a cambiar a 8% de administración, que en qué cuenta la quiero manejar si yo lo quiero desglosado. Vean que ahí en
+1:41:111 hora, 41 minutos y 11 segundosla parte superior él tiene en la plantilla la cuenta que va a utilizar que es la de servicios de obra. Pero muchas veces los clientes para su manejo
+1:41:201 hora, 41 minutos y 20 segundosen temas de ayuda dicen, "Oiga, es que yo sí lo quiero discriminado." Una cuenta para administración, una para imprevistos y otra para utilidad. Hay
+1:41:281 hora, 41 minutos y 28 segundosclientes que lo manejan todo en un consolidado. Es el servicio de obra. yo necesito es que igual calcule los porcentajes. ¿Listo? Y la cuenta de
+1:41:371 hora, 41 minutos y 37 segundosdevoluciones no más, no me pide nada más. ¿Qué cuenta voy a manejar para cada uno de los
+1:41:441 hora, 41 minutos y 44 segundosdiferentes conceptos de IU? Porcentaje y cuenta. Y la parte que es grabada.
+1:41:501 hora, 41 minutos y 50 segundosEntonces, acá yo le marqué que la utilidad es la que es grabada. Entonces, ah, sí, esto efectivamente tiene IVA del 19. Pero, ¿obálcular?
+1:41:591 hora, 41 minutos y 59 segundospues sobre el 2% que es la parte grabada de ese servicio de obra que me diligencien al momento de facturar o en
+1:42:071 hora, 42 minutos y 7 segundosbase a la lista de precios que maneje ese servicio de obra. ¿Listo? Entonces
+1:42:141 hora, 42 minutos y 14 segundosasí se manejaría la ¿Qué cambia? Pues si es de pronto construcción o es eh
+1:42:211 hora, 42 minutos y 21 segundoscafetería y vigilancia, pero la dinámica es la misma, ¿no? La cuenta de la administración, los imprevistos y la utilidad. la utilidad la que la parte
+1:42:291 hora, 42 minutos y 29 segundosgrabada podemos modificarlos de diferentes maneras. Oiga, si yo tengo varios servicios que manejan varias tarifas, pues créelos como servicios
+1:42:371 hora, 42 minutos y 37 segundosdiferentes, como yo tengo acá el de construcción y este otro de construcción. Ah, es porque cada uno tiene unas tarifas de diferentes. Como
+1:42:441 hora, 42 minutos y 44 segundoshay clientes que dicen, "No, el servicio es de construcción siempre, lo que cambia es lo que se negocia con cada cliente de cuánto va a ser de administración, imprevistos y utilidad.
+1:42:531 hora, 42 minutos y 53 segundosYo quiero seguir manejando el mismo, pero en cada oportunidad puedo entrar y modificar las tarifas que necesito que maneje, cuánto de administración, cuánto de imprevistos y cuánto de utilidad.
+1:43:051 hora, 43 minutos y 5 segundos¿Listo? ¿Alguna otra duda?
+1:43:081 hora, 43 minutos y 8 segundosPerfecto, claro que sí. Gracias, Jonathan. Muy bien. Pues estamos aquí super pendientes leyéndolos en el chat.
+1:43:141 hora, 43 minutos y 14 segundosLes quiero recordar que la el link mejor de la asistencia será compartido al finalizar esta sesión. Recordemos que
+1:43:221 hora, 43 minutos y 22 segundosson 5 días de la master class de nuestra master week que eh vamos a tener cada día un temario totalmente diferente. Yo
+1:43:311 hora, 43 minutos y 31 segundosles invito a que estén muy pendientes en nuestro canal de Instagram, en nuestro canal de WhatsApp, donde les estaremos compartiendo los enlaces para que se puedan unir cada día a estas sesiones.
+1:43:421 hora, 43 minutos y 42 segundosAsí que muy atentos, muy pendientes para que no se pierdan ninguna clase.
+1:43:461 hora, 43 minutos y 46 segundosRecordemos que el certificado es totalmente gratis y será entregado para quien complete el 100% de la asistencia.
+1:43:541 hora, 43 minutos y 54 segundosEntonces, acá tenemos una preguntilla también, claro, de de Soraida. Ella nos pregunta si es un servicio que tiene impuesto al
+1:44:031 hora, 44 minutos y 3 segundosconsumo y tiene base de IVA especial, ¿cómo se maneja en Wofice Cloud?
+1:44:081 hora, 44 minutos y 8 segundosBueno, digamos que hay que hay que entrar a mirar específicamente la dinámica. No puede haber un servicio con impoconsumo, a no ser que digamos que el
+1:44:161 hora, 44 minutos y 16 segundoshipoconsumo es en el en los restaurantes, pero el hipoconsumo va aplicar es sobre el producto, no sobre el servicio como tal. Sí. Entonces, si
+1:44:261 hora, 44 minutos y 26 segundossi se refiere a temas de de servicios, ¿no? De lo que viene siendo un restaurante, todas estas empresas que manejan temas
+1:44:341 hora, 44 minutos y 34 segundosde impuesto al consumo, pero ese impuesto al consumo generalmente es por bebidas, por algún producto tangible, ¿no? Sobre un servicio.
+1:44:431 hora, 44 minutos y 43 segundosSí, sí, porque ella pregunta si eh digamos se debería manejar en una cuenta diferente o una contabilización distinta.
+1:44:521 hora, 44 minutos y 52 segundosMm. Pues digamos que tendría es que depende del contribuyente, ese impuesto no es monofásico, entonces ese impuesto
+1:44:591 hora, 44 minutos y 59 segundossí manejaría, si ustedes son responsables de impoconsumo, pues sí lleva una cuenta 24 diferente al momento
+1:45:061 hora, 45 minutos y 6 segundosde la facturación, ¿sí? al momento de crear el producto o servicio, pues se le activa que maneja temas de impuesto al consumo. Sin embargo, pues como les
+1:45:141 hora, 45 minutos y 14 segundosdecía, digamos que eso para el sistema no es muy lógico, porque el tema de los impuestos al consumo es más que todo sobre productos específicos o
+1:45:231 hora, 45 minutos y 23 segundosactividades específicas. Oiga, que yo soy un restaurante. Perfecto. Muy bien.
+1:45:301 hora, 45 minutos y 30 segundosBueno, sí, señor. Vamos entonces. Vamos bien. Eh, les íbamos les iba a comentar a todos los participantes que el tema de
+1:45:371 hora, 45 minutos y 37 segundosla carga y revisión de saldos iniciales probablemente se reprograme para el día de mañana, que sería el último temita
+1:45:451 hora, 45 minutos y 45 segundosdel día de hoy, se programe para el día de mañana para que iniciemos con lo que serían saldos iniciales. Pues esto
+1:45:521 hora, 45 minutos y 52 segundosdebido pues a al infortunio que pasamos con el tema de la de la reunión, ¿listo?
+1:45:561 hora, 45 minutos y 56 segundosPero igual todos los temas se van a ver, todo lo que está en en la programación pues se va a tener en cuenta. Solamente
+1:46:041 hora, 46 minutos y 4 segundosque el día de hoy pues por temas del horario lo que eh llegaríamos hasta lo que sigue que es ya la creación de los terceros, que viene siendo crear un
+1:46:121 hora, 46 minutos y 12 segundoscliente y crear un proveedor para el tiempo que tenemos en este momento. ¿Listo?
+1:46:181 hora, 46 minutos y 18 segundosEntonces, vamos a arrancar con lo que es crear productores y lo mismo. Entonces, en el panel
+1:46:251 hora, 46 minutos y 25 segundospodemos hacerlo de varias maneras, entrar por el de empresas o personas o escribir acá empresas o personas. Listo,
+1:46:341 hora, 46 minutos y 34 segundosgestión de empresas y personas me envía a crearlas. Si me vengo acá por empresas y personas, me envía el módulo para crear, consultar, importar, ver el video
+1:46:431 hora, 46 minutos y 43 segundoso marcar como favorito para tener acceso a ello en el acceso principal. Entonces vamos a crear un cliente entonces que si
+1:46:511 hora, 46 minutos y 51 segundoses con cédula, cédula de extranjería, documento de identificación del extranjero, NIT, permiso especial de
+1:46:591 hora, 46 minutos y 59 segundospermanencia, permiso permiso de protección temporal, registro civil, sin identificación del exterior o para uso
+1:47:071 hora, 47 minutos y 7 segundosdefinido por la Dian. Eso es para los NITS 44. Hay contadores que manejamos temas de NITS 444.
+1:47:141 hora, 47 minutos y 14 segundosEntonces, esto es para este tipo de identificaciones.
+1:47:181 hora, 47 minutos y 18 segundosTarjeta de extranjería o tarjeta de identidad.
+1:47:221 hora, 47 minutos y 22 segundosCédula de ciudadanía. Al registrar el número de cédula acá, yo le puedo decir autocompletar y él me va a traer los datos desde la Dian. De los datos
+1:47:301 hora, 47 minutos y 30 segundosbásicos que exige la Dian. Vean que me pide cuando menos un nombre y un apellido de una persona. Si esto fuera
+1:47:371 hora, 47 minutos y 37 segundosun nit, me va a pedir la razón social. Listo.
+1:47:441 hora, 47 minutos y 44 segundosEntonces, acá vamos a inventarnos un número de cédula a ver qué me sale. Le digo autletar.
+1:47:521 hora, 47 minutos y 52 segundosÉl busca la información de esa de ese número de identificación en la plataforma de la Dian. Listo. El tipo de
+1:48:001 hora y 48 minutostercero. Ojo, oiga, y me va a traer toda la información que hay en la Dian. No, solo los datos básicos que pide la Dian.
+1:48:071 hora, 48 minutos y 7 segundosSí. Entonces, esto completa es solamente lo que es el número que yo ya lo diligencié y le dije autocompletar, me trae lo que es nombres y apellidos o
+1:48:161 hora, 48 minutos y 16 segundosrazón social y un correo electrónico, no más, ni siquiera dirección ni nada de
+1:48:231 hora, 48 minutos y 23 segundoseso. Esos datos es lo que exige como mínimo la Dian. Pero ustedes pues las personas que manipulan el software
+1:48:301 hora, 48 minutos y 30 segundossabrán que al para temas de exógena pues sí tengo que tener temas de la dirección, la ciudad, el teléfono.
+1:48:381 hora, 48 minutos y 38 segundosEntonces, pues digamos que esto es para creaciones más tipo el post o el consumidor final, ¿listo? Que nos exige solo ciertos datos. ¿Qué tipo de
+1:48:471 hora, 48 minutos y 47 segundostercero? Entonces, estamos creando un proveedor. Le vamos a marcar proveedor.
+1:48:531 hora, 48 minutos y 53 segundosEl nombre de mi proveedor, la ciudad de mi proveedor.
+1:49:001 hora y 49 minutosVamos a dejar aquí también Bogotá de una vez.
+1:49:051 hora, 49 minutos y 5 segundosLa forma de pago predeterminada, oiga, es que a ese proveedor siempre le pago de la misma manera, crédito, contado o
+1:49:121 hora, 49 minutos y 12 segundoscualquiera de las que yo maneje. Acá le vamos a poner una de las que creamos. AD o C este crédito, cualquiera de estas,
+1:49:251 hora, 49 minutos y 25 segundostodo el tema de la dirección. Entonces, como él ya me trajo cierta información acá, yo puedo venir, le voy a decir que este quedó con listo, agregar. Entonces,
+1:49:351 hora, 49 minutos y 35 segundos¿qué le voy a poner? el campo obligatorio. Entonces le va a decir que él vive en la calle 1, 2, 3. Recordemos, pues, por temas de exógena para las
+1:49:441 hora, 49 minutos y 44 segundospersonas de las áreas contables, pues en lo posible no utilizar estos caracteres especiales de numeral, de
+1:49:531 hora, 49 minutos y 53 segundostodo eso, ¿no? Y pues igual recuerden que la Dian también tiene una estructura predeterminada para el tema de las
+1:50:001 hora y 50 minutosdirecciones. Para ellos pues calle CL, si carrera SR, así lo vamos a manejar pues en lo posible, ¿no? Esto se los
+1:50:091 hora, 50 minutos y 9 segundosdigo es para que a futuro no tengan inconvenientes cuando estén haciendo la exógena.
+1:50:171 hora, 50 minutos y 17 segundos¿Listo?
+1:50:191 hora, 50 minutos y 19 segundosLas zonas, si manejamos zonas, ciudades, pues la ciudad en la que está el empleado,
+1:50:271 hora, 50 minutos y 27 segundosdigo, el tercero, perdón, el proveedor, el barrio, si manejamos barrios, indicaciones, si es su dirección
+1:50:351 hora, 50 minutos y 35 segundosprincipal, si le voy a incluir un número de contacto, que puede ser un móvil o puede ser un un número fijo, PBX con una
+1:50:441 hora, 50 minutos y 44 segundosextensión o un número móvil que yo le maneje a a al proveedor,
+1:50:541 hora, 50 minutos y 54 segundosun tipo de teléfono móvil o o fijo y el tema del correo
+1:51:011 hora, 51 minutos y 1 segundoelectrónico para todo el tema de los datos mínimos que necesito tenerle a el tercero al momento de su creación.
+1:51:141 hora, 51 minutos y 14 segundosAh, el campo del email. Teléfono de contacto. Ya está.
+1:51:221 hora, 51 minutos y 22 segundosAh, es que esto es móvil.
+1:51:251 hora, 51 minutos y 25 segundosListo. Y acá en email. Ah, lo agregamos.
+1:51:351 hora, 51 minutos y 35 segundosNo lo tomó. Perdón. Vamos a revisar acá.
+1:51:391 hora, 51 minutos y 39 segundosnos inventamos un número X y le digo guardar. Listo. Y en el email también
+1:51:471 hora, 51 minutos y 47 segundosagregar listo. Cualquier correo. Guardar.
+1:51:591 hora, 51 minutos y 59 segundosListo.
+1:52:031 hora, 52 minutos y 3 segundosFacturación impuestos. Entonces, el plazo que maneja el con el que manejo el proveedor, si maneja un descuento predeterminado o tenemos un descuento
+1:52:111 hora, 52 minutos y 11 segundospredeterminado, el vendedor o comprador en este caso asociado al tercero, la lista de precios
+1:52:191 hora, 52 minutos y 19 segundosque le manejo. Esto cuando son de pronto vendedores y si maneja cupo de crédito, pero esto es cuando son clientes. En
+1:52:261 hora, 52 minutos y 26 segundosproveedores, pues es indiferente. Acá si me pides qué tipo de contribuyente es, él ya lo trajo en base a la información
+1:52:341 hora, 52 minutos y 34 segundosde la Dian, el tipo de impuestos, el ICA que yo le practico, entonces pues si le practico o no la tarifa que le maneje,
+1:52:441 hora, 52 minutos y 44 segundossi tiene alguna excepción la actividad económica, si se la quiero incluir, si le quiero incluir datos personalizados,
+1:52:521 hora, 52 minutos y 52 segundosdescuentos por producto. Entonces, ah, bueno, es que este señor cuando compra x producto, el televisor,
+1:53:031 hora, 53 minutos y 3 segundospues maneja unos descuentos particulares,
+1:53:131 hora, 53 minutos y 13 segundoscontactos, observaciones o inclusive una imagen de ese tercero. Le decimos guardar campos obligatorios, dirección.
+1:53:301 hora, 53 minutos y 30 segundosEstar.
+1:54:021 hora, 54 minutos y 2 segundosAquí un nuevo teléfono. No.
+1:54:371 hora, 54 minutos y 37 segundosSi lo agregué. Dios mío.
+1:54:401 hora, 54 minutos y 40 segundosVamos a ver. Acá falta agregarles Este
+1:56:091 hora, 56 minutos y 9 segundosListo.
+1:56:111 hora, 56 minutos y 11 segundosla facturación, el tema del ICA, lo que les comentaba, datos y le decimos guardar y ya queda creado nuestro proveedor.
+1:56:211 hora, 56 minutos y 21 segundosDe la misma manera, pues vamos a proceder para crear nuestros diferentes clientes, ¿no? Entonces también vamos a crear un cliente en este momento. Aquí
+1:56:301 hora, 56 minutos y 30 segundosya quedó creado exitosamente ese tercero.
+1:56:351 hora, 56 minutos y 35 segundosAhora vamos a crear un cliente, panel de empresas o personas. Nuevamente lo mismo, le decimos crear, temas de la
+1:56:421 hora, 56 minutos y 42 segundosidentificación, nit, cédula de ciudadanía, la información que sea que manejemos, el
+1:56:501 hora, 56 minutos y 50 segundostipo de tercero, si es un cliente, si es si va a manejar algún tipo adicional de
+1:56:571 hora, 56 minutos y 57 segundospropiedad, entonces pues acá le incluimos esas propiedades. No entiendo que se me está colgando. Vamos a cargarlo de nuevo.
+1:57:061 hora, 57 minutos y 6 segundos[carraspeo]
+1:57:511 hora, 57 minutos y 51 segundosListo. Entonces vamos a trabajarlo sobre este cliente para poder validarlo. Es lo mismo que el cliente, si es un NIT, su
+1:58:011 hora, 58 minutos y 1 segundonúmero de identificación, nombre o razón social, si es un cliente,
+1:58:071 hora, 58 minutos y 7 segundossi es un proveedor, la forma de pago, direcciones asociadas al tercero,
+1:58:151 hora, 58 minutos y 15 segundosfacturación e impuestos. Entonces, aquí ya lo que cambia es si él me practica reteica. Entonces, como es un cliente,
+1:58:231 hora, 58 minutos y 23 segundosentonces si yo le digo, "Aplica Red Iica en ventas", es porque de pronto él es un gran contribuyente que me hace retención de IC a mí. Acá, ¿por qué no me pide
+1:58:311 hora, 58 minutos y 31 segundostarifa? Porque él va a ser la tarifa que yo tenga. El sistema calculará automáticamente la tarifa que yo tengo
+1:58:371 hora, 58 minutos y 37 segundosregistrada desde la creación del sistema de la base de datos de acuerdo a mi actividad económica.
+1:58:451 hora, 58 minutos y 45 segundoste decía, "Es que como proveedor yo le hago el 966, pero en ventas yo tengo tarifa del 414. Entonces, si él me va a
+1:58:521 hora, 58 minutos y 52 segundospracticar retención, pues que me haga el 414." Okay. Dat personalizados,
+1:59:011 hora, 59 minutos y 1 segundodescuentos por producto, nuevamente contactos,
+1:59:101 hora, 59 minutos y 10 segundosobservaciones al tercero e imágenes del tercero, en este caso de nuestro cliente. Este, como
+1:59:191 hora, 59 minutos y 19 segundosyo ya lo tengo creado, ya después de creado también puedo ver acá el histórico de documentos. vea todo lo que le he vendido a ese tercero. Entonces,
+1:59:261 hora, 59 minutos y 26 segundostodas esas facturas, notas crédito, remisiones, compras, devoluciones, entradas de productos terminados, todo
+1:59:351 hora, 59 minutos y 35 segundoslo que he manejado con este tercero. Ahí me muestra ese histórico de documentos.
+1:59:401 hora, 59 minutos y 40 segundosEliminar el tercero, que si tiene movimientos no me va a dejar. Recuerden que hablábamos de un tema de traslado de terceros. Entonces, eso es cuando
+1:59:481 hora, 59 minutos y 48 segundostraslado toda la información y ahora sí quiero eliminar el que había quedado equivocado o el que había quedado mal creado.
+1:59:551 hora, 59 minutos y 55 segundos¿Listo? y pues toda la información asociada a nuestro código.
+2:00:012 horas y 1 segundoEso sería la creación pues de un cliente, de un proveedor. Vimos creación de productos, servicios, activos fijos,
+2:00:102 horas y 10 segundoseh toda la creación de nuestros usuarios, los permisos y los permisos tanto generales como detallados junto con los usuarios.
+2:00:192 horas y 19 segundosPara el día de hoy, pues como les indicaba, estaba también programado tema de la carga de saldos iniciales, sin embargo, pues por temas de tiempo en
+2:00:262 horas y 26 segundoseste momento, pues ya no no vamos a alcanzar a ver ese tema el día de hoy. Se los debo para el día de mañana.
+2:00:322 horas y 32 segundosMañana arrancamos con lo que sería los saldos iniciales, la carga o el registro de esos saldos iniciales. Por ahora, en
+2:00:402 horas y 40 segundoseste momento, creo que les estarían enviando el la plantilla para registrar la asistencia.
+2:00:472 horas y 47 segundosLes pido nuevamente una disculpa, pues, por la caída eh que tuvimos en la reunión que se había planteado inicialmente, pero pues esperamos que el
+2:00:572 horas y 57 segundosdía de mañana pues también nos puedan acompañar con estas diferentes capacitaciones y procesos que vamos a validar con respecto a nuestra función o nuestra versión de cloud.
+2:01:082 horas, 1 minuto y 8 segundosClaro que sí, Jonathan. Muchísimas gracias de verdad por tu compañía. A todos los que también se quedaron con nosotros hasta este momento, hasta aquí
+2:01:182 horas, 1 minuto y 18 segundosllega la primera sesión de la World Office Cloud Master Week. Como decía Jonathan, queda un tema pendiente.
+2:01:242 horas, 1 minuto y 24 segundosMañana ya lo veremos, pero yo les invito a que escaneen, por supuesto, el código que van a ver en pantalla para que
+2:01:312 horas, 1 minuto y 31 segundospuedan llenar la asistencia. Es muy importante que puedas llenar la asistencia durante los 5 días de la masterclass de nuestra Master Week para
+2:01:402 horas, 1 minuto y 40 segundosque al final puedas recibir tu certificado. Muy importante que lo llenes. En este momento te vamos a dar un espacio para que puedas escanear el
+2:01:472 horas, 1 minuto y 47 segundoscódigo con tranquilidad, dejes tus datos y recuerda que la información que tú llenes en ese formulario es o van a ser
+2:01:552 horas, 1 minuto y 55 segundosesos datos usados para generar tu certificado. Entonces, si tú pones, por ejemplo, el nid de la empresa, pues va a llevar el certificado del NI de la
+2:02:042 horas, 2 minutos y 4 segundosempresa. Necesitamos que pongas tus datos para que se pueda generar el certificado con total normalidad y sin ningún tipo de inconsistencias.
+2:02:142 horas, 2 minutos y 14 segundosTambién los invitamos a que se puedan unir al canal de WhatsApp de World Office porque allí vamos a estar enviando el link de la clase de mañana.
+2:02:242 horas, 2 minutos y 24 segundossuperimportante de que se puedan unir en este momento. Igualmente recuerden que es una invitación totalmente gratuita.
+2:02:322 horas, 2 minutos y 32 segundosVamos a tener especialistas como Jonathan que hoy nos acompañó.
+2:02:372 horas, 2 minutos y 37 segundosVamos a tener también una sesión de preguntas y respuestas y por supuesto todo lo relacionado con el día 2 de
+2:02:432 horas, 2 minutos y 43 segundosnuestra Master Week. Mañana vamos a ver orden de compra, remisión, factura, egreso. Vamos a ver también el tema del
+2:02:512 horas, 2 minutos y 51 segundosdocumento soporte electrónico, notas, crédito, débito. Y fíjate que son temas que hoy nos preguntaron. Hay cosas,
+2:02:592 horas, 2 minutos y 59 segundoscosas que de los temas de mañana que vamos a estar revisando. Así que yo les invito a que se unan a nuestro canal de
+2:03:062 horas, 3 minutos y 6 segundosWhatsApp y de esta manera, de forma personalizada, estaremos compartiendo la invitación de mañana. Ya estamos recibiendo, por supuesto, su asistencia.
+2:03:162 horas, 3 minutos y 16 segundosPor favor, no se me vaya, no se me desconecte sin antes llenar la asistencia, por favor, porque esta
+2:03:232 horas, 3 minutos y 23 segundosinformación es la que vamos a usar para poder generar el certificado al finalizar esta Master Week. Recuerde que
+2:03:312 horas, 3 minutos y 31 segundosvamos hasta el viernes 15 de mayo, son 5 días de inmersión total en nuestra
+2:03:392 horas, 3 minutos y 39 segundosversión cloud de World Office. Y si tú quieres en algún momento adquirir la versión Cloud, no hay ningún problema.
+2:03:462 horas, 3 minutos y 46 segundosTambién te podemos enviar el link de la cotización para que puedas hacer esa esa ese cambio de versión. Lo puedes hacer
+2:03:552 horas, 3 minutos y 55 segundossin ningún problema. Por ahora te invitamos a que llenes la asistencia, por favor. No se me desconecten hasta no llenar la asistencia y hasta no darle
+2:04:032 horas, 4 minutos y 3 segundoslike también a esta transmisión que tenemos en este momento.
+2:04:082 horas, 4 minutos y 8 segundosEstefa, eh muchas personas nos preguntan a través del chat que si les podemos compartir el link. El link lo pueden obtener directamente a través de nuestro
+2:04:152 horas, 4 minutos y 15 segundosgrupo de WhatsApp. Allá les estoy compartiendo el link en este momento para las personas que quieran eh llenar la asistencia por medio del link.
+2:04:232 horas, 4 minutos y 23 segundosSimplemente nos empiezan [carraspeo] a seguir a través del grupo y allí les estoy compartiendo ya la información.
+2:04:292 horas, 4 minutos y 29 segundosComo lo comentabas eh más adelante, les vamos a compartir el link de la clase de mañana para que estén
+2:04:362 horas, 4 minutos y 36 segundossuper atentos a esta conexión y además eh pues para que podamos de pronto evitar algún tema como el que pasó el día de hoy. Lamentablemente YouTube eh
+2:04:452 horas, 4 minutos y 45 segundosnos quitó la conexión que teníamos inicialmente, pero si ustedes están en el grupo de WhatsApp, fácilmente se
+2:04:522 horas, 4 minutos y 52 segundospueden unir nuevamente a un nuevo link en caso de que sea necesario. Entonces, por eso es super importante que estén allí. Igual allá estamos compartiendo
+2:05:002 horas y 5 minutossiempre información bastante importante y bastante privilegiada acerca de Office.
+2:05:062 horas, 5 minutos y 6 segundosMuchísimas gracias, Sebastián. Claro que sí. Estamos acá pendientes de leerlos. A las personas que de pronto no han
+2:05:132 horas, 5 minutos y 13 segundosllenado la asistencia, por favor saque su celular, escanee el código y lo único que debe hacer usted es darle eh click
+2:05:232 horas, 5 minutos y 23 segundosal enlace que estamos compartiendo por el chat de este streaming para que pueda unirse al canal de WhatsApp de World
+2:05:302 horas, 5 minutos y 30 segundosOffice. Es totalmente gratis. Allí estaremos compartiendo el enlace para mañana. Recuerde que mañana vamos a ver
+2:05:382 horas, 5 minutos y 38 segundostemas muy muy variados como orden de compra, reisión, factura, egreso. Mira que vamos a ver los informes de compra y
+2:05:462 horas, 5 minutos y 46 segundoscuentas por pagar. Vamos a ver también el documento soporte electrónico, notas, crédito, débito, devoluciones. La idea
+2:05:532 horas, 5 minutos y 53 segundoses que tú en este espacio salgas un experto en WordOffice Cloud, que no necesites de ningún soporte, de ningún
+2:06:012 horas, 6 minutos y 1 segundotercero, porque tú te vas a volver ese referente que todo lo sabe sobre la versión de World Office Cloud. Así que
+2:06:082 horas, 6 minutos y 8 segundoste invitamos a que le des clic a este enlace de el streaming para que puedas unirte a nuestro canal. Como te
+2:06:152 horas, 6 minutos y 15 segundosdecíamos, allí vamos a estar compartiendo el enlace de mañana. Y no olvides que todos los días vamos a compartir un nuevo enlace de asistencia.
+2:06:252 horas, 6 minutos y 25 segundos¿Para qué? Para que puedas recibir al finalizar tu certificado de Worldice Cloud. Muy importante este tema para que
+2:06:332 horas, 6 minutos y 33 segundosno vaya a haber ningún inconveniente al finalizar las clases. Recuerda, escanea el código que estás viendo en pantalla
+2:06:402 horas, 6 minutos y 40 segundospara llenar tu asistencia. ¿Listo? Para llenar tu asistencia. Así que invitadísimos, mañana vamos a estar esperándolos a las 9:30 de la mañana. A
+2:06:502 horas, 6 minutos y 50 segundoslas 9:30 vamos a arrancar con los temas que ya les eh contamos para que desde ya puedan agendarlo directamente en su calendario.
+2:07:022 horas, 7 minutos y 2 segundosMuy bien, perfecto. Muy bien. En este caso, pues estaríamos pendientes de que se puedan unir.
+2:07:102 horas, 7 minutos y 10 segundosEstamos acá viendo que ustedes están llenando su asistencia.
+2:07:142 horas, 7 minutos y 14 segundosGracias a Duan Camilo, a Stefanie Becerra, Arnold Campo, Gloria Pinzón, Lucy,
+2:07:212 horas, 7 minutos y 21 segundosAdriana eh Rotavista, a Natalia, a todos aquellos a quienes en este momento e
+2:07:302 horas, 7 minutos y 30 segundosestamos llegando en distintas partes de nuestro país y que están llenando su asistencia. Los estaremos esperando entonces muy puntuales el día de mañana
+2:07:392 horas, 7 minutos y 39 segundospara poder seguir con este recorrido maravilloso, totalmente gratuito y con muchísimo amor para cada uno de ustedes
+2:07:472 horas, 7 minutos y 47 segundosen nuestra World Office Cloud Master Week. Los esperamos el día de mañana.
+2:07:552 horas, 7 minutos y 55 segundosPor ahora, un gran abrazo para todos y mañana muy a las 9:30 arrancamos en nuestra segunda sesión. Un gran abrazo para todos.
+2:09:242 horas, 9 minutos y 24 segundos[música]
+2:09:502 horas, 9 minutos y 50 segundos[música]
+2:10:312 horas, 10 minutos y 31 segundos[música]
+2:10:412 horas, 10 minutos y 41 segundos[música]
+2:10:512 horas, 10 minutos y 51 segundos[música]
+2:10:572 horas, 10 minutos y 57 segundos[música]
+2:11:032 horas, 11 minutos y 3 segundos[música]
+2:11:212 horas, 11 minutos y 21 segundos[música]
+2:11:272 horas, 11 minutos y 27 segundos[música]
+2:11:302 horas, 11 minutos y 30 segundosHey, contador, únete al programa de referidos de Worldice comienza a ganar dinero extra y obtén fabulosos premios.
+2:11:372 horas, 11 minutos y 37 segundos¿Cómo? Por cada empresa que recomiendes y adquiera nuestras versiones de escritorio o cloud, transferiremos dinero directamente a tu bolsillo.
+2:11:452 horas, 11 minutos y 45 segundosAdemás, si ya eres parte de nuestro programa, disfruta de conferencias y eventos gratuitos y gana premios.
+2:11:512 horas, 11 minutos y 51 segundosAgradecemos tu apoyo y fomentamos la pasión por la excelencia en tu trabajo.

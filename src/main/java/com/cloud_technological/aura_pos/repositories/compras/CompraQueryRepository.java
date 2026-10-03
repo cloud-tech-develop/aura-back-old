@@ -22,6 +22,25 @@ public class CompraQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /** Notas crédito no anuladas que cuelgan de la compra. */
+    public long notasCreditoVigentes(Long compraId, Integer empresaId) {
+        Long n = jdbcTemplate.queryForObject("""
+            SELECT COUNT(*) FROM compra
+            WHERE compra_origen_id = :compraId AND empresa_id = :empresaId AND estado <> 'ANULADA'
+            """, new MapSqlParameterSource("compraId", compraId).addValue("empresaId", empresaId), Long.class);
+        return n != null ? n : 0;
+    }
+
+    /** true si la compra tiene un documento soporte ya aceptado por la DIAN. */
+    public boolean tieneDocumentoSoporteAceptado(Long compraId, Integer empresaId) {
+        Long n = jdbcTemplate.queryForObject("""
+            SELECT COUNT(*) FROM documento_soporte
+            WHERE origen_tipo = 'COMPRA' AND origen_id = :compraId AND empresa_id = :empresaId
+              AND estado = 'ACEPTADO'
+            """, new MapSqlParameterSource("compraId", compraId).addValue("empresaId", empresaId), Long.class);
+        return n != null && n > 0;
+    }
+
     public PageImpl<CompraTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
@@ -230,6 +249,8 @@ public class CompraQueryRepository {
                 pp.nombre            AS presentacion_nombre,
                 pp.factor_conversion AS presentacion_factor,
                 cd.cantidad_presentacion,
+                cd.cantidad_suelta,
+                COALESCE(cd.clasificacion, p.clasificacion) AS clasificacion,
                 cd.costo_presentacion,
                 COALESCE(p.maneja_lotes, false) AS maneja_lotes,
                 COALESCE(p.maneja_serial, false) AS maneja_serial,

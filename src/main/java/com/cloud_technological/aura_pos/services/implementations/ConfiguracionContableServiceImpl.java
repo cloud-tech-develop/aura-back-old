@@ -95,6 +95,8 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
                     .codigoCuenta(cuenta != null ? cuenta.getCodigo() : null)
                     .nombreCuenta(cuenta != null ? cuenta.getNombre() : null)
                     .porDefecto(porDefecto)
+                    .codigoDefault(concepto.getCodigoDefault())
+                    .prefijosPermitidos(java.util.List.of(concepto.getPrefijosPermitidos()))
                     .build());
         }
         return result;

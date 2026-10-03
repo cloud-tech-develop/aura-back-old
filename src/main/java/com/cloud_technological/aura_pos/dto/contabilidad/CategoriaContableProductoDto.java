@@ -19,7 +19,7 @@ public class CategoriaContableProductoDto {
     @NotBlank
     private String nombre;
 
-    /** BIEN | SERVICIO | INSUMO | ACTIVO_FIJO */
+    /** BIEN | SERVICIO | INSUMO | ACTIVO_FIJO | INTANGIBLE | GASTO | DOTACION | DIFERIDO */
     private String tipo;
 
     private Long cuentaIngresoId;
@@ -30,5 +30,14 @@ public class CategoriaContableProductoDto {
     private String cuentaCosto;
     private Long cuentaDevolucionId;
     private String cuentaDevolucion;
+
+    // Activos, intangibles y diferidos (V185): valores por defecto de la ficha
+    // o del diferido que crea la compra.
+    private Long cuentaDepreciacionId;
+    private String cuentaDepreciacion;
+    private Long cuentaGastoDepreciacionId;
+    private String cuentaGastoDepreciacion;
+    private Integer vidaUtilMeses;
+    private Integer mesesDiferido;
     private Boolean activo;
 }

@@ -78,6 +78,16 @@ public class ProductoPresentacionController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Presentación actualizada correctamente", false, result), HttpStatus.OK);
     }
 
+    /** Guarda todas las conversiones del producto de una vez (sección "Unidades y conversiones"). */
+    @PutMapping("/producto/{productoId}/conversiones")
+    public ResponseEntity<ApiResponse<List<ProductoPresentacionTableDto>>> guardarConversiones(
+            @PathVariable Long productoId,
+            @RequestBody com.cloud_technological.aura_pos.dto.producto_presentacion.GuardarConversionesDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        List<ProductoPresentacionTableDto> result = presentacionService.guardarConversiones(productoId, dto, empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Conversiones guardadas", false, result), HttpStatus.OK);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Boolean>> eliminar(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();

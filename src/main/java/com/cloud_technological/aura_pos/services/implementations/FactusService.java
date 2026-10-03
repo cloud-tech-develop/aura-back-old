@@ -113,7 +113,9 @@ public class FactusService {
         FactusCreateBillRequestDto dto = new FactusCreateBillRequestDto();
         dto.setNumberingRangeId(empresa.getFactusNumberingRangeId());
 
-        // reference_code: prefijo de empresa + consecutivo de la venta
+        // reference_code: prefijo de empresa + identificador de la venta. Es la
+        // llave con la que Factus rechaza duplicados, así que tiene que ser única
+        // en la empresa y estable entre reintentos (ver VentaFacturaService).
         String prefijo = empresa.getFactusPrefijo() != null
                 ? empresa.getFactusPrefijo() : "POS";
         dto.setReferenceCode(prefijo + "-" + req.getNumeroVenta());
@@ -145,8 +147,12 @@ public class FactusService {
         customer.setMunicipalityId(req.getClienteMunicipioId() != null
                 ? String.valueOf(req.getClienteMunicipioId()) : "511");
         // legal_organization_id y tribute_id: persona natural por defecto
-        customer.setLegalOrganizationId("2");  // 2=Persona Natural
-        customer.setTributeId("21");           // 21=No aplica
+        // Antes siempre persona natural / no aplica: un NIT de empresa salía
+        // como persona natural. Ahora viene del tercero (por defecto, natural).
+        customer.setLegalOrganizationId(req.getClienteOrganizacionLegalId() != null
+                ? req.getClienteOrganizacionLegalId() : "2");
+        customer.setTributeId(req.getClienteTributoId() != null
+                ? req.getClienteTributoId() : "21");
         dto.setCustomer(customer);
 
         // ── Items ────────────────────────────────────────────────────
@@ -156,7 +162,7 @@ public class FactusService {
             i.setName(item.getNombre());
             i.setQuantity(item.getCantidad());
             i.setPrice(item.getPrecioSinIva());
-            i.setDiscountRate(BigDecimal.ZERO);
+            i.setDiscountRate(item.getDescuentoPct() != null ? item.getDescuentoPct() : BigDecimal.ZERO);
 
             // tribute_id: 1=IVA (cualquier %), 3=No aplica (exento)
             String ivaPct = item.getIvaPorcentaje(); // "19.00", "5.00", "0.00"
@@ -175,11 +181,46 @@ public class FactusService {
         return dto;
     }
 
+    /**
+     * Antes devolvía null ante CUALQUIER error: un rechazo de validación de
+     * Factus salía como "servicio no disponible" y un timeout (la factura pudo
+     * haber llegado a la DIAN) no se distinguía de una conexión caída. Ahora:
+     * <ul>
+     *   <li>error de negocio o rechazo HTTP de Factus → se muestra tal cual;</li>
+     *   <li>se envió y no llegó respuesta (read timeout) → estado incierto;</li>
+     *   <li>no se pudo conectar o el circuito está abierto → no disponible (null).</li>
+     * </ul>
+     */
     public FactusBillDto facturaFallback(Integer empresaId,
                                           FacturaElectronicaRequest request,
                                           Throwable ex) {
-        log.error("[Factus Bill CB ABIERTO] empresa={} error={}",
-                empresaId, ex.getMessage());
+        if (ex instanceof GlobalException ge) throw ge;
+        if (ex instanceof org.springframework.web.client.HttpStatusCodeException he) {
+            log.error("[Factus Bill] rechazo HTTP {} empresa={} body={}",
+                    he.getStatusCode(), empresaId, he.getResponseBodyAsString());
+            throw new GlobalException(HttpStatus.BAD_GATEWAY,
+                    "Factus rechazó la factura: " + he.getResponseBodyAsString());
+        }
+        if (sinRespuestaTrasEnviar(ex)) {
+            log.error("[Factus Bill] sin respuesta tras enviar, empresa={} ref={}",
+                    empresaId, request != null ? request.getNumeroVenta() : null);
+            throw new com.cloud_technological.aura_pos.utils.FacturaEstadoInciertoException(
+                    "Factus no respondió a tiempo y pudo haber recibido la factura. Verifique en Factus"
+                            + " antes de reenviarla: un reenvío con la misma referencia será rechazado si ya existe.");
+        }
+        log.error("[Factus Bill no disponible] empresa={} error={}", empresaId, ex.getMessage());
         return null;
+    }
+
+    /** Read timeout: la petición salió y no volvió la respuesta. */
+    private static boolean sinRespuestaTrasEnviar(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof java.net.SocketTimeoutException
+                    && t.getMessage() != null
+                    && t.getMessage().toLowerCase().contains("read")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

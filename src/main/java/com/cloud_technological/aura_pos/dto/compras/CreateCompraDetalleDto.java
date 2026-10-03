@@ -17,6 +17,13 @@ public class CreateCompraDetalleDto {
     @NotNull(message = "La cantidad es obligatoria")
     private BigDecimal cantidad;
 
+    /**
+     * Con presentación: unidades base sueltas que llegan además de las
+     * presentaciones completas ("4 pacas y 2 cervezas"). Se cobran al costo
+     * de la presentación dividido por su contenido.
+     */
+    private BigDecimal cantidadSuelta;
+
     /** Compra de un producto con serial: uno por unidad (en unidad base). */
     private java.util.List<String> seriales;
 

@@ -54,6 +54,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ReciboCajaServiceImpl implements ReciboCajaService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
     @org.springframework.beans.factory.annotation.Autowired
     private RetencionRecaudoService retencionRecaudo;
 
@@ -155,6 +159,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
         UsuarioEntity usuario = usuarioRepo.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         LocalDateTime fechaPago = dto.getFechaPago() != null ? dto.getFechaPago() : LocalDateTime.now();
+        periodoGuard.exigirAbierto(empresaId, fechaPago.toLocalDate());
         String metodo = MediosPago.normalizar(dto.getMetodoPago());
 
         int consecutivo = queryRepo.siguienteConsecutivo(empresaId);

@@ -16,10 +16,14 @@ public class ProductoTableDto {
     private String marcaNombre;
     private String tipoProducto;
     private String usoProducto;
+    /** PRODUCTO | SERVICIO | GASTO | DOTACION | ACTIVO_FIJO | INTANGIBLE | DIFERIDO (V185). */
+    private String clasificacion;
     private BigDecimal precio;
     private BigDecimal costo;
     private Boolean activo;
     private BigDecimal ivaPorcentaje;
+    /** El precio trae el IVA adentro: la utilidad se calcula sobre la base. */
+    private Boolean ivaIncluido;
     /** Abreviatura de la unidad de inventario (kg, und): rotula la conversión de las presentaciones. */
     private String unidadAbreviatura;
     private Boolean manejaLotes;

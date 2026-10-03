@@ -150,6 +150,108 @@ public class ProductoPresentacionServiceImpl implements ProductoPresentacionServ
         presentacionJPARepository.save(entity);
     }
 
+    /**
+     * Sección "Unidades y conversiones": llega la lista completa y se deja la
+     * base igual a ella. Una conversión quitada se desactiva (los documentos
+     * viejos la siguen mostrando); una nueva con el factor de una desactivada
+     * la reactiva en vez de chocar con "ya existe ese factor".
+     */
+    @Override
+    @Transactional
+    public List<ProductoPresentacionTableDto> guardarConversiones(Long productoId,
+            com.cloud_technological.aura_pos.dto.producto_presentacion.GuardarConversionesDto dto, Integer empresaId) {
+        ProductoEntity producto = productoJPARepository.findByIdAndEmpresaId(productoId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+        var filas = dto.getConversiones() != null ? dto.getConversiones()
+                : List.<com.cloud_technological.aura_pos.dto.producto_presentacion.GuardarConversionesDto.Conversion>of();
+
+        // Validaciones de la lista completa, antes de tocar nada.
+        java.util.Set<BigDecimal> factores = new java.util.HashSet<>();
+        int defaultsCompra = 0;
+        boolean algunaSeVende = false;
+        for (var f : filas) {
+            if (f.getNombre() == null || f.getNombre().isBlank())
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "Cada conversión necesita un nombre (Paca, Caja, Libra…)");
+            validarFactor(f.getFactor());
+            if (f.getFactor() == null || f.getFactor().compareTo(BigDecimal.ONE) == 0)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        f.getNombre().trim() + ": una conversión de 1 es la misma unidad base");
+            if (!factores.add(f.getFactor().stripTrailingZeros()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Dos conversiones tienen la misma cantidad (" + f.getFactor().stripTrailingZeros().toPlainString()
+                                + "): deje solo una");
+            if (Boolean.TRUE.equals(f.getEsDefaultCompra())) defaultsCompra++;
+            if (!Boolean.FALSE.equals(f.getSeVende())) algunaSeVende = true;
+            validarCodigoBarras(f.getCodigoBarras(), empresaId, f.getId());
+        }
+        if (defaultsCompra > 1)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Solo una conversión puede ser la de compra");
+        boolean vendeSuelto = !Boolean.FALSE.equals(dto.getVendePorUnidad());
+        if (!vendeSuelto && !algunaSeVende && "PRODUCTO".equals(producto.getClasificacion()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El producto no se vende suelto ni en ninguna conversión: marque al menos una forma de venta");
+
+        var existentes = presentacionRepository.todasDelProducto(productoId);
+        java.util.Set<Long> conservadas = new java.util.HashSet<>();
+        // La presentación que se vende por defecto: si no se vende suelto, la
+        // primera que se vende (el POS la ofrece primero).
+        boolean defaultVentaAsignada = false;
+
+        for (var f : filas) {
+            ProductoPresentacionEntity e = null;
+            if (f.getId() != null) {
+                e = presentacionJPARepository.findByIdAndProductoEmpresaId(f.getId(), empresaId)
+                        .filter(x -> x.getProducto().getId().equals(productoId))
+                        .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Conversión no encontrada"));
+            } else {
+                // Misma cantidad que una existente (activa o no): se reutiliza.
+                Long reutilizable = existentes.stream()
+                        .filter(x -> x.factor() != null && x.factor().compareTo(f.getFactor()) == 0
+                                && !conservadas.contains(x.id()))
+                        .map(ProductoPresentacionQueryRepository.PresentacionFactor::id)
+                        .findFirst().orElse(null);
+                if (reutilizable != null) {
+                    e = presentacionJPARepository.findById(reutilizable).orElse(null);
+                }
+                if (e == null) {
+                    e = new ProductoPresentacionEntity();
+                    e.setProducto(producto);
+                }
+            }
+            boolean seVende = !Boolean.FALSE.equals(f.getSeVende());
+            e.setNombre(f.getNombre().trim());
+            e.setFactorConversion(f.getFactor());
+            e.setCodigoBarras(f.getCodigoBarras() != null && !f.getCodigoBarras().isBlank()
+                    ? f.getCodigoBarras().trim() : null);
+            e.setPrecio(f.getPrecio() != null ? f.getPrecio() : BigDecimal.ZERO);
+            e.setCosto(f.getCosto() != null ? f.getCosto() : BigDecimal.ZERO);
+            e.setSeVende(seVende);
+            e.setEsDefaultCompra(Boolean.TRUE.equals(f.getEsDefaultCompra()));
+            boolean defaultVenta = !vendeSuelto && seVende && !defaultVentaAsignada;
+            e.setEsDefaultVenta(defaultVenta);
+            if (defaultVenta) defaultVentaAsignada = true;
+            e.setActivo(true);
+            e = presentacionJPARepository.save(e);
+            conservadas.add(e.getId());
+        }
+
+        // Lo que ya no está en la lista se desactiva.
+        for (var x : existentes) {
+            if (x.activo() && !conservadas.contains(x.id())) {
+                presentacionJPARepository.findById(x.id()).ifPresent(e -> {
+                    e.setActivo(false);
+                    e.setEsDefaultCompra(false);
+                    e.setEsDefaultVenta(false);
+                    presentacionJPARepository.save(e);
+                });
+            }
+        }
+
+        producto.setVendePorUnidad(vendeSuelto);
+        productoJPARepository.save(producto);
+        return presentacionRepository.listarPorProducto(productoId);
+    }
+
     // ─── Helpers privados ────────────────────────────────────────────
 
     /** El factor son las unidades base que contiene la presentación (V159). */

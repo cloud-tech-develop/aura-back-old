@@ -26,14 +26,10 @@ public class CompraContabilizacionListener {
     public void onCompraContabilizable(CompraContabilizableEvent event) {
         try {
             // Si la compra ya tenía asiento, viene de una edición: se reversa el
-            // vigente antes de generar el nuevo. Sin esto el asiento se quedaba
-            // con los valores originales y el documento decía otra cosa.
-            //
-            // reversar() es no-op cuando no hay asiento vigente, así que el alta
-            // normal pasa derecho por aquí.
-            contabilidadAutoService.reversar(
-                    "COMPRA", event.getCompraId(), event.getEmpresaId(), event.getUsuarioId());
-            contabilidadAutoService.generarDesdeCompra(
+            // vigente y se genera el nuevo, TODO en una transacción (ver
+            // reprocesarCompra). Si el nuevo falla, la compra conserva su asiento
+            // anterior en vez de quedar sin ninguno. En el alta la reversa es no-op.
+            contabilidadAutoService.reprocesarCompra(
                     event.getCompraId(), event.getEmpresaId(), event.getUsuarioId());
         } catch (Exception ex) {
             errorLogService.registrarAsync(

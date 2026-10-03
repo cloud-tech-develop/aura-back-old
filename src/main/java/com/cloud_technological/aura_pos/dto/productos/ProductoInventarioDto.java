@@ -28,4 +28,5 @@ public class ProductoInventarioDto {
     private Boolean esCompuesto;
     private String unidadAbreviatura;
     private String usoProducto;
+    private String clasificacion;
 }

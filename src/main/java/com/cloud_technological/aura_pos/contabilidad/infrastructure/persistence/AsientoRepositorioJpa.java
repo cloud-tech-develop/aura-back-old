@@ -29,6 +29,8 @@ public class AsientoRepositorioJpa implements AsientoRepositorio {
 
     @Override
     public boolean existePorOrigen(OrigenDocumento origen, Integer empresaId) {
+        // Serializa los postings del mismo documento (ver bloquearDocumento).
+        queryRepo.bloquearDocumento(empresaId, origen.tipoOrigen(), origen.origenId());
         return asientoRepo.existsByTipoOrigenAndOrigenIdAndEmpresaId(
                 origen.tipoOrigen(), origen.origenId(), empresaId);
     }

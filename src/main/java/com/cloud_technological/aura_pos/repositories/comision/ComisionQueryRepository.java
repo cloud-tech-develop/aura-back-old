@@ -232,6 +232,7 @@ public class ComisionQueryRepository {
             WHERE cv.tecnico_id = :tecnicoId
               AND cv.empresa_id = :empresaId
               AND cv.liquidacion_id IS NULL
+              AND v.estado_venta <> 'ANULADA'
               AND cv.modalidad = :modalidad
         """);
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -275,6 +276,7 @@ public class ComisionQueryRepository {
             WHERE cv.vendedor_id = :vendedorId
               AND cv.empresa_id = :empresaId
               AND cv.liquidacion_id IS NULL
+              AND v.estado_venta <> 'ANULADA'
               AND cv.modalidad = 'VENTA'
         """);
         MapSqlParameterSource params = new MapSqlParameterSource()

@@ -65,6 +65,12 @@ public class ComprobanteCajaQueryRepository {
     }
 
     public String siguienteNumeroComprobante(Integer empresaId, String prefix) {
+        // Serie compartida entre asientos, comprobantes de caja y notas de
+        // diario: el mismo candado que NotaDiarioQueryRepository.bloquearSerie,
+        // para que dos documentos simultáneos no tomen el mismo número.
+        jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pg_advisory_xact_lock(CAST(:empresaId AS INTEGER), hashtext(:serie))",
+                Map.of("empresaId", empresaId, "serie", "serie-" + prefix), Integer.class);
         // Contador UNIFICADO por prefijo: comparte serie con los asientos contables.
         String sql = """
             SELECT COALESCE(MAX(n), 0) + 1 FROM (

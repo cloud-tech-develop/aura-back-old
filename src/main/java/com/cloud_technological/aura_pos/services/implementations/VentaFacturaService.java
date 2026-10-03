@@ -51,7 +51,14 @@ public class VentaFacturaService {
         "PEP",       21
     );
 
-    @Transactional
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository ventaQueryRepository;
+
+    /**
+     * La venta queda DESCONOCIDO (y se confirma) cuando Factus no respondió
+     * tras recibir la factura; por eso esa excepción no revierte la transacción.
+     */
+    @Transactional(dontRollbackOn = com.cloud_technological.aura_pos.utils.FacturaEstadoInciertoException.class)
     public FacturaElectronicaResponseDto generarFacturaElectronica(
             Long ventaId, Integer empresaId) {
 
@@ -80,9 +87,24 @@ public class VentaFacturaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "La venta no tiene productos para facturar");
 
+        // 5.b Reserva: dos clics (o dos cajas) no pueden mandar la misma venta a
+        //     la vez. Antes el "ya fue emitida" se leía sin bloqueo.
+        if (ventaQueryRepository.reservarEnvioFe(ventaId, empresaId) == 0)
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "La factura de esta venta ya fue emitida o se está enviando en este momento");
+
         // 6. Llamar a Factus
         FacturaElectronicaRequest request = buildRequest(venta, empresa, detalles);
-        FactusBillDto factura = factusService.generarFactura(empresaId, request);
+        FactusBillDto factura;
+        try {
+            factura = factusService.generarFactura(empresaId, request);
+        } catch (com.cloud_technological.aura_pos.utils.FacturaEstadoInciertoException ex) {
+            // La DIAN pudo haberla recibido: se deja marcada en vez de revertir,
+            // para que no se reenvíe a ciegas.
+            venta.setEstadoDian("DESCONOCIDO");
+            ventaRepository.save(venta);
+            throw ex;
+        }
 
         if (factura == null)
             throw new GlobalException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -136,6 +158,8 @@ public class VentaFacturaService {
         Integer clienteMunicipioId = empresa.getMunicipioId() != null
                 ? empresa.getMunicipioId() : CF_MUNICIPIO_ID;
         String  clienteDireccion  = direccionConsumidorFinal(venta, empresa);
+        String  clienteOrganizacion = "2";   // persona natural
+        String  clienteTributo      = "21";  // no aplica
 
         if (cliente != null) {
             nombreCliente = (cliente.getRazonSocial() != null
@@ -159,27 +183,72 @@ public class VentaFacturaService {
                     ? cliente.getMunicipioId().intValue() : CF_MUNICIPIO_ID;
         }
 
+        if (cliente != null) {
+            clienteOrganizacion = "JURIDICA".equalsIgnoreCase(cliente.getTipoPersona()) ? "1" : "2";
+            clienteTributo = "RESPONSABLE_IVA".equalsIgnoreCase(cliente.getRegimen()) ? "18" : "21";
+        }
+
+        // El descuento general se aplicó sobre el total de la venta: se reparte
+        // en las líneas por valor para que el total de la factura sea lo cobrado.
+        BigDecimal sumaLineas = detalles.stream()
+                .map(d -> d.getSubtotalLinea() != null ? d.getSubtotalLinea() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalPagar = venta.getTotalPagar() != null ? venta.getTotalPagar() : sumaLineas;
+        BigDecimal factorGeneral = sumaLineas.signum() > 0 && totalPagar.compareTo(sumaLineas) < 0
+                ? totalPagar.divide(sumaLineas, 8, RoundingMode.HALF_UP) : BigDecimal.ONE;
+
         List<ItemFacturaRequest> items = detalles.stream()
-                .map(d -> ItemFacturaRequest.builder()
-                        .sku(d.getProducto().getSku() != null
-                                ? d.getProducto().getSku() : "SIN-SKU")
-                        .nombre(d.getProducto().getNombre())
-                        .cantidad(d.getCantidad())
-                        // Factus recibe el precio CON IVA incluido
-                        // precioUnitario está sin IVA → reconstruir: precio × (1 + IVA%)
-                        .precioSinIva(precioConIva(
-                                d.getPrecioUnitario(),
-                                d.getProducto().getIvaPorcentaje()))
-                        .ivaPorcentaje(d.getProducto().getIvaPorcentaje()
-                                .setScale(2).toPlainString())
-                        .build())
+                .filter(d -> d.getCantidad() != null && d.getCantidad().signum() > 0)
+                .map(d -> {
+                    // IVA de la LÍNEA vendida, no el que tiene hoy el producto.
+                    BigDecimal ivaPct = com.cloud_technological.aura_pos.utils.FacturaElectronicaCalculo
+                            .ivaPorcentajeLinea(d.getSubtotalLinea(), d.getImpuestoValor());
+                    // Factus recibe el precio CON IVA incluido
+                    // precioUnitario está sin IVA → reconstruir: precio × (1 + IVA%)
+                    BigDecimal precioConIva = precioConIva(d.getPrecioUnitario(), ivaPct);
+                    BigDecimal cobrado = (d.getSubtotalLinea() != null ? d.getSubtotalLinea() : BigDecimal.ZERO)
+                            .multiply(factorGeneral);
+                    BigDecimal descuentoPct = com.cloud_technological.aura_pos.utils.FacturaElectronicaCalculo
+                            .tasaDescuento(precioConIva.multiply(d.getCantidad()), cobrado);
+                    return ItemFacturaRequest.builder()
+                            .sku(d.getProducto().getSku() != null
+                                    ? d.getProducto().getSku() : "SIN-SKU")
+                            .nombre(d.getProducto().getNombre())
+                            .cantidad(d.getCantidad())
+                            .precioSinIva(precioConIva)
+                            .ivaPorcentaje(ivaPct.toPlainString())
+                            .descuentoPct(descuentoPct)
+                            .build();
+                })
                 .collect(Collectors.toList());
 
+        // Forma y medio de pago de la venta real: antes siempre contado y
+        // efectivo, aunque fuera a crédito o por transferencia.
+        List<com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository.PagoVenta> pagos =
+                ventaQueryRepository.pagosDeVenta(venta.getId());
+        boolean esCredito = pagos.stream().anyMatch(p -> "CREDITO".equalsIgnoreCase(p.metodoPago()));
+        String medioPago = pagos.stream()
+                .filter(p -> !"CREDITO".equalsIgnoreCase(p.metodoPago()))
+                .findFirst()
+                .map(p -> com.cloud_technological.aura_pos.utils.FacturaElectronicaCalculo.medioPagoDian(p.metodoPago()))
+                .orElse("10");
+        LocalDate vence = LocalDate.now();
+        if (esCredito) {
+            LocalDate v = ventaQueryRepository.vencimientoCredito(venta.getId());
+            vence = v != null && v.isAfter(LocalDate.now()) ? v : LocalDate.now().plusDays(30);
+        }
+
         return FacturaElectronicaRequest.builder()
-                .numeroVenta((empresa.getFactusPrefijo() != null ? empresa.getFactusPrefijo() : "POS") + "-" + venta.getConsecutivo())
+                // Referencia única en la empresa: el consecutivo es por sucursal,
+                // así que con dos sucursales la venta 123 de cada una chocaba y
+                // Factus rechazaba la segunda como duplicada.
+                .numeroVenta("V" + venta.getId())
                 .observacion(venta.getObservaciones())
-                .metodoPago("10") // Efectivo por defecto
-                .fechaVencimiento(LocalDate.now().toString())
+                .metodoPago(medioPago)
+                // Factus deduce la forma de pago de la fecha: hoy = contado, otra = crédito.
+                .fechaVencimiento(vence.toString())
+                .clienteOrganizacionLegalId(clienteOrganizacion)
+                .clienteTributoId(clienteTributo)
                 .clienteDocumento(clienteDocumento)
                 .clienteDv(clienteDv)
                 .clienteNombre(nombreCliente)

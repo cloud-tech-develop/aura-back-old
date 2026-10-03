@@ -116,10 +116,32 @@ public class AsientoContableQueryRepository {
     }
 
     /**
+     * Candado de transacción por documento (empresa + tipo de origen + id).
+     *
+     * <p>"¿Ya tiene asiento? → si no, crearlo" no es atómico: dos eventos del
+     * mismo documento (reintento, doble clic, reproceso manual mientras corre el
+     * automático) pasaban los dos la pregunta y dejaban dos asientos. Con el
+     * candado el segundo espera y, al entrar, ya ve el asiento del primero. Se
+     * suelta solo al terminar la transacción del posting.
+     */
+    public void bloquearDocumento(Integer empresaId, String tipoOrigen, Long origenId) {
+        if (tipoOrigen == null || origenId == null) return;
+        jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pg_advisory_xact_lock(hashtextextended(:clave, 0))",
+                Map.of("clave", "asiento:" + empresaId + ":" + tipoOrigen + ":" + origenId), Integer.class);
+    }
+
+    /**
      * Genera el siguiente número de comprobante para la empresa y prefijo dado.
      * Formato: {PREFIX}-{6 dígitos}  ej: CD-000001
      */
     public String siguienteNumeroComprobante(Integer empresaId, String prefix) {
+        // Serie compartida entre asientos, comprobantes de caja y notas de
+        // diario: el mismo candado que NotaDiarioQueryRepository.bloquearSerie,
+        // para que dos documentos simultáneos no tomen el mismo número.
+        jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pg_advisory_xact_lock(CAST(:empresaId AS INTEGER), hashtext(:serie))",
+                Map.of("empresaId", empresaId, "serie", "serie-" + prefix), Integer.class);
         // Contador UNIFICADO por prefijo: considera tanto los asientos contables como
         // los comprobantes de caja, para que ambas fuentes compartan la misma serie
         // (evita que el comprobante contable reinicie en 1 cuando la caja ya va en N).

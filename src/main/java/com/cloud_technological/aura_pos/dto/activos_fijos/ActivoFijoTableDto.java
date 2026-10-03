@@ -20,5 +20,10 @@ public class ActivoFijoTableDto {
     private String metodoDepreciacion;
     private Integer vidaUtilMeses;
     private String estado;
+    private String placa;
+    private String responsable;
+    private String centroCostoNombre;
+    private BigDecimal valorAdiciones;
+    private Long compraId;
     private Long totalRows;
 }

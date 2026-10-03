@@ -40,6 +40,10 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class ReconteoServiceImpl implements ReconteoService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
 
@@ -191,8 +195,8 @@ public class ReconteoServiceImpl implements ReconteoService {
             if (diferencia.compareTo(BigDecimal.ZERO) == 0) continue;
 
             // Actualizar inventario
-            InventarioEntity inventario = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodega.getId(), detalle.getProducto().getId())
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodega.getId(), detalle.getProducto().getId())
                     .orElse(null);
 
             if (inventario == null) continue;

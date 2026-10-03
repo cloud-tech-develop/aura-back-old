@@ -16,6 +16,9 @@ public class CompraDetalleDto {
     private String presentacionNombre;
     private BigDecimal presentacionFactor;
     private BigDecimal cantidadPresentacion;
+    private BigDecimal cantidadSuelta;
+    /** Clasificación con que se registró la línea (V185). */
+    private String clasificacion;
     private BigDecimal costoPresentacion;
     private Long loteId;
     private String codigoLote;

@@ -60,6 +60,14 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 @Service
 public class DevolucionServiceImpl implements DevolucionService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
 
@@ -179,6 +187,7 @@ public class DevolucionServiceImpl implements DevolucionService {
         devolucion.setObservaciones(dto.getObservaciones());
         devolucion.setFechaDevolucion(dto.getFechaDevolucion() != null
                 ? dto.getFechaDevolucion() : LocalDate.now());
+        periodoGuard.exigirAbierto(empresaId, devolucion.getFechaDevolucion());
         devolucion.setReintegraInventario(dto.getReintegraInventario() != null ? dto.getReintegraInventario() : true);
         devolucion.setCreatedAt(LocalDateTime.now());
         devolucion.setUpdatedAt(LocalDateTime.now());
@@ -192,6 +201,19 @@ public class DevolucionServiceImpl implements DevolucionService {
         List<ReintegroLote> reintegros = new ArrayList<>();
         List<DevolucionSerial> devolucionSeriales = new ArrayList<>();
         BigDecimal totalDevolucion = BigDecimal.ZERO;
+
+        // El descuento general de la venta se aplicó sobre el total, no en las
+        // líneas: lo cobrado de verdad es total_pagar, que es menor que la suma
+        // de las líneas. Se reparte por valor para que lo devuelto de cada línea
+        // no supere lo que el cliente pagó por ella.
+        BigDecimal sumaLineasVenta = ventaDetalles.stream()
+                .map(vd -> vd.getSubtotalLinea() != null ? vd.getSubtotalLinea() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalPagadoVenta = venta.getTotalPagar() != null ? venta.getTotalPagar() : BigDecimal.ZERO;
+        BigDecimal factorDescuentoGeneral = sumaLineasVenta.signum() > 0 && totalPagadoVenta.signum() > 0
+                && totalPagadoVenta.compareTo(sumaLineasVenta) < 0
+                ? totalPagadoVenta.divide(sumaLineasVenta, 8, RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
 
         for (CreateDevolucionDetalleDto detalleDto : dto.getDetalles()) {
             // Buscar el detalle original en la venta
@@ -215,9 +237,15 @@ public class DevolucionServiceImpl implements DevolucionService {
             BigDecimal impuestoValor = ventaDetalle.getImpuestoValor() != null
                     ? ventaDetalle.getImpuestoValor().multiply(proporcion).setScale(2, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
-            BigDecimal subtotalLinea = ventaDetalle.getPrecioUnitario()
-                    .multiply(detalleDto.getCantidad())
-                    .add(impuestoValor)
+            // Lo cobrado por esas unidades: la línea de la venta ya trae su
+            // descuento y su IVA (subtotal_linea = precio × cant − descuento + IVA).
+            // Antes se usaba precio × cantidad + IVA y el descuento se perdía:
+            // la devolución reembolsaba más de lo que el cliente pagó.
+            BigDecimal subtotalCobradoLinea = ventaDetalle.getSubtotalLinea() != null
+                    ? ventaDetalle.getSubtotalLinea() : BigDecimal.ZERO;
+            BigDecimal subtotalLinea = subtotalCobradoLinea
+                    .multiply(proporcion)
+                    .multiply(factorDescuentoGeneral)
                     .setScale(2, RoundingMode.HALF_UP);
 
             DevolucionDetalleEntity detalle = new DevolucionDetalleEntity();
@@ -548,7 +576,7 @@ public class DevolucionServiceImpl implements DevolucionService {
     private void reintegrarStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
             BigDecimal costoUnitario, String numeroVenta, Long devolucionDetalleId, Long ventaDetalleId,
             Integer empresaId) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+        Optional<InventarioEntity> optInv = inventarioStock.bloquear(
                 bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();
@@ -570,7 +598,7 @@ public class DevolucionServiceImpl implements DevolucionService {
 
     private void revertirStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
             BigDecimal costoUnitario, Long devolucionId, Long devolucionDetalleId) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+        Optional<InventarioEntity> optInv = inventarioStock.bloquear(
                 bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();
@@ -841,7 +869,7 @@ public class DevolucionServiceImpl implements DevolucionService {
     /** Descuenta inventario por un producto agregado (cambio) que se lleva el cliente. */
     private void descontarStock(com.cloud_technological.aura_pos.entity.BodegaEntity bodega, ProductoEntity producto, BigDecimal cantidad,
             BigDecimal costoUnitario, String numeroVenta, Long ventaDetalleId, Integer empresaId) {
-        Optional<InventarioEntity> optInv = inventarioRepository.findByBodegaIdAndProductoId(
+        Optional<InventarioEntity> optInv = inventarioStock.bloquear(
                 bodega.getId(), producto.getId());
         if (optInv.isPresent()) {
             InventarioEntity inv = optInv.get();

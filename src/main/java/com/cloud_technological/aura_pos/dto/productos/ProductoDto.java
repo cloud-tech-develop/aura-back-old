@@ -23,6 +23,8 @@ public class ProductoDto {
     private String imagenUrl;
     private String tipoProducto;
     private String usoProducto;
+    /** PRODUCTO | SERVICIO | GASTO | DOTACION | ACTIVO_FIJO | INTANGIBLE | DIFERIDO (V185). */
+    private String clasificacion;
     private Boolean manejaInventario;
     private Boolean manejaLotes;
     private Boolean manejaSerial;

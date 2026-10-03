@@ -202,6 +202,10 @@ public class CuentaCobrarQueryRepository {
     }
 
     public String generarNumeroCuenta() {
+        // El número es global (no por empresa) y sale de un MAX: sin candado
+        // dos cuentas creadas a la vez tomaban el mismo.
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(177177, 1)", new MapSqlParameterSource(), rs -> null);
+
         // Primero verificamos si hay cuentas para el día de hoy
         String checkSql = """
             SELECT COUNT(*) FROM cuentas_cobrar 

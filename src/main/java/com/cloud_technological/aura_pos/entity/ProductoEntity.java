@@ -61,6 +61,13 @@ public class ProductoEntity {
     @Column(name = "uso_producto")
     private String usoProducto = "VENTA";
 
+    /**
+     * PRODUCTO | SERVICIO | GASTO | DOTACION | ACTIVO_FIJO | INTANGIBLE | DIFERIDO
+     * (V185). Decide qué hace la compra con la línea: ver ClasificacionItem.
+     */
+    @Column(name = "clasificacion")
+    private String clasificacion = "PRODUCTO";
+
     @Column(name = "maneja_inventario")
     private Boolean manejaInventario;
 

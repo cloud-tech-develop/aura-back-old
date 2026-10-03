@@ -27,6 +27,10 @@ import com.cloud_technological.aura_pos.services.TesoreriaService;
 @Service
 public class TesoreriaServiceImpl implements TesoreriaService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
     @Autowired
     private TesoreriaMovimientoJPARepository movRepo;
 
@@ -52,6 +56,7 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     @Transactional
     public TesoreriaMovimientoDto crearEgreso(Integer empresaId, Integer usuarioId, CreateMovimientoDto dto) {
         CuentaBancariaEntity cuenta = getCuenta(dto.getCuentaBancariaId(), empresaId);
+        periodoGuard.exigirAbierto(empresaId, dto.getFecha());
         validarSaldoConSobregiro(cuenta, dto.getMonto());
         cuenta.setSaldoActual(cuenta.getSaldoActual().subtract(dto.getMonto()));
         cuentaRepo.save(cuenta);
@@ -110,6 +115,7 @@ public class TesoreriaServiceImpl implements TesoreriaService {
     @Override
     @Transactional
     public TesoreriaMovimientoDto crearRecaudo(Integer empresaId, Integer usuarioId, CreateMovimientoDto dto) {
+        periodoGuard.exigirAbierto(empresaId, dto.getFecha());
         CuentaBancariaEntity cuenta = getCuenta(dto.getCuentaBancariaId(), empresaId);
         cuenta.setSaldoActual(cuenta.getSaldoActual().add(dto.getMonto()));
         cuentaRepo.save(cuenta);

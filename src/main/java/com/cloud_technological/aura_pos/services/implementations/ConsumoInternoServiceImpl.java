@@ -67,6 +67,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ConsumoInternoServiceImpl implements ConsumoInternoService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     private static final BigDecimal CIEN = BigDecimal.valueOf(100);
     private static final String DOCUMENTO = "CONSUMO_INTERNO";
 
@@ -203,8 +207,8 @@ public class ConsumoInternoServiceImpl implements ConsumoInternoService {
                         producto.getId(), cantidad, bodega.getId());
                 consumoComposicion.validarStock(producto, componentes);
             } else {
-                inventario = inventarioRepository
-                        .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+                inventario = inventarioStock
+                        .bloquear(bodega.getId(), producto.getId())
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                                 "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
                                 + bodega.getNombre()));
@@ -328,8 +332,8 @@ public class ConsumoInternoServiceImpl implements ConsumoInternoService {
                 continue;
             }
 
-            InventarioEntity inventario = inventarioRepository
-                    .findByBodegaIdAndProductoId(bodega.getId(), detalle.getProducto().getId())
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodega.getId(), detalle.getProducto().getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + detalle.getProducto().getNombre()));
 

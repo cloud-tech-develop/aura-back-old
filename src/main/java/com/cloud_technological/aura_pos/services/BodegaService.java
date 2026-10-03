@@ -9,6 +9,7 @@ import com.cloud_technological.aura_pos.dto.bodegas.BodegaTableDto;
 import com.cloud_technological.aura_pos.dto.bodegas.CreateBodegaDto;
 import com.cloud_technological.aura_pos.dto.bodegas.UpdateBodegaDto;
 import com.cloud_technological.aura_pos.entity.BodegaEntity;
+import com.cloud_technological.aura_pos.entity.SucursalEntity;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 public interface BodegaService {
@@ -34,6 +35,13 @@ public interface BodegaService {
      * servicio debe resolverla por su cuenta.
      */
     BodegaEntity resolver(Long bodegaId, Integer sucursalId, Integer empresaId);
+
+    /**
+     * Crea la "Bodega Principal" de una sucursal recién creada. V172 solo se la
+     * dio a las sucursales que ya existían: sin esto, una sede o empresa nueva no
+     * puede vender, comprar ni registrar mermas. No hace nada si ya tiene principal.
+     */
+    void crearPrincipal(SucursalEntity sucursal);
 
     /** Igual que {@link #resolver}, pero exige que la bodega venda (POS). */
     BodegaEntity resolverParaVenta(Long bodegaId, Integer sucursalId, Integer empresaId);

@@ -15,6 +15,10 @@ public interface InventarioService {
     PageImpl<InventarioTableDto> listar(PageableDto<Object> pageable, Integer empresaId);
     InventarioDto obtenerPorId(Long id, Integer empresaId);
     List<InventarioTableDto> listarStockBajo(Integer empresaId);
+
+    /** Saldos en o bajo su punto de reorden, con lo que conviene pedir (V185). */
+    List<com.cloud_technological.aura_pos.dto.inventario.SugeridoCompraDto> sugeridoCompra(
+            Integer empresaId, Long sucursalId, Long bodegaId);
     InventarioDto crear(CreateInventarioDto dto, Integer empresaId);
     InventarioDto actualizar(Long id, UpdateInventarioDto dto, Integer empresaId);
     HistorialProductoResponseDto historialProducto(Long productoId, Long sucursalId, Integer empresaId);

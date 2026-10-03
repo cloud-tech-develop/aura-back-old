@@ -35,6 +35,8 @@ public enum TipoMovimientoInventario {
     ANULACION_OBSEQUIO("Anulación de obsequio", Grupo.ENTRADA, Familia.ANULACIONES),
     ANULACION_CONSUMO_INTERNO("Anulación de consumo interno", Grupo.ENTRADA, Familia.ANULACIONES),
     RECONTEO_AJUSTE_POSITIVO("Reconteo — sobrante", Grupo.ENTRADA, Familia.RECONTEOS),
+    /** Corrección escrita a mano en Inventario → Stock (o saldo inicial al crear el registro). */
+    AJUSTE_MANUAL_ENTRADA("Ajuste manual — sobrante", Grupo.ENTRADA, Familia.RECONTEOS),
 
     // ── Salidas ─────────────────────────────────────────────────────────
     VENTA("Venta", Grupo.SALIDA, Familia.VENTAS),
@@ -48,6 +50,7 @@ public enum TipoMovimientoInventario {
     ANULACION_DEVOLUCION("Anulación de devolución", Grupo.SALIDA, Familia.ANULACIONES),
     EDICION_COMPRA_REVERSION("Reverso de edición de compra", Grupo.SALIDA, Familia.COMPRAS),
     RECONTEO_AJUSTE_NEGATIVO("Reconteo — faltante", Grupo.SALIDA, Familia.RECONTEOS),
+    AJUSTE_MANUAL_SALIDA("Ajuste manual — faltante", Grupo.SALIDA, Familia.RECONTEOS),
 
     // ── Mixtos ──────────────────────────────────────────────────────────
     /** Genera dos filas: entra en la sucursal origen y sale de la destino. */
