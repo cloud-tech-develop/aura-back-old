@@ -25,4 +25,6 @@ public class FormaPagoContableDto {
     private String cuentaContable;
     private Boolean requiereCuentaBancaria;
     private Boolean activo;
+    /** % que paga el cliente al usar esta forma; 0 = sin recargo. */
+    private java.math.BigDecimal recargoPorcentaje;
 }

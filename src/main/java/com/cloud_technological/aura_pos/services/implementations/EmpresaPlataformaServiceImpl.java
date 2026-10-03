@@ -10,6 +10,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.super_admin.CreateEmpresaPlataformaDto;
+import com.cloud_technological.aura_pos.services.BodegaService;
 import com.cloud_technological.aura_pos.dto.super_admin.CreateEmpresaResponseDto;
 import com.cloud_technological.aura_pos.dto.super_admin.DashboardPlataformaDto;
 import com.cloud_technological.aura_pos.dto.super_admin.EmpresaPlataformaDto;
@@ -36,6 +37,10 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
+
+    /** Toda sucursal nueva nace con su bodega principal (ver V172). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private BodegaService bodegaService;
 
     @Value("${app.frontend.url}")
     private String frontendUrl;
@@ -116,6 +121,7 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 .activa(true)
                 .build();
         sucursal = sucursalRepo.save(sucursal);
+        bodegaService.crearPrincipal(sucursal);
 
         // 3. Tercero — datos del admin + datos de contacto de la empresa
         TerceroEntity tercero = TerceroEntity.builder()

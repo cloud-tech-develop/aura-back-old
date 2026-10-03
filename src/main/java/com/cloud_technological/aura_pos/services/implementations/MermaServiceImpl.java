@@ -48,6 +48,10 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class MermaServiceImpl implements MermaService {
+
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
@@ -185,8 +189,8 @@ public class MermaServiceImpl implements MermaService {
             }
 
             // 2.1 Validar stock
-            InventarioEntity inventario = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodega.getId(), producto.getId())
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodega.getId(), producto.getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
                             "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
                             + bodega.getNombre()));
@@ -326,8 +330,8 @@ public class MermaServiceImpl implements MermaService {
                 continue;
             }
 
-            InventarioEntity inventario = inventarioJPARepository
-                    .findByBodegaIdAndProductoId(bodega.getId(), detalle.getProducto().getId())
+            InventarioEntity inventario = inventarioStock
+                    .bloquear(bodega.getId(), detalle.getProducto().getId())
                     .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Inventario no encontrado para: " + detalle.getProducto().getNombre()));
 

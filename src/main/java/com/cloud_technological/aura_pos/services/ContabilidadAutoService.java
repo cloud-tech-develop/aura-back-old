@@ -10,6 +10,17 @@ public interface ContabilidadAutoService {
     AsientoContableTableDto generarDesdeCompra(Long compraId, Integer empresaId, Integer usuarioId);
 
     /**
+     * Reversa el asiento vigente de la compra y genera el nuevo en UNA sola
+     * transacción: si el nuevo falla, la reversa también se deshace y el
+     * asiento anterior sigue vigente. Sirve para el alta (sin asiento previo)
+     * y para la edición.
+     */
+    AsientoContableTableDto reprocesarCompra(Long compraId, Integer empresaId, Integer usuarioId);
+
+    /** Igual que {@link #reprocesarCompra}, para un gasto editado. */
+    AsientoContableTableDto reprocesarGasto(Long gastoId, Integer empresaId, Integer usuarioId);
+
+    /**
      * Genera el contraasiento (reversa) de una anulación, intercambiando débito y
      * crédito del asiento original. {@code origenTipo} es "VENTA", "COMPRA" o
      * "DEVOLUCION". Idempotente; no-op si no existe asiento original que reversar.

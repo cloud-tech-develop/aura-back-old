@@ -26,8 +26,14 @@ public interface CategoriaContableProductoService {
     /**
      * Valida lo contable que se asigna a un producto: la categoría debe ser de
      * la empresa y estar activa, y cada override una auxiliar activa de su
-     * clase. Todos pueden venir null (hereda).
+     * clase. Todos pueden venir null (hereda). La cuenta de inventario es la
+     * "cuenta de la compra": su clase depende de la clasificación del ítem
+     * (14 mercancía, 15 activo fijo, 5 gasto…).
      */
+    /** Crea una categoría nueva con las mismas cuentas y datos de otra. */
+    CategoriaContableProductoDto copiar(Integer empresaId, Long origenId, String nombre);
+
     void validarCuentasProducto(Integer empresaId, Long categoriaContableId, Long cuentaIngresoId,
-            Long cuentaCostoId, Long cuentaInventarioId);
+            Long cuentaCostoId, Long cuentaInventarioId,
+            com.cloud_technological.aura_pos.utils.ClasificacionItem clasificacion);
 }

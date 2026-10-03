@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import com.cloud_technological.aura_pos.utils.ClasificacionItem;
+
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -20,7 +22,13 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CategoriaContableProductoServiceImpl implements CategoriaContableProductoService {
 
-    private static final List<String> TIPOS = List.of("BIEN", "SERVICIO", "INSUMO", "ACTIVO_FIJO");
+    /**
+     * La categoría es la plantilla contable de una clasificación del catálogo
+     * (V185): BIEN/INSUMO para mercancía y las demás con el mismo nombre de la
+     * clasificación.
+     */
+    private static final List<String> TIPOS = List.of("BIEN", "SERVICIO", "INSUMO", "ACTIVO_FIJO",
+            "INTANGIBLE", "GASTO", "DOTACION", "DIFERIDO");
 
     private final CategoriaContableProductoJPARepository repo;
     private final PlanCuentaJPARepository planRepo;
@@ -67,6 +75,37 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
 
     @Override
     @Transactional
+    public CategoriaContableProductoDto copiar(Integer empresaId, Long origenId, String nombre) {
+        CategoriaContableProductoEntity o = repo.findByIdAndEmpresaId(origenId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Categoría contable no encontrada"));
+        if (nombre == null || nombre.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Escriba el nombre de la categoría nueva");
+        }
+        if (repo.findByEmpresaIdAndNombre(empresaId, nombre.trim()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya existe una categoría contable llamada " + nombre.trim());
+        }
+        CategoriaContableProductoEntity n = CategoriaContableProductoEntity.builder()
+                .empresaId(empresaId)
+                .nombre(nombre.trim())
+                .tipo(o.getTipo())
+                .cuentaIngresoId(o.getCuentaIngresoId())
+                .cuentaInventarioId(o.getCuentaInventarioId())
+                .cuentaCostoId(o.getCuentaCostoId())
+                .cuentaDevolucionId(o.getCuentaDevolucionId())
+                .cuentaDepreciacionId(o.getCuentaDepreciacionId())
+                .cuentaGastoDepreciacionId(o.getCuentaGastoDepreciacionId())
+                .vidaUtilMeses(o.getVidaUtilMeses())
+                .mesesDiferido(o.getMesesDiferido())
+                .impuestoId(o.getImpuestoId())
+                .activo(true)
+                .build();
+        return toDto(empresaId, repo.save(n));
+    }
+
+    @Override
+    @Transactional
     public void seedDefaults(Integer empresaId) {
         if (repo.findByEmpresaIdAndNombre(empresaId, "General").isEmpty()) {
             repo.save(CategoriaContableProductoEntity.builder()
@@ -99,7 +138,7 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
 
     @Override
     public void validarCuentasProducto(Integer empresaId, Long categoriaContableId, Long cuentaIngresoId,
-            Long cuentaCostoId, Long cuentaInventarioId) {
+            Long cuentaCostoId, Long cuentaInventarioId, ClasificacionItem clasificacion) {
         if (categoriaContableId != null) {
             repo.findByIdAndEmpresaId(categoriaContableId, empresaId)
                     .filter(c -> Boolean.TRUE.equals(c.getActivo()))
@@ -108,18 +147,50 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
         }
         validar(empresaId, cuentaIngresoId, "de ingreso", "4");
         validar(empresaId, cuentaCostoId, "de costo", "5", "6", "7");
-        // En el producto se exige inventario (14): un override es una excepción
-        // puntual y no hay razón para mandarlo a otra clase del activo.
-        validar(empresaId, cuentaInventarioId, "de inventario", "14");
+        // La cuenta de la compra va en la clase de su clasificación: inventario
+        // (14) para la mercancía, 15 para un activo fijo, 5 para un gasto…
+        ClasificacionItem c = clasificacion != null ? clasificacion : ClasificacionItem.PRODUCTO;
+        validar(empresaId, cuentaInventarioId,
+                c == ClasificacionItem.PRODUCTO ? "de inventario" : "de la compra", c.prefijosCompra());
     }
 
     /** Guardarraíles (ADR-006): cada cuenta en su clase PUC. */
     private void aplicarCuentas(Integer empresaId, CategoriaContableProductoEntity e,
             CategoriaContableProductoDto dto) {
         e.setCuentaIngresoId(validar(empresaId, dto.getCuentaIngresoId(), "de ingreso", "4"));
-        e.setCuentaInventarioId(validar(empresaId, dto.getCuentaInventarioId(), "de inventario", "1"));
+        e.setCuentaInventarioId(validar(empresaId, dto.getCuentaInventarioId(),
+                "BIEN".equals(e.getTipo()) || "INSUMO".equals(e.getTipo()) ? "de inventario" : "de la compra",
+                prefijosCompra(e.getTipo())));
         e.setCuentaCostoId(validar(empresaId, dto.getCuentaCostoId(), "de costo", "5", "6", "7"));
         e.setCuentaDevolucionId(validar(empresaId, dto.getCuentaDevolucionId(), "de devolución", "4"));
+
+        // Activos e intangibles: depreciación acumulada y su gasto; se copian a
+        // la ficha que crea la compra (V185).
+        e.setCuentaDepreciacionId(validar(empresaId, dto.getCuentaDepreciacionId(),
+                "de depreciación acumulada", "1592", "1597", "1598", "1698"));
+        e.setCuentaGastoDepreciacionId(validar(empresaId, dto.getCuentaGastoDepreciacionId(),
+                "de gasto por depreciación", "51", "52", "72", "73"));
+        e.setVidaUtilMeses(positivoONull(dto.getVidaUtilMeses(), "La vida útil"));
+        e.setMesesDiferido(positivoONull(dto.getMesesDiferido(), "Los meses del diferido"));
+    }
+
+    /** Clase del PUC de la cuenta de la compra según el tipo de la categoría. */
+    private static String[] prefijosCompra(String tipo) {
+        return switch (tipo != null ? tipo : "BIEN") {
+            // Compatibilidad: antes de V185 la categoría admitía toda la clase 1.
+            case "BIEN", "INSUMO" -> new String[] { "1" };
+            default -> ClasificacionItem.de(tipo).prefijosCompra();
+        };
+    }
+
+    private static Integer positivoONull(Integer valor, String campo) {
+        if (valor == null) {
+            return null;
+        }
+        if (valor <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, campo + " debe ser mayor que cero.");
+        }
+        return valor;
     }
 
     private Long validar(Integer empresaId, Long cuentaId, String rol, String... prefijos) {
@@ -147,7 +218,7 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
         String t = tipo != null ? tipo.trim().toUpperCase() : "BIEN";
         if (!TIPOS.contains(t)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Tipo inválido: use BIEN, SERVICIO, INSUMO o ACTIVO_FIJO.");
+                    "Tipo inválido: use BIEN, SERVICIO, INSUMO, ACTIVO_FIJO, INTANGIBLE, GASTO, DOTACION o DIFERIDO.");
         }
         return t;
     }
@@ -178,6 +249,12 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
                 .cuentaCosto(etiqueta(empresaId, e.getCuentaCostoId()))
                 .cuentaDevolucionId(e.getCuentaDevolucionId())
                 .cuentaDevolucion(etiqueta(empresaId, e.getCuentaDevolucionId()))
+                .cuentaDepreciacionId(e.getCuentaDepreciacionId())
+                .cuentaDepreciacion(etiqueta(empresaId, e.getCuentaDepreciacionId()))
+                .cuentaGastoDepreciacionId(e.getCuentaGastoDepreciacionId())
+                .cuentaGastoDepreciacion(etiqueta(empresaId, e.getCuentaGastoDepreciacionId()))
+                .vidaUtilMeses(e.getVidaUtilMeses())
+                .mesesDiferido(e.getMesesDiferido())
                 .activo(e.getActivo())
                 .build();
     }

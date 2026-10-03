@@ -29,6 +29,8 @@ import com.cloud_technological.aura_pos.repositories.users.UsuarioQueryRepositor
 import com.cloud_technological.aura_pos.services.UsuarioService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.utils.PoliticaRoles;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -45,6 +47,7 @@ public class UsuarioServiceImpl implements UsuarioService {
     private final UsuarioMapper usuarioMapper;
     private final EmpleadoJPARepository empleadoRepo;
     private final TipoEmpleadoJPARepository tipoEmpleadoRepo;
+    private final SecurityUtils securityUtils;
 
     public UsuarioServiceImpl(UsuarioJPARepository usuarioRepo,
             UsuarioSucursalJPARepository usuarioSucursalRepo,
@@ -54,7 +57,8 @@ public class UsuarioServiceImpl implements UsuarioService {
             PasswordEncoder passwordEncoder,
             UsuarioMapper usuarioMapper,
             EmpleadoJPARepository empleadoRepo,
-            TipoEmpleadoJPARepository tipoEmpleadoRepo) {
+            TipoEmpleadoJPARepository tipoEmpleadoRepo,
+            SecurityUtils securityUtils) {
         this.usuarioRepo = usuarioRepo;
         this.usuarioSucursalRepo = usuarioSucursalRepo;
         this.sucursalRepo = sucursalRepo;
@@ -64,6 +68,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         this.usuarioMapper = usuarioMapper;
         this.empleadoRepo = empleadoRepo;
         this.tipoEmpleadoRepo = tipoEmpleadoRepo;
+        this.securityUtils = securityUtils;
     }
 
     @Override
@@ -89,6 +94,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         tercero = terceroRepo.save(tercero);
 
         UsuarioEntity usuario = usuarioMapper.toEntity(dto);
+        usuario.setRol(PoliticaRoles.validarAsignacion(null, dto.getRol(), securityUtils.getRol()));
         usuario.setUsername(dto.getEmail());
         usuario.setPassword(passwordEncoder.encode(dto.getPassword()));
         if (dto.getPinAccesoRapido() != null) {
@@ -126,7 +132,11 @@ public class UsuarioServiceImpl implements UsuarioService {
             usuario.setPinAccesoRapido(passwordEncoder.encode(dto.getPinAccesoRapido()));
         }
 
+        // El mapper copia el rol del DTO tal cual: se toma el anterior antes y
+        // se deja el que permita la política (ver PoliticaRoles).
+        String rolAnterior = usuario.getRol();
         usuarioMapper.updateEntityFromDto(dto, usuario);
+        usuario.setRol(PoliticaRoles.validarAsignacion(rolAnterior, dto.getRol(), securityUtils.getRol()));
 
         TerceroEntity tercero = usuario.getTercero();
         usuarioMapper.updateTerceroFromUpdateDto(dto, tercero);
@@ -182,9 +192,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         for (int i = 0; i < asignaciones.size(); i++) {
             CreateUsuarioDto.SucursalAsignacion asig = asignaciones.get(i);
 
-            SucursalEntity sucursal = sucursalRepo.findById(asig.getSucursalId())
-                    .orElseThrow(() -> new EntityNotFoundException(
-                    "Sucursal no encontrada: " + asig.getSucursalId()));
+            SucursalEntity sucursal = sucursalDeLaEmpresa(asig.getSucursalId(), usuario);
 
             boolean esDefault = hayDefault
                     ? Boolean.TRUE.equals(asig.getEsDefault())
@@ -199,6 +207,23 @@ public class UsuarioServiceImpl implements UsuarioService {
 
             usuarioSucursalRepo.save(us);
         }
+    }
+
+    /**
+     * La sucursal debe ser de la misma empresa del usuario: la asignada termina
+     * en el token al iniciar sesión, y varios módulos filtran solo por sucursal.
+     * Si fuera de otra empresa, el usuario leería datos ajenos. Se responde
+     * "no encontrada" para no revelar que existe en otra empresa.
+     */
+    private SucursalEntity sucursalDeLaEmpresa(Integer sucursalId, UsuarioEntity usuario) {
+        SucursalEntity sucursal = sucursalRepo.findById(sucursalId)
+                .orElseThrow(() -> new EntityNotFoundException("Sucursal no encontrada: " + sucursalId));
+        Integer empresaUsuario = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
+        Integer empresaSucursal = sucursal.getEmpresa() != null ? sucursal.getEmpresa().getId() : null;
+        if (empresaUsuario == null || !empresaUsuario.equals(empresaSucursal)) {
+            throw new EntityNotFoundException("Sucursal no encontrada: " + sucursalId);
+        }
+        return sucursal;
     }
 
     private UsuarioDto mapToDtoCompleto(UsuarioEntity entity) {
@@ -249,7 +274,9 @@ public class UsuarioServiceImpl implements UsuarioService {
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .empleado(empleado)
                 .tipoEmpleado(tipoEmpleado)
-                .rol(tipoEmpleado != null ? tipoEmpleado.getNombre() : cargoEmpleado)
+                .rol(PoliticaRoles.validarAsignacion(null,
+                        tipoEmpleado != null ? tipoEmpleado.getNombre() : cargoEmpleado,
+                        securityUtils.getRol()))
                 .activo(true)
                 .build();
 
@@ -277,8 +304,7 @@ public class UsuarioServiceImpl implements UsuarioService {
     private void asignarSucursalesDesdeCreateEmpleado(UsuarioEntity usuario, Integer sucursalId) {
         if (sucursalId == null) return;
 
-        SucursalEntity sucursal = sucursalRepo.findById(sucursalId)
-                .orElseThrow(() -> new EntityNotFoundException("Sucursal no encontrada: " + sucursalId));
+        SucursalEntity sucursal = sucursalDeLaEmpresa(sucursalId, usuario);
 
         UsuarioSucursalEntity us = UsuarioSucursalEntity.builder()
                 .usuario(usuario)

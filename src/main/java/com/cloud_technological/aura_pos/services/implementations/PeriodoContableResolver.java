@@ -67,6 +67,36 @@ public class PeriodoContableResolver {
         return periodo;
     }
 
+    /**
+     * Guard para los documentos, antes de guardarlos: falla si el mes de la
+     * fecha está cerrado (o demasiado adelante). Solo lee, no abre meses.
+     *
+     * <p>Sin este control el documento se guardaba y su asiento fallaba después
+     * del commit (el motor contabiliza AFTER_COMMIT): la compra o el gasto
+     * quedaban vivos, con inventario y caja movidos, y sin asiento en el mayor.
+     */
+    public void exigirAbierto(Integer empresaId, LocalDate fecha) {
+        if (empresaId == null || fecha == null) return;
+        YearMonth mes = YearMonth.from(fecha);
+        YearMonth tope = YearMonth.from(LocalDate.now()).plusMonths(MESES_FUTURO);
+        if (mes.isAfter(tope)) {
+            throw new PeriodoCerradoException("La fecha " + fecha
+                    + " está muy adelante: no se pueden registrar documentos más allá de "
+                    + tope + ". Revise la fecha del documento.");
+        }
+        java.util.List<String> estado = jdbc.queryForList("""
+            SELECT estado FROM periodo_contable
+            WHERE empresa_id = :empresaId AND anio = :anio AND mes = :mes
+            """, new MapSqlParameterSource("empresaId", empresaId)
+                .addValue("anio", mes.getYear()).addValue("mes", mes.getMonthValue()), String.class);
+        // Sin período creado el mes está abierto: se abrirá solo con el asiento.
+        if (!estado.isEmpty() && !"ABIERTO".equals(estado.get(0))) {
+            throw new PeriodoCerradoException("El período contable " + nombre(mes)
+                    + " está cerrado: no admite documentos nuevos. Corrija la fecha del documento"
+                    + " o reabra el período desde Períodos contables.");
+        }
+    }
+
     /** Igual que {@link #resolver}, pero devuelve solo el id. */
     public Long resolverId(Integer empresaId, LocalDate fecha) {
         return resolver(empresaId, fecha).getId();

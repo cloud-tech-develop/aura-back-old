@@ -120,18 +120,87 @@ public class VentaQueryRepository {
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(VentaPagoDto.class));
     }
 
-    // Obtener consecutivo siguiente por sucursal
+    /**
+     * Reserva la venta para enviarla a la DIAN: la pasa a ENVIANDO solo si no
+     * está emitida ni en envío. Devuelve 0 si otro envío ya la tomó. La fila
+     * queda bloqueada hasta el fin de la transacción, así que un doble clic
+     * espera y después encuentra la venta ya EMITIDA.
+     */
+    public int reservarEnvioFe(Long ventaId, Integer empresaId) {
+        return jdbcTemplate.update("""
+            UPDATE venta SET estado_dian = 'ENVIANDO'
+            WHERE id = :ventaId AND empresa_id = :empresaId
+              AND (estado_dian IS NULL OR estado_dian NOT IN ('EMITIDA', 'ENVIANDO'))
+            """, new MapSqlParameterSource("ventaId", ventaId).addValue("empresaId", empresaId));
+    }
+
+    /** Pagos de la venta (método y monto), para la forma y el medio de pago de la FE. */
+    public record PagoVenta(String metodoPago, java.math.BigDecimal monto) {}
+
+    public List<PagoVenta> pagosDeVenta(Long ventaId) {
+        return jdbcTemplate.query(
+                "SELECT metodo_pago, monto FROM venta_pago WHERE venta_id = :ventaId ORDER BY monto DESC",
+                new MapSqlParameterSource("ventaId", ventaId),
+                (rs, i) -> new PagoVenta(rs.getString("metodo_pago"), rs.getBigDecimal("monto")));
+    }
+
+    /** Vencimiento de la venta a crédito: el de su cuenta por cobrar (o null). */
+    public java.time.LocalDate vencimientoCredito(Long ventaId) {
+        List<java.time.LocalDate> r = jdbcTemplate.query("""
+            SELECT fecha_vencimiento::date AS vence FROM cuentas_cobrar
+            WHERE venta_id = :ventaId AND fecha_vencimiento IS NOT NULL
+            ORDER BY id DESC LIMIT 1
+            """, new MapSqlParameterSource("ventaId", ventaId),
+            (rs, i) -> rs.getObject("vence", java.time.LocalDate.class));
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Devoluciones no anuladas de la venta. */
+    public long devolucionesVigentes(Long ventaId) {
+        Long n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM devolucion WHERE venta_id = :ventaId AND estado <> 'ANULADA'",
+                new MapSqlParameterSource("ventaId", ventaId), Long.class);
+        return n != null ? n : 0;
+    }
+
+    /** Comisiones de la venta que ya entraron en una liquidación. */
+    public long comisionesLiquidadas(Long ventaId) {
+        Long n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM comision_venta WHERE venta_id = :ventaId AND liquidacion_id IS NOT NULL",
+                new MapSqlParameterSource("ventaId", ventaId), Long.class);
+        return n != null ? n : 0;
+    }
+
+    /** Pago de la venta que entró a una cuenta bancaria. */
+    public record PagoBancario(Long cuentaBancariaId, java.math.BigDecimal monto, String referencia) {}
+
+    public List<PagoBancario> pagosBancarios(Long ventaId) {
+        return jdbcTemplate.query("""
+            SELECT cuenta_bancaria_id, monto, referencia
+            FROM venta_pago
+            WHERE venta_id = :ventaId AND cuenta_bancaria_id IS NOT NULL AND monto > 0
+            """, new MapSqlParameterSource("ventaId", ventaId),
+            (rs, i) -> new PagoBancario(rs.getLong("cuenta_bancaria_id"),
+                    rs.getBigDecimal("monto"), rs.getString("referencia")));
+    }
+
+    /**
+     * Siguiente consecutivo de venta de la sucursal, con candado de transacción
+     * por sucursal: dos cajas cobrando a la vez leían el mismo MAX y salían dos
+     * facturas con el mismo número. El candado se suelta al terminar la
+     * transacción de la venta.
+     *
+     * <p>Antes, si la consulta fallaba devolvía 1 y la venta salía con un
+     * número repetido; ahora el error sube y la venta no se guarda.
+     */
     public Long obtenerSiguienteConsecutivo(Long sucursalId) {
-        try {
-            String sql = """
+        MapSqlParameterSource params = new MapSqlParameterSource("sucursalId", sucursalId);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(175175, CAST(:sucursalId AS INTEGER))", params, rs -> null);
+        String sql = """
             SELECT COALESCE(MAX(consecutivo), 0) + 1
             FROM venta
             WHERE sucursal_id = :sucursalId
         """;
-        MapSqlParameterSource params = new MapSqlParameterSource("sucursalId", sucursalId);
         return jdbcTemplate.queryForObject(sql, params, Long.class);
-        } catch (Exception e) {
-            return 1L; // Si ocurre un error, retornar 1 como el primer consecutivo
-        }
     }
 }

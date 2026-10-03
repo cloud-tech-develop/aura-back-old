@@ -18,7 +18,13 @@ public class CreateVentaDto {
      * se enlaza al pedido existente en vez de crear un pedido espejo nuevo.
      */
     private Long pedidoVendedorId;
-    private Long turnoCajaId;   // null cuando el usuario es VENDEDOR (sin caja)
+    /**
+     * Cotización de la que sale la venta (cadena documental D1). Cada línea que
+     * venga de ella trae su {@code cotizacionDetalleId}; las líneas agregadas en
+     * el POS van sin él.
+     */
+    private Long cotizacionId;
+    private Long turnoCajaId;  // null cuando el usuario es VENDEDOR (sin caja)
     private Integer sucursalId; // requerido cuando turnoCajaId es null
     /** Bodega que despacha. Sin ella, la principal de la sucursal. */
     private Long bodegaId;

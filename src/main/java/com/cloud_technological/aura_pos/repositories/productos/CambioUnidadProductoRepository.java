@@ -195,6 +195,8 @@ public class CambioUnidadProductoRepository {
                 UPDATE inventario
                    SET stock_actual = stock_actual * :n,
                        stock_minimo = stock_minimo * :n,
+                       stock_maximo = stock_maximo * :n,
+                       punto_reorden = punto_reorden * :n,
                        updated_at = now()
                  WHERE producto_id = :p
                 """, producto(productoId).addValue("n", n));

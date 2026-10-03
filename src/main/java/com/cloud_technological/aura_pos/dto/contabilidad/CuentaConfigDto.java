@@ -27,4 +27,10 @@ public class CuentaConfigDto {
 
     /** true si está usando el código por defecto (no hay override de la empresa). */
     private boolean porDefecto;
+
+    /** Código del PUC que usa si nadie lo configura. */
+    private String codigoDefault;
+
+    /** Clases del PUC que acepta el concepto ("14", "15"…): la pantalla filtra por ellas. */
+    private java.util.List<String> prefijosPermitidos;
 }

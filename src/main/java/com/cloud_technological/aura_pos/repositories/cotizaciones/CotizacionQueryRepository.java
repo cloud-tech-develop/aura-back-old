@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.repositories.cotizaciones;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,26 +78,94 @@ public class CotizacionQueryRepository {
                 cd.precio_unitario,
                 cd.iva_porcentaje,
                 cd.descuento_valor,
-                cd.subtotal
+                cd.subtotal,
+                COALESCE(ap.aplicado, 0) AS cantidad_aplicada,
+                GREATEST(cd.cantidad - COALESCE(ap.aplicado, 0), 0) AS cantidad_pendiente
             FROM cotizacion_detalle cd
             INNER JOIN producto p ON cd.producto_id = p.id
+            LEFT JOIN (
+                SELECT origen_linea_id, SUM(cantidad) AS aplicado
+                FROM documento_relacion
+                WHERE origen_tipo = 'COTIZACION' AND estado = 'VIGENTE'
+                GROUP BY origen_linea_id
+            ) ap ON ap.origen_linea_id = cd.id
             WHERE cd.cotizacion_id = :cotizacionId
+            ORDER BY cd.id
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("cotizacionId", cotizacionId);
         return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(CotizacionDetalleDto.class));
     }
 
+    /**
+     * Bloquea la cotización (FOR UPDATE) mientras se convierte a venta: dos cajas
+     * vendiendo la misma cotización a la vez no pueden pasarse del pendiente.
+     * Devuelve null si no existe en la empresa.
+     */
+    public CabeceraBloqueada bloquear(Long cotizacionId, Integer empresaId) {
+        String sql = """
+            SELECT id, numero, estado, fecha_vencimiento
+            FROM cotizacion
+            WHERE id = :id AND empresa_id = :empresaId
+            FOR UPDATE
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("id", cotizacionId)
+                .addValue("empresaId", empresaId);
+        List<CabeceraBloqueada> r = jdbcTemplate.query(sql, params, (rs, i) -> new CabeceraBloqueada(
+                rs.getLong("id"),
+                rs.getString("numero"),
+                rs.getString("estado"),
+                rs.getDate("fecha_vencimiento") != null ? rs.getDate("fecha_vencimiento").toLocalDate() : null));
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Líneas de la cotización con lo justo para validar la conversión. */
+    public List<LineaCotizacion> lineas(Long cotizacionId) {
+        String sql = """
+            SELECT cd.id, cd.producto_id, p.nombre AS producto_nombre, cd.cantidad
+            FROM cotizacion_detalle cd
+            INNER JOIN producto p ON p.id = cd.producto_id
+            WHERE cd.cotizacion_id = :cotizacionId
+            ORDER BY cd.id
+        """;
+        return jdbcTemplate.query(sql, new MapSqlParameterSource("cotizacionId", cotizacionId),
+                (rs, i) -> new LineaCotizacion(
+                        rs.getLong("id"),
+                        rs.getLong("producto_id"),
+                        rs.getString("producto_nombre"),
+                        rs.getBigDecimal("cantidad")));
+    }
+
+    /**
+     * Vence las cotizaciones PENDIENTE o PARCIAL cuya vigencia ya pasó. Antes se
+     * traía la tabla entera (findAll) de todas las empresas y se filtraba en memoria.
+     * Una PARCIAL también vence: lo que le falta se cotizó a un precio que ya no rige.
+     */
+    public int vencerExpiradas(LocalDate hoy) {
+        String sql = """
+            UPDATE cotizacion SET estado = 'VENCIDA'
+            WHERE estado IN ('PENDIENTE', 'PARCIAL')
+              AND fecha_vencimiento IS NOT NULL
+              AND fecha_vencimiento < :hoy
+        """;
+        return jdbcTemplate.update(sql, new MapSqlParameterSource("hoy", java.sql.Date.valueOf(hoy)));
+    }
+
+    public record CabeceraBloqueada(Long id, String numero, String estado, LocalDate fechaVencimiento) {
+    }
+
+    public record LineaCotizacion(Long id, Long productoId, String productoNombre, java.math.BigDecimal cantidad) {
+    }
+
+    /** Siguiente número de cotización con candado por empresa (ver VentaQueryRepository). */
     public Long obtenerSiguienteConsecutivo(Integer empresaId) {
-        try {
-            String sql = """
-                SELECT COALESCE(MAX(CAST(SUBSTRING(numero, 5) AS BIGINT)), 0) + 1
-                FROM cotizacion
-                WHERE empresa_id = :empresaId
-            """;
-            MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-            return jdbcTemplate.queryForObject(sql, params, Long.class);
-        } catch (Exception e) {
-            return 1L;
-        }
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(176176, :empresaId)", params, rs -> null);
+        String sql = """
+            SELECT COALESCE(MAX(CAST(SUBSTRING(numero, 5) AS BIGINT)), 0) + 1
+            FROM cotizacion
+            WHERE empresa_id = :empresaId
+        """;
+        return jdbcTemplate.queryForObject(sql, params, Long.class);
     }
 }

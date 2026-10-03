@@ -24,6 +24,8 @@ public class CreateProductoDto {
     private String tipoProducto = "ESTANDAR";
     /** VENTA | INSUMO | AMBOS. */
     private String usoProducto = "VENTA";
+    /** PRODUCTO | SERVICIO | GASTO | DOTACION | ACTIVO_FIJO | INTANGIBLE | DIFERIDO (V185). */
+    private String clasificacion;
     private Boolean manejaInventario = true;
     private Boolean manejaLotes = false;
     private Boolean manejaSerial = false;

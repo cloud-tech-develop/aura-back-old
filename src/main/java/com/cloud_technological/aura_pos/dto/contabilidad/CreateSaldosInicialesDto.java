@@ -26,6 +26,13 @@ public class CreateSaldosInicialesDto {
      */
     private Long cuentaAjusteId;
 
+    /**
+     * Si los saldos no cuadran, la diferencia va a la cuenta de ajuste solo si
+     * el usuario lo confirma: antes se llevaba a patrimonio sin avisar y un
+     * saldo mal digitado quedaba escondido en la 3705.
+     */
+    private Boolean aceptarDiferencia;
+
     @NotEmpty
     @Valid
     private List<SaldoInicialLineaDto> lineas;

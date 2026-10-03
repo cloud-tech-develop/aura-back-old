@@ -17,4 +17,8 @@ public interface ProductoPresentacionService {
     ProductoPresentacionDto crear(CreateProductoPresentacionDto dto, Integer empresaId);
     ProductoPresentacionDto actualizar(Long id, UpdateProductoPresentacionDto dto, Integer empresaId);
     void eliminar(Long id, Integer empresaId);
+
+    /** Sincroniza todas las conversiones del producto en una transacción. */
+    List<ProductoPresentacionTableDto> guardarConversiones(Long productoId,
+            com.cloud_technological.aura_pos.dto.producto_presentacion.GuardarConversionesDto dto, Integer empresaId);
 }

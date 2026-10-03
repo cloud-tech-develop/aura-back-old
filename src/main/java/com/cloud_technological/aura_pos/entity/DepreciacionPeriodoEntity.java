@@ -37,6 +37,14 @@ public class DepreciacionPeriodoEntity {
     @Column(name = "asiento_id")
     private Long asientoId;
 
+    /** Método con que se calculó la cuota (V186). */
+    @Column(length = 20)
+    private String metodo;
+
+    /** Unidades de producción: uso del mes (V186). */
+    @Column(precision = 18, scale = 2)
+    private BigDecimal unidades;
+
     @Column(name = "calculado_en", nullable = false)
     private LocalDateTime calculadoEn = LocalDateTime.now();
 }

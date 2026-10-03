@@ -8,6 +8,14 @@ import com.cloud_technological.aura_pos.dto.contabilidad.SaldoInicialLineaDto;
 
 public interface AperturaContableService {
 
+    /**
+     * Líneas propuestas para la apertura desde un auxiliar: INVENTARIO,
+     * ACTIVOS, DIFERIDOS, CARTERA, PROVEEDORES o BANCOS.
+     */
+    java.util.List<com.cloud_technological.aura_pos.dto.contabilidad.SugerenciaSaldoInicialDto> sugerencias(
+            Integer empresaId, String fuente);
+
+
     /** Devuelve el asiento de apertura existente (con detalles) o null si no hay. */
     AsientoContableTableDto obtener(Integer empresaId);
 

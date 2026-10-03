@@ -26,6 +26,10 @@ public class FacturaElectronicaRequest {
     private String clienteDireccion;
     private Integer clienteTipoDocumentoFactusId; // 3=Cédula, 6=NIT
     private Integer clienteMunicipioId;           // ID municipio en Factus
+    /** Factus: 1 = persona jurídica, 2 = persona natural. Null = natural. */
+    private String clienteOrganizacionLegalId;
+    /** Factus: 18 = IVA (responsable), 21 = no aplica. Null = no aplica. */
+    private String clienteTributoId;
 
     private List<ItemFacturaRequest> items;
 
@@ -37,5 +41,7 @@ public class FacturaElectronicaRequest {
         private BigDecimal cantidad;
         private BigDecimal precioSinIva;  // precio unitario SIN IVA
         private String ivaPorcentaje;     // "19.00", "5.00", "0.00"
+        /** Descuento de la línea (incluye su parte del descuento general), en %. */
+        private BigDecimal descuentoPct;
     }
 }

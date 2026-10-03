@@ -9,6 +9,10 @@ import lombok.Setter;
 @Setter
 public class UpdateInventarioDto {
     private BigDecimal stockMinimo;
+    private BigDecimal stockMaximo;
+    private BigDecimal puntoReorden;
     private BigDecimal stockActual;
     private String ubicacion;
+    /** Obligatorio si cambia stockActual: queda en el kardex como referencia del ajuste. */
+    private String motivoAjuste;
 }

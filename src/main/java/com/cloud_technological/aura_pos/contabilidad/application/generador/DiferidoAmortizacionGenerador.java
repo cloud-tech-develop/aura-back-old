@@ -12,8 +12,9 @@ import com.cloud_technological.aura_pos.entity.ConceptoContable;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Cuota mensual de un gasto diferido (E6): reconoce el gasto del mes
- * (DB cuenta de gasto del documento · CR 1705).
+ * Cuota mensual de un diferido: reconoce el gasto del mes
+ * (DB cuenta de gasto del documento · CR la cuenta del diferido, 1705 si el
+ * documento no trae otra).
  */
 @Component
 @RequiredArgsConstructor
@@ -35,16 +36,19 @@ public class DiferidoAmortizacionGenerador implements GeneradorAsiento {
         Long cuentaGasto = cuota.cuentaGastoId() != null
                 ? cuota.cuentaGastoId()
                 : cuentas.resolver(ctx.empresaId(), ConceptoContable.GASTO_GENERAL);
+        // Se acredita la misma cuenta que se debitó al crearlo: un seguro
+        // comprado a la 1705xx no puede amortizarse contra otra subcuenta.
+        Long cuentaDiferido = cuota.cuentaDiferidoId() != null
+                ? cuota.cuentaDiferidoId()
+                : cuentas.resolver(ctx.empresaId(), ConceptoContable.GASTOS_PAGADOS_ANTICIPADO);
         var monto = ReglasAsiento.nz(cuota.monto());
 
         return Asiento.builder(ctx.origen(), cuota.fecha())
                 .prefijo(PREFIJO)
-                .descripcion("Amortización diferido " + cuota.periodo()
-                        + " — gasto #" + cuota.gastoId())
+                .descripcion("Amortización diferido " + cuota.periodo() + " — " + cuota.origen())
                 .debito(cuentaGasto, "Gasto del mes (diferido)", monto, cuota.terceroId(),
                         cuota.centroCostoId())
-                .credito(cuentas.resolver(ctx.empresaId(), ConceptoContable.GASTOS_PAGADOS_ANTICIPADO),
-                        "Amortización gasto pagado por anticipado", monto)
+                .credito(cuentaDiferido, "Amortización gasto pagado por anticipado", monto)
                 .build();
     }
 }

@@ -50,6 +50,18 @@ public class CategoriaContableProductoController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Categoría contable actualizada", false, updated));
     }
 
+    /** Crea una categoría nueva copiando las cuentas de esta. */
+    @PostMapping("/{id}/copiar")
+    public ResponseEntity<ApiResponse<CategoriaContableProductoDto>> copiar(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        CategoriaContableProductoDto creada = service.copiar(empresaId, id, body.get("nombre"));
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.CREATED.value(), "Categoría copiada", false, creada),
+                HttpStatus.CREATED);
+    }
+
     /** Siembra la categoría "General" (idempotente). */
     @PostMapping("/seed")
     public ResponseEntity<ApiResponse<Void>> seed() {

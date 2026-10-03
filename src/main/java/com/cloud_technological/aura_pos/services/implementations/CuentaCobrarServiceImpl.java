@@ -41,6 +41,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @Service
 public class CuentaCobrarServiceImpl implements CuentaCobrarService {
 
+    /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+
     @org.springframework.beans.factory.annotation.Autowired
     private RetencionRecaudoService retencionRecaudo;
 
@@ -218,6 +222,11 @@ public class CuentaCobrarServiceImpl implements CuentaCobrarService {
                         dto.getSucursalId() != null ? dto.getSucursalId() : sucursalDeLaCuenta(cuenta),
                         "abono a la cuenta por cobrar",
                         cajaOtroDia));
+
+        // Un abono con fecha en un mes contable cerrado no puede entrar: su
+        // asiento fallaría después de guardarlo y la cartera no cuadraría con el mayor.
+        periodoGuard.exigirAbierto(empresaId,
+                dto.getFechaPago() != null ? dto.getFechaPago().toLocalDate() : null);
 
         // Crear abono
         AbonoCobrarEntity abono = AbonoCobrarEntity.builder()

@@ -154,7 +154,13 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             { "14", "Inventarios",                      "ACTIVO",  "DEBITO",  2, "1" },
             { "1435", "Mercancias no Fabricadas",       "ACTIVO",  "DEBITO",  3, "14" },
             { "15", "Propiedad Planta y Equipo",        "ACTIVO",  "DEBITO",  2, "1" },
+            { "1524", "Equipo de Oficina",              "ACTIVO",  "DEBITO",  3, "15" },
+            { "1528", "Equipo de Computacion y Comunicacion","ACTIVO","DEBITO", 3, "15" },
             { "1592", "Depreciacion Acumulada",         "ACTIVO",  "CREDITO", 3, "15" },
+            // Catálogo unificado (V185): licencias y software comprados.
+            { "16", "Intangibles",                      "ACTIVO",  "DEBITO",  2, "1" },
+            { "1635", "Licencias",                      "ACTIVO",  "DEBITO",  3, "16" },
+            { "1698", "Amortizacion Acumulada",         "ACTIVO",  "CREDITO", 3, "16" },
             // ── Clase 2 · Pasivo ──────────────────────────────────────────────
             { "21", "Obligaciones Financieras",         "PASIVO",  "CREDITO", 2, "2" },
             { "2105", "Bancos Nacionales",              "PASIVO",  "CREDITO", 3, "21" },
@@ -201,9 +207,11 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             // E9: intereses que abona el banco (ajuste de conciliación)
             { "421005","Intereses",                     "INGRESO", "CREDITO", 4, "4210" },
             { "4295","Ingresos Diversos",               "INGRESO", "CREDITO", 3, "42" },
+            { "4245","Utilidad en Venta de Propiedades Planta y Equipo","INGRESO","CREDITO",3,"42" },
             // ── Clase 5 · Gastos ──────────────────────────────────────────────
             { "51", "Gastos Operacionales Admon",       "GASTO",   "DEBITO",  2, "5" },
             { "5105","Gastos de Personal",              "GASTO",   "DEBITO",  3, "51" },
+            { "510551","Dotacion y Suministro a Trabajadores","GASTO","DEBITO",4,"5105" },
             { "5160","Depreciaciones",                  "GASTO",   "DEBITO",  3, "51" },
             { "5195","Otros Gastos",                    "GASTO",   "DEBITO",  3, "51" },
             { "5199","Provisiones y Deterioros",        "GASTO",   "DEBITO",  3, "51" },
@@ -219,6 +227,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
             // E9: cargos del banco que nacen del extracto (conciliación)
             { "530515","Comisiones",                    "GASTO",   "DEBITO",  4, "5305" },
             { "530595","Gravamen a los Movimientos Financieros","GASTO","DEBITO",4,"5305" },
+            { "5310","Perdida en Venta y Retiro de Bienes","GASTO","DEBITO",  3, "53" },
             { "54", "Impuesto de Renta y Complementarios","GASTO", "DEBITO",  2, "5" },
             { "5405","Impuesto de Renta y Complementarios","GASTO","DEBITO",  3, "54" },
             // ── Clase 6 · Costos ──────────────────────────────────────────────

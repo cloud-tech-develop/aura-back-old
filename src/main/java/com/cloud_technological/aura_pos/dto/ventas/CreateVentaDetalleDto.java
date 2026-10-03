@@ -23,4 +23,6 @@ public class CreateVentaDetalleDto {
     private Long reglaDescuentoId;
     private BigDecimal descuentoValor = BigDecimal.ZERO;
     private BigDecimal impuestoValor = BigDecimal.ZERO; // IVA u otro impuesto específico
+    /** Línea de la cotización de la que sale esta línea (D1); null si se agregó en el POS. */
+    private Long cotizacionDetalleId;
 }

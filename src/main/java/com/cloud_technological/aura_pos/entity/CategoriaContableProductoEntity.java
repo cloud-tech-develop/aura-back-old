@@ -27,7 +27,7 @@ public class CategoriaContableProductoEntity {
     @Column(nullable = false, length = 80)
     private String nombre;
 
-    /** BIEN | SERVICIO | INSUMO | ACTIVO_FIJO — SERVICIO no genera par COGS. */
+    /** BIEN | SERVICIO | INSUMO | ACTIVO_FIJO | INTANGIBLE | GASTO | DOTACION | DIFERIDO — SERVICIO no genera par COGS. */
     @Column(nullable = false, length = 20)
     @Builder.Default
     private String tipo = "BIEN";
@@ -44,6 +44,19 @@ public class CategoriaContableProductoEntity {
     /** Cuenta de devolución en ventas (4175); null → misma de ingreso. */
     @Column(name = "cuenta_devolucion_id")
     private Long cuentaDevolucionId;
+
+    // ── Activos, intangibles y diferidos (V185) ─────────────────────────
+    @Column(name = "cuenta_depreciacion_id")
+    private Long cuentaDepreciacionId;
+
+    @Column(name = "cuenta_gasto_depreciacion_id")
+    private Long cuentaGastoDepreciacionId;
+
+    @Column(name = "vida_util_meses")
+    private Integer vidaUtilMeses;
+
+    @Column(name = "meses_diferido")
+    private Integer mesesDiferido;
 
     /** FK a impuesto (E5); aún sin uso. */
     @Column(name = "impuesto_id")

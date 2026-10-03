@@ -53,6 +53,16 @@ public class FormaPagoContableController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Forma de pago actualizada", false, updated));
     }
 
+    /** Copia la cuenta de esta forma de pago a las que vienen en {@code destinoIds}. */
+    @PostMapping("/{id}/copiar")
+    public ResponseEntity<ApiResponse<Integer>> copiar(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, List<Long>> body) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        int n = service.copiarCuenta(empresaId, id, body.get("destinoIds"));
+        return ResponseEntity.ok(new ApiResponse<>(200, "Cuenta copiada a " + n + " forma(s) de pago", false, n));
+    }
+
     /** Siembra las formas estándar (idempotente). */
     @PostMapping("/seed")
     public ResponseEntity<ApiResponse<Void>> seed() {

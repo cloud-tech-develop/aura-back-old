@@ -18,6 +18,12 @@ public class InventarioTableDto {
     private String productoSku;
     private BigDecimal stockActual;
     private BigDecimal stockMinimo;
+    private BigDecimal stockMaximo;
+    private BigDecimal puntoReorden;
+    /** Para mostrar el stock "como se cuenta": 3 Cajas + 4 und (F7 presentaciones). */
+    private String unidadAbreviatura;
+    private String presentacionNombre;
+    private BigDecimal presentacionFactor;
     private String ubicacion;
     private long totalRows;
 }

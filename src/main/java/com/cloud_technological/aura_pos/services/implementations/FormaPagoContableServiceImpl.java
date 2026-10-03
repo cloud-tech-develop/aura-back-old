@@ -34,6 +34,11 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
     @Transactional
     public FormaPagoContableDto crear(Integer empresaId, FormaPagoContableDto dto) {
         String codigo = normalizarCodigo(dto.getCodigo());
+        // CREDITO no es una forma de pago: la venta lo lee como "queda debiendo".
+        if (codigo == null || codigo.isBlank() || "CREDITO".equals(codigo)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Escriba un código para la forma de pago (CREDITO está reservado para las ventas a crédito)");
+        }
         if (repo.findByEmpresaIdAndCodigo(empresaId, codigo).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe una forma de pago con el código " + codigo);
@@ -47,6 +52,7 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
                 .cuentaContableId(dto.getCuentaContableId())
                 .requiereCuentaBancaria(Boolean.TRUE.equals(dto.getRequiereCuentaBancaria()))
                 .activo(dto.getActivo() == null || dto.getActivo())
+                .recargoPorcentaje(validarRecargo(dto.getRecargoPorcentaje()))
                 .build());
         return toDto(empresaId, e);
     }
@@ -65,10 +71,37 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
         if (dto.getRequiereCuentaBancaria() != null) {
             e.setRequiereCuentaBancaria(dto.getRequiereCuentaBancaria());
         }
+        if (dto.getRecargoPorcentaje() != null) {
+            e.setRecargoPorcentaje(validarRecargo(dto.getRecargoPorcentaje()));
+        }
         if (dto.getActivo() != null) {
             e.setActivo(dto.getActivo());
         }
         return toDto(empresaId, repo.save(e));
+    }
+
+    @Override
+    @Transactional
+    public int copiarCuenta(Integer empresaId, Long origenId, List<Long> destinoIds) {
+        FormaPagoContableEntity origen = repo.findByIdAndEmpresaId(origenId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Forma de pago no encontrada"));
+        if (origen.getCuentaContableId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La forma de pago " + origen.getNombre() + " no tiene cuenta: no hay nada que copiar");
+        }
+        int copiadas = 0;
+        for (Long id : destinoIds != null ? destinoIds : List.<Long>of()) {
+            if (id == null || id.equals(origenId)) continue;
+            FormaPagoContableEntity destino = repo.findByIdAndEmpresaId(id, empresaId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Forma de pago destino no encontrada"));
+            destino.setCuentaContableId(origen.getCuentaContableId());
+            destino.setRequiereCuentaBancaria(origen.getRequiereCuentaBancaria());
+            repo.save(destino);
+            copiadas++;
+        }
+        return copiadas;
     }
 
     @Override
@@ -133,15 +166,29 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "La cuenta " + cuenta.getCodigo() + " no es de movimiento (auxiliar).");
         }
-        if (cuenta.getCodigo() == null || !cuenta.getCodigo().startsWith("11")) {
+        // 11xx: la plata entra ya (caja, banco, billetera). 13xx: la paga
+        // después un tercero que financia al cliente (ADDI, Sistecrédito,
+        // datáfono con abono a días): queda por cobrarle a él.
+        if (cuenta.getCodigo() == null
+                || !(cuenta.getCodigo().startsWith("11") || cuenta.getCodigo().startsWith("13"))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "La cuenta de una forma de pago debe ser del disponible (11xx), "
-                            + "p.ej. 1105 Caja o 111005 Banco X.");
+                    "La cuenta de una forma de pago debe ser del disponible (11xx) o de cartera (13xx), "
+                            + "p.ej. 1105 Caja, 111005 Banco X o 130510 Por cobrar ADDI.");
         }
     }
 
+    /** Recargo entre 0 y 50 %; vacío = sin recargo. */
+    private java.math.BigDecimal validarRecargo(java.math.BigDecimal pct) {
+        if (pct == null) return java.math.BigDecimal.ZERO;
+        if (pct.signum() < 0 || pct.compareTo(java.math.BigDecimal.valueOf(50)) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El recargo debe estar entre 0 % y 50 %");
+        }
+        return pct;
+    }
+
     private String normalizarCodigo(String codigo) {
-        return codigo.trim().toUpperCase();
+        return codigo == null ? null : codigo.trim().toUpperCase();
     }
 
     private FormaPagoContableDto toDto(Integer empresaId, FormaPagoContableEntity e) {
@@ -159,6 +206,7 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
                 .cuentaContable(cuentaLabel)
                 .requiereCuentaBancaria(e.getRequiereCuentaBancaria())
                 .activo(e.getActivo())
+                .recargoPorcentaje(e.getRecargoPorcentaje())
                 .build();
     }
 }

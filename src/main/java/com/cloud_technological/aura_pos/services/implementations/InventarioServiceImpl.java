@@ -33,6 +33,10 @@ import jakarta.transaction.Transactional;
 @Service
 public class InventarioServiceImpl implements InventarioService {
 
+    /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.InventarioStockService inventarioStock;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
 
@@ -74,6 +78,12 @@ public class InventarioServiceImpl implements InventarioService {
     }
 
     @Override
+    public List<com.cloud_technological.aura_pos.dto.inventario.SugeridoCompraDto> sugeridoCompra(
+            Integer empresaId, Long sucursalId, Long bodegaId) {
+        return inventarioRepository.sugeridoCompra(empresaId, sucursalId, bodegaId);
+    }
+
+    @Override
     public List<InventarioTableDto> listarStockBajo(Integer empresaId) {
         return inventarioRepository.listarStockBajo(empresaId);
     }
@@ -91,16 +101,21 @@ public class InventarioServiceImpl implements InventarioService {
                 bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
 
         // Un saldo por producto y bodega, no por sucursal (V172).
-        if (inventarioJPARepository.findByBodegaIdAndProductoId(bodega.getId(), dto.getProductoId()).isPresent())
+        if (inventarioStock.bloquear(bodega.getId(), dto.getProductoId()).isPresent())
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Este producto ya tiene inventario en la bodega " + bodega.getNombre());
 
         InventarioEntity entity = inventarioMapper.toEntity(dto);
+        validarNiveles(entity);
         entity.setProducto(producto);
         entity.setSucursal(sucursal);
         entity.setBodega(bodega);
         entity.setUpdatedAt(LocalDateTime.now());
         InventarioEntity guardado = inventarioJPARepository.save(entity);
+
+        // El saldo inicial también deja rastro: sin esta fila el kardex arranca
+        // en cero y nunca cuadra con el stock.
+        registrarAjusteManual(guardado, java.math.BigDecimal.ZERO, "Saldo inicial");
 
         // Stock inicial de un producto con lotes: entra a SIN-LOTE para que cuadre.
         loteStock.entradaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.AJUSTE_INVENTARIO, guardado.getId(), producto, bodega,
@@ -112,12 +127,29 @@ public class InventarioServiceImpl implements InventarioService {
     @Override
     @Transactional
     public InventarioDto actualizar(Long id, UpdateInventarioDto dto, Integer empresaId) {
-        InventarioEntity entity = inventarioJPARepository.findByIdAndSucursalEmpresaId(id, empresaId)
+        InventarioEntity encontrado = inventarioJPARepository.findByIdAndSucursalEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Inventario no encontrado"));
+        // Se bloquea el saldo: una venta simultánea no puede quedar en medio del ajuste.
+        InventarioEntity entity = inventarioStock
+                .bloquear(encontrado.getBodega().getId(), encontrado.getProducto().getId())
+                .orElse(encontrado);
 
         java.math.BigDecimal stockAntes = entity.getStockActual() != null
                 ? entity.getStockActual() : java.math.BigDecimal.ZERO;
+        boolean cambiaStock = dto.getStockActual() != null
+                && dto.getStockActual().compareTo(stockAntes) != 0;
+        String motivo = dto.getMotivoAjuste() != null ? dto.getMotivoAjuste().trim() : "";
+        if (cambiaStock && motivo.isEmpty()) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Escribe el motivo del ajuste de stock: queda registrado en el kardex");
+        }
+        // Máximo y punto de reorden (V185): una pantalla que no los manda no los borra.
+        java.math.BigDecimal maximoAntes = entity.getStockMaximo();
+        java.math.BigDecimal reordenAntes = entity.getPuntoReorden();
         inventarioMapper.updateEntityFromDto(dto, entity);
+        if (dto.getStockMaximo() == null) entity.setStockMaximo(maximoAntes);
+        if (dto.getPuntoReorden() == null) entity.setPuntoReorden(reordenAntes);
+        validarNiveles(entity);
         entity.setUpdatedAt(LocalDateTime.now());
         InventarioEntity guardado = inventarioJPARepository.save(entity);
 
@@ -134,7 +166,55 @@ public class InventarioServiceImpl implements InventarioService {
             loteStock.entradaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.AJUSTE_INVENTARIO, guardado.getId(), guardado.getProducto(),
                     guardado.getBodega(), empresaId, diferencia, null, guardado.getProducto().getCosto());
         }
+        if (cambiaStock) {
+            registrarAjusteManual(guardado, stockAntes, motivo);
+        }
         return inventarioMapper.toDto(guardado);
+    }
+
+    /** Mínimo ≤ punto de reorden ≤ máximo, cuando vienen. Cero en máximo o reorden = sin definir. */
+    private static void validarNiveles(InventarioEntity inv) {
+        java.math.BigDecimal minimo = inv.getStockMinimo() != null ? inv.getStockMinimo() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal reorden = inv.getPuntoReorden();
+        java.math.BigDecimal maximo = inv.getStockMaximo();
+        if ((reorden != null && reorden.signum() < 0) || (maximo != null && maximo.signum() < 0))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El punto de reorden y el máximo no pueden ser negativos");
+        if (reorden != null && reorden.signum() > 0 && reorden.compareTo(minimo) < 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El punto de reorden no puede ser menor que el stock mínimo: se pide antes de llegar al mínimo");
+        java.math.BigDecimal piso = reorden != null && reorden.signum() > 0 ? reorden : minimo;
+        if (maximo != null && maximo.signum() > 0 && maximo.compareTo(piso) <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El máximo debe ser mayor que el punto de reorden (o que el mínimo)");
+    }
+
+    /**
+     * Deja en el kardex el cambio escrito a mano (o el saldo inicial). Antes el
+     * stock cambiaba sin rastro y el kardex dejaba de cuadrar con el saldo. Va
+     * al costo promedio vigente: un ajuste no cambia el costo.
+     */
+    private void registrarAjusteManual(InventarioEntity inv, java.math.BigDecimal stockAntes, String motivo) {
+        java.math.BigDecimal stockDespues = inv.getStockActual() != null
+                ? inv.getStockActual() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal diferencia = stockDespues.subtract(stockAntes);
+        if (diferencia.signum() == 0) return;
+
+        MovimientoInventarioEntity mov = new MovimientoInventarioEntity();
+        mov.setSucursal(inv.getSucursal());
+        mov.setBodega(inv.getBodega());
+        mov.setProducto(inv.getProducto());
+        mov.setTipoMovimiento(diferencia.signum() > 0
+                ? com.cloud_technological.aura_pos.utils.TipoMovimientoInventario.AJUSTE_MANUAL_ENTRADA.codigo()
+                : com.cloud_technological.aura_pos.utils.TipoMovimientoInventario.AJUSTE_MANUAL_SALIDA.codigo());
+        // Mismo signo que los demás orígenes: la salida va negativa.
+        mov.setCantidad(diferencia);
+        mov.setSaldoAnterior(stockAntes);
+        mov.setSaldoNuevo(stockDespues);
+        mov.setCostoHistorico(inv.getProducto() != null ? inv.getProducto().getCosto() : null);
+        String ref = "Ajuste manual: " + motivo;
+        mov.setReferenciaOrigen(ref.length() > 250 ? ref.substring(0, 250) : ref);
+        mov.setCreatedAt(LocalDateTime.now());
+        movimientoInventarioRepository.save(mov);
     }
 
     @Override
