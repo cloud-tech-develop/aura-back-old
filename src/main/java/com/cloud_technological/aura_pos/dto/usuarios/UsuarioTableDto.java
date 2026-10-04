@@ -9,6 +9,7 @@ public class UsuarioTableDto {
     private Integer id;
     private String username;
     private String rol;
+    private String perfilNombre;
     private String nombreCompleto;
     private String numeroDocumento;
     private String telefono;

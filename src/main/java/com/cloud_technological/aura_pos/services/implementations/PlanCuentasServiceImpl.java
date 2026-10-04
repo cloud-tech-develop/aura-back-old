@@ -98,13 +98,24 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         repo.save(e);
     }
 
-    /** Siembra el PUC básico colombiano de 9 clases para una empresa nueva */
+    /**
+     * Carga el plan de cuentas completo (puc/puc_comerciantes.csv: clases 1 a 9
+     * con grupos, cuentas, subcuentas y auxiliares) agregando las que falten, y
+     * siembra la configuración por defecto sobre sus auxiliares
+     * (puc/equivalencias.csv). Nunca cambia una cuenta que
+     * ya existe (nombre ni si recibe movimiento): la configuración contable y los
+     * asientos que ya apuntan a ella siguen igual. Devuelve cuántas agregó.
+     */
     @Override
     @Transactional
-    public void seedPUC(Integer empresaId) {
-        if (repo.findByEmpresaIdOrderByCodigoAsc(empresaId).isEmpty()) {
-            seedCuentas(empresaId);
-        }
+    public int seedPUC(Integer empresaId) {
+        int antes = repo.findByEmpresaIdOrderByCodigoAsc(empresaId).size();
+        // Empresa nueva: solo el catálogo, con sus auxiliares de 8 dígitos. La
+        // configuración por defecto se cuelga de esas auxiliares
+        // (puc/equivalencias.csv) en vez de crear las cuentas del plan básico
+        // (4135, 240801…) que el catálogo no trae.
+        completarPuc(empresaId);
+        int nuevas = repo.findByEmpresaIdOrderByCodigoAsc(empresaId).size() - antes;
         // Siembra/actualiza el mapeo concepto→cuenta por defecto (idempotente),
         // también para empresas que ya tenían PUC pero no configuración.
         configuracionContableService.seedDefaults(empresaId);
@@ -112,175 +123,138 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         categoriaContableProductoService.seedDefaults(empresaId);
         impuestoService.seedDefaults(empresaId);
         exogenaService.seedDefaults(empresaId);
+        return nuevas;
     }
 
-    private void seedCuentas(Integer empresaId) {
-        // Clase → nombre, tipo, naturaleza
-        Object[][] clases = {
-            { "1", "Activo",                         "ACTIVO",     "DEBITO"  },
-            { "2", "Pasivo",                         "PASIVO",     "CREDITO" },
-            { "3", "Patrimonio",                     "PATRIMONIO", "CREDITO" },
-            { "4", "Ingresos",                       "INGRESO",    "CREDITO" },
-            { "5", "Gastos",                         "GASTO",      "DEBITO"  },
-            { "6", "Costo de Ventas",                "COSTO",      "DEBITO"  },
-            { "7", "Costos de Producción",           "COSTO",      "DEBITO"  },
-            { "8", "Cuentas de Orden Deudoras",      "ORDEN",      "DEBITO"  },
-            { "9", "Cuentas de Orden Acreedoras",    "ORDEN",      "CREDITO" },
-        };
+    // ── Catálogo de cuentas completo ─────────────────────────────────────────
 
-        // Subcuentas comunes. IMPORTANTE: cada cuenta padre (nivel 2) debe
-        // aparecer ANTES que sus hijas, porque el padreId se resuelve de forma
-        // incremental sobre idsByCodigo a medida que se recorre el arreglo.
-        Object[][] grupos = {
-            // código, nombre, tipo, naturaleza, nivel, codigoPadre
-            // ── Clase 1 · Activo ──────────────────────────────────────────────
-            { "11", "Disponible",                       "ACTIVO",  "DEBITO",  2, "1" },
-            { "1105", "Caja",                           "ACTIVO",  "DEBITO",  3, "11" },
-            // 1105 agrupa; el movimiento va a sus subcuentas, con los códigos
-            // del PUC: 110505 el efectivo de las cajas del punto y 110510 el
-            // fondo fijo del administrador. La caja menor es cuenta propia, así
-            // que sus pagos no pasan por el arqueo del cajero.
-            { "110505", "Caja general",                 "ACTIVO",  "DEBITO",  4, "1105" },
-            { "110510", "Cajas menores",                "ACTIVO",  "DEBITO",  4, "1105" },
-            { "1110", "Bancos",                         "ACTIVO",  "DEBITO",  3, "11" },
-            { "1120", "Cuentas de Ahorro",              "ACTIVO",  "DEBITO",  3, "11" },
-            { "13", "Deudores",                         "ACTIVO",  "DEBITO",  2, "1" },
-            { "1305", "Clientes",                       "ACTIVO",  "DEBITO",  3, "13" },
-            { "1355", "Anticipo de Impuestos y Retenciones","ACTIVO","DEBITO",3, "13" },
-            // Retenciones que los clientes le practican a la empresa, por tipo.
-            { "135515", "Retención en la fuente",       "ACTIVO",  "DEBITO",  4, "1355" },
-            { "135517", "Impuesto a las ventas retenido","ACTIVO", "DEBITO",  4, "1355" },
-            { "135518", "Impuesto de industria y comercio retenido","ACTIVO","DEBITO",4,"1355" },
-            { "14", "Inventarios",                      "ACTIVO",  "DEBITO",  2, "1" },
-            { "1435", "Mercancias no Fabricadas",       "ACTIVO",  "DEBITO",  3, "14" },
-            { "15", "Propiedad Planta y Equipo",        "ACTIVO",  "DEBITO",  2, "1" },
-            { "1524", "Equipo de Oficina",              "ACTIVO",  "DEBITO",  3, "15" },
-            { "1528", "Equipo de Computacion y Comunicacion","ACTIVO","DEBITO", 3, "15" },
-            { "1592", "Depreciacion Acumulada",         "ACTIVO",  "CREDITO", 3, "15" },
-            // Catálogo unificado (V185): licencias y software comprados.
-            { "16", "Intangibles",                      "ACTIVO",  "DEBITO",  2, "1" },
-            { "1635", "Licencias",                      "ACTIVO",  "DEBITO",  3, "16" },
-            { "1698", "Amortizacion Acumulada",         "ACTIVO",  "CREDITO", 3, "16" },
-            // ── Clase 2 · Pasivo ──────────────────────────────────────────────
-            { "21", "Obligaciones Financieras",         "PASIVO",  "CREDITO", 2, "2" },
-            { "2105", "Bancos Nacionales",              "PASIVO",  "CREDITO", 3, "21" },
-            { "22", "Proveedores",                      "PASIVO",  "CREDITO", 2, "2" },
-            { "2205", "Proveedores Nacionales",         "PASIVO",  "CREDITO", 3, "22" },
-            { "23", "Cuentas por Pagar",                "PASIVO",  "CREDITO", 2, "2" },
-            { "2360", "Dividendos o Participaciones por Pagar","PASIVO","CREDITO",3,"23" },
-            { "2365", "Retencion en la Fuente",         "PASIVO",  "CREDITO", 3, "23" },
-            { "2367", "Impuesto a las Ventas Retenido", "PASIVO",  "CREDITO", 3, "23" },
-            { "2368", "Impuesto de Industria y Comercio Retenido","PASIVO","CREDITO",3,"23" },
-            { "24", "Impuestos Gravamenes y Tasas",     "PASIVO",  "CREDITO", 2, "2" },
-            { "2404", "Impuesto de Renta por Pagar",    "PASIVO",  "CREDITO", 3, "24" },
-            { "2408", "IVA por Pagar",                  "PASIVO",  "CREDITO", 3, "24" },
-            // E5: el IVA generado y el descontable van a subcuentas separadas
-            // para que el reporte de IVA neto no se mezcle en 2408.
-            { "240801", "IVA Generado",                 "PASIVO",  "CREDITO", 4, "2408" },
-            { "240802", "IVA Descontable",              "PASIVO",  "CREDITO", 4, "2408" },
-            { "25", "Obligaciones Laborales",           "PASIVO",  "CREDITO", 2, "2" },
-            { "2505", "Salarios por Pagar",             "PASIVO",  "CREDITO", 3, "25" },
-            // ── Clase 3 · Patrimonio ──────────────────────────────────────────
-            { "31", "Capital Social",                   "PATRIMONIO","CREDITO",2, "3" },
-            { "3105","Capital",                         "PATRIMONIO","CREDITO",3, "31" },
-            // ── Cierre anual (E8) ─────────────────────────────────────────────
-            { "33", "Reservas",                         "PATRIMONIO","CREDITO",2, "3" },
-            { "3305","Reservas Obligatorias",           "PATRIMONIO","CREDITO",3, "33" },
-            { "330505","Reserva Legal",                 "PATRIMONIO","CREDITO",4, "3305" },
-            { "36", "Resultados del Ejercicio",         "PATRIMONIO","CREDITO",2, "3" },
-            { "3605","Utilidad del Ejercicio",          "PATRIMONIO","CREDITO",3, "36" },
-            { "37", "Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",2, "3" },
-            { "3705","Resultados de Ejercicios Anteriores","PATRIMONIO","CREDITO",3, "37" },
-            // ── Devengo (E6) ──────────────────────────────────────────────────
-            { "1330","Anticipos a Proveedores",         "ACTIVO",  "DEBITO",  3, "13" },
-            { "1399","Provisión Cartera (deterioro)",   "ACTIVO",  "CREDITO", 3, "13" },
-            { "1499","Provisión Inventarios",           "ACTIVO",  "CREDITO", 3, "14" },
-            { "17",  "Diferidos",                       "ACTIVO",  "DEBITO",  2, "1" },
-            { "1705","Gastos Pagados por Anticipado",   "ACTIVO",  "DEBITO",  3, "17" },
-            { "28",  "Otros Pasivos",                   "PASIVO",  "CREDITO", 2, "2" },
-            { "2805","Anticipos de Clientes",           "PASIVO",  "CREDITO", 3, "28" },
-            // ── Clase 4 · Ingresos ────────────────────────────────────────────
-            { "41", "Operacionales",                    "INGRESO", "CREDITO", 2, "4" },
-            { "4135","Comercio al por Menor",           "INGRESO", "CREDITO", 3, "41" },
-            { "42", "No Operacionales",                 "INGRESO", "CREDITO", 2, "4" },
-            { "4210","Financieros",                     "INGRESO", "CREDITO", 3, "42" },
-            // E9: intereses que abona el banco (ajuste de conciliación)
-            { "421005","Intereses",                     "INGRESO", "CREDITO", 4, "4210" },
-            { "4295","Ingresos Diversos",               "INGRESO", "CREDITO", 3, "42" },
-            { "4245","Utilidad en Venta de Propiedades Planta y Equipo","INGRESO","CREDITO",3,"42" },
-            // ── Clase 5 · Gastos ──────────────────────────────────────────────
-            { "51", "Gastos Operacionales Admon",       "GASTO",   "DEBITO",  2, "5" },
-            { "5105","Gastos de Personal",              "GASTO",   "DEBITO",  3, "51" },
-            { "510551","Dotacion y Suministro a Trabajadores","GASTO","DEBITO",4,"5105" },
-            { "5160","Depreciaciones",                  "GASTO",   "DEBITO",  3, "51" },
-            { "5195","Otros Gastos",                    "GASTO",   "DEBITO",  3, "51" },
-            { "5199","Provisiones y Deterioros",        "GASTO",   "DEBITO",  3, "51" },
-            // Obsequios: el costo de lo regalado es gasto de VENTAS (52), no
-            // administrativo, y el IVA que se asume por el retiro va aparte.
-            { "52", "Gastos Operacionales de Ventas",   "GASTO",   "DEBITO",  2, "5" },
-            { "5235","Servicios",                       "GASTO",   "DEBITO",  3, "52" },
-            { "523550","Publicidad Propaganda y Promocion","GASTO","DEBITO",  4, "5235" },
-            { "5295","Diversos",                        "GASTO",   "DEBITO",  3, "52" },
-            { "529505","IVA Asumido en Retiro de Inventario","GASTO","DEBITO",4, "5295" },
-            { "53", "Gastos No Operacionales",          "GASTO",   "DEBITO",  2, "5" },
-            { "5305","Financieros",                     "GASTO",   "DEBITO",  3, "53" },
-            // E9: cargos del banco que nacen del extracto (conciliación)
-            { "530515","Comisiones",                    "GASTO",   "DEBITO",  4, "5305" },
-            { "530595","Gravamen a los Movimientos Financieros","GASTO","DEBITO",4,"5305" },
-            { "5310","Perdida en Venta y Retiro de Bienes","GASTO","DEBITO",  3, "53" },
-            { "54", "Impuesto de Renta y Complementarios","GASTO", "DEBITO",  2, "5" },
-            { "5405","Impuesto de Renta y Complementarios","GASTO","DEBITO",  3, "54" },
-            // ── Clase 6 · Costos ──────────────────────────────────────────────
-            { "61", "Costo de Ventas y Prest.",         "COSTO",   "DEBITO",  2, "6" },
-            { "6135","Costo de Mercancias Vend.",       "COSTO",   "DEBITO",  3, "61" },
-        };
+    /** Recurso con el catálogo oficial: "codigo;nombre", líneas # = comentario. */
+    private static final String RECURSO_PUC = "puc/puc_comerciantes.csv";
 
-        // Guardar clases principales
-        java.util.Map<String, Long> idsByCodigo = new java.util.HashMap<>();
-        for (Object[] c : clases) {
-            PlanCuentaEntity e = PlanCuentaEntity.builder()
-                    .empresaId(empresaId)
-                    .codigo((String) c[0])
-                    .nombre((String) c[1])
-                    .tipo((String) c[2])
-                    .naturaleza((String) c[3])
-                    .nivel((short) 1)
-                    .activa(true)
-                    .auxiliar(false)
-                    .build();
-            PlanCuentaEntity saved = repo.save(e);
-            idsByCodigo.put(saved.getCodigo(), saved.getId());
+    /** Agrega las cuentas oficiales que la empresa no tiene, padres antes que hijas. */
+    private void completarPuc(Integer empresaId) {
+        java.util.Map<String, String> oficial = leerPuc();
+        java.util.Map<String, PlanCuentaEntity> existentes = new java.util.HashMap<>();
+        for (PlanCuentaEntity e : repo.findByEmpresaIdOrderByCodigoAsc(empresaId)) existentes.put(e.getCodigo(), e);
+
+        java.util.Set<String> todos = new java.util.HashSet<>(existentes.keySet());
+        todos.addAll(oficial.keySet());
+        // Una cuenta con hijas agrupa; la hoja es la que recibe movimiento.
+        java.util.Set<String> conHijas = new java.util.HashSet<>();
+        for (String c : todos) {
+            String p = padreDe(c, todos);
+            if (p != null) conHijas.add(p);
         }
 
-        // Guardar subcuentas
-        for (Object[] g : grupos) {
-            String codigo = (String) g[0];
-            String codigoPadre = (String) g[5];
-            Long padreId = idsByCodigo.get(codigoPadre);
-            boolean auxiliar = ((Integer) g[4]) >= 3 && !AGRUPADORAS.contains(codigo);
+        java.util.Map<String, Long> ids = new java.util.HashMap<>();
+        existentes.forEach((c, e) -> ids.put(c, e.getId()));
+        List<String> faltantes = oficial.keySet().stream()
+                .filter(c -> !existentes.containsKey(c))
+                .sorted(java.util.Comparator.comparingInt(String::length).thenComparing(c -> c))
+                .collect(Collectors.toList());
+        for (String codigo : faltantes) {
+            String nombre = oficial.get(codigo);
+            String padre = padreDe(codigo, todos);
+            boolean auxiliar = !conHijas.contains(codigo);
             PlanCuentaEntity e = PlanCuentaEntity.builder()
                     .empresaId(empresaId)
                     .codigo(codigo)
-                    .nombre((String) g[1])
-                    .tipo((String) g[2])
-                    .naturaleza((String) g[3])
-                    .nivel(((Integer) g[4]).shortValue())
-                    .padreId(padreId)
+                    .nombre(nombre)
+                    .tipo(tipoDeClase(codigo.charAt(0)))
+                    .naturaleza(naturalezaPuc(codigo, nombre))
+                    .nivel(nivelDe(codigo))
+                    .padreId(padre != null ? ids.get(padre) : null)
                     .activa(true)
                     .auxiliar(auxiliar)
                     .esMedioPago(auxiliar && esDisponible(codigo))
                     .build();
-            PlanCuentaEntity saved = repo.save(e);
-            idsByCodigo.put(codigo, saved.getId());
+            ids.put(codigo, repo.save(e).getId());
+        }
+
+        // Cuentas creadas antes por otros procesos (nómina, activos, cierre) que
+        // quedaron sin padre y salían sueltas en la raíz del árbol: se cuelgan de
+        // su prefijo más largo. Solo se llena el padre que falta, nada más.
+        java.util.Set<String> codigos = ids.keySet();
+        for (PlanCuentaEntity e : existentes.values()) {
+            if (e.getCodigo().length() <= 1) continue;
+            if (e.getPadreId() != null && ids.containsValue(e.getPadreId())) continue;
+            String padre = padreDe(e.getCodigo(), codigos);
+            if (padre == null) continue;
+            e.setPadreId(ids.get(padre));
+            repo.save(e);
         }
     }
 
+    private static java.util.Map<String, String> leerPuc() {
+        java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+        try (var in = PlanCuentasServiceImpl.class.getClassLoader().getResourceAsStream(RECURSO_PUC)) {
+            if (in == null) throw new IllegalStateException("No se encontró el recurso " + RECURSO_PUC);
+            var lector = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+            String linea;
+            while ((linea = lector.readLine()) != null) {
+                if (linea.isBlank() || linea.startsWith("#") || linea.startsWith("codigo;")) continue;
+                int i = linea.indexOf(';');
+                if (i <= 0) continue;
+                m.put(linea.substring(0, i).trim(), linea.substring(i + 1).trim());
+            }
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException("No se pudo leer el PUC", ex);
+        }
+        return m;
+    }
+
+    /** El padre es el prefijo más largo que exista (6 → 4 → 2 → 1 dígitos). */
+    static String padreDe(String codigo, java.util.Set<String> todos) {
+        for (int largo = codigo.length() - 1; largo >= 1; largo--) {
+            String p = codigo.substring(0, largo);
+            if (todos.contains(p)) return p;
+        }
+        return null;
+    }
+
+    /** Clase 1, grupo 2, cuenta 3, subcuenta 4, auxiliar 5 (8 dígitos o más). */
+    static short nivelDe(String codigo) {
+        return switch (codigo.length()) {
+            case 1 -> (short) 1;
+            case 2 -> (short) 2;
+            case 3, 4 -> (short) 3;
+            case 5, 6 -> (short) 4;
+            default -> (short) 5;
+        };
+    }
+
+    static String tipoDeClase(char clase) {
+        return switch (clase) {
+            case '1' -> "ACTIVO";
+            case '2' -> "PASIVO";
+            case '3' -> "PATRIMONIO";
+            case '4' -> "INGRESO";
+            case '5' -> "GASTO";
+            case '6', '7' -> "COSTO";
+            default -> "ORDEN";
+        };
+    }
+
     /**
-     * Cuentas de nivel 3 que se siembran con subcuentas y por eso no reciben
-     * movimientos. Solo la caja y el anticipo de impuestos: las demás con hijas
-     * (2408, 5305…) todavía son destino por defecto de algún concepto.
+     * Naturaleza según la clase, con las cuentas correctoras del PUC al revés:
+     * provisiones, depreciación, amortización y agotamiento acumulados del activo
+     * son crédito; devoluciones en ventas (4175) débito; las "por contra" de orden
+     * (83 deudoras por contra, 93 acreedoras por contra) van al revés de su clase.
      */
-    private static final java.util.Set<String> AGRUPADORAS = java.util.Set.of("1105", "1355");
+    static String naturalezaPuc(String codigo, String nombre) {
+        String n = nombre.toLowerCase();
+        if (codigo.startsWith("83")) return "CREDITO";
+        if (codigo.startsWith("93")) return "DEBITO";
+        if (codigo.startsWith("4175")) return "DEBITO";
+        if (codigo.charAt(0) == '1' && (n.contains("provisi") || n.contains("depreciaci")
+                || n.contains("amortizaci") || n.contains("agotamiento") || n.contains("deterioro"))) {
+            return "CREDITO";
+        }
+        return switch (codigo.charAt(0)) {
+            case '1', '5', '6', '7', '8' -> "DEBITO";
+            default -> "CREDITO";
+        };
+    }
 
     /**
      * El disponible del PUC con el que efectivamente se paga: caja (incluida la

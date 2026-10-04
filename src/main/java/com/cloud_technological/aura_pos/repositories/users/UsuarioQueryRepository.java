@@ -32,6 +32,7 @@ public class UsuarioQueryRepository {
                 SELECT u.id,
                        u.username,
                        u.rol,
+                       pf.nombre AS perfil_nombre,
                        TRIM(CONCAT(COALESCE(t.nombres, ''), ' ', COALESCE(t.apellidos, ''))) AS nombre_completo,
                        t.numero_documento,
                        t.telefono,
@@ -39,6 +40,7 @@ public class UsuarioQueryRepository {
                        COUNT(*) OVER() AS total_rows
                 FROM usuario u
                 LEFT JOIN tercero t ON t.id = u.tercero_id
+                LEFT JOIN perfil pf ON pf.id = u.perfil_id
                 WHERE u.empresa_id = :empresaId
                 """);
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -63,6 +65,14 @@ public class UsuarioQueryRepository {
         return new PageImpl<>(content, PageRequest.of(page, size), total);
     }
 
+    /** Nombre del perfil de permisos, o null. */
+    public String nombrePerfil(Long perfilId) {
+        if (perfilId == null) return null;
+        List<String> r = jdbc.queryForList("SELECT nombre FROM perfil WHERE id = :id",
+                new MapSqlParameterSource("id", perfilId), String.class);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
     public List<UsuarioDto.UsuarioSucursalDto> sucursalesDeUsuario(Integer usuarioId) {
         String sql = """
                 SELECT s.id AS sucursal_id,
@@ -77,5 +87,17 @@ public class UsuarioQueryRepository {
         return jdbc.query(sql,
                 new MapSqlParameterSource("usuarioId", usuarioId),
                 BeanPropertyRowMapper.newInstance(UsuarioDto.UsuarioSucursalDto.class));
+    }
+
+    /** Username del usuario que ya tiene ese tercero (sin contar {@code exceptoId}); null si ninguno. */
+    public String usuarioDelTercero(Long terceroId, Integer exceptoId) {
+        java.util.List<String> r = jdbc.queryForList("""
+                SELECT username FROM usuario
+                WHERE tercero_id = :terceroId
+                  AND (CAST(:excepto AS INTEGER) IS NULL OR id <> :excepto)
+                LIMIT 1
+                """, new MapSqlParameterSource().addValue("terceroId", terceroId).addValue("excepto", exceptoId),
+                String.class);
+        return r.isEmpty() ? null : r.get(0);
     }
 }

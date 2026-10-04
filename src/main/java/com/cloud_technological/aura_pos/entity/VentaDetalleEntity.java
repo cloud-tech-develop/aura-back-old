@@ -65,4 +65,12 @@ public class VentaDetalleEntity {
      */
     @Column(name = "costo_linea")
     private BigDecimal costoLinea;
+
+    /**
+     * Texto propio de la línea (factura de Facturación): "Mantenimiento
+     * preventivo octubre" sobre el producto de servicio. Null = el nombre del
+     * producto.
+     */
+    @Column(name = "descripcion", length = 500)
+    private String descripcion;
 }

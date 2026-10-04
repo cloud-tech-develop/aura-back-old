@@ -63,9 +63,38 @@ Si falta alguna ≤ 182, se corre primero, sola, antes del Lote 1.
 | Riesgo | Medio. **Back, front y V189 van juntos**: sin V189 se rompe el detalle de cotizaciones. |
 | Prueba | Escenario de D1 (cotización 10 → venta 6 → PARCIAL → venta 4 → CONVERTIDA → anular → PARCIAL). |
 
+### Lote 4 · dom 25-oct · Permisos por perfil completos (P0–P10, un solo lote) — **código listo 2026-10-02**
+**Depende de los lotes 1–3**: `php artisan migrate` corre todo lo pendiente en orden, y el código toca
+archivos que también cambian en esos lotes (`VentaServiceImpl`, cotizaciones). No se puede subir antes que ellos.
+
+| | |
+|---|---|
+| Back | commit de permisos (hoy sin commit): perfiles e interceptor (P0–P4), acciones especiales, bitácora, límites con autorización por código/remota, sedes, sesión (P5–P10), usuario con tercero obligatorio |
+| Front | commit de permisos: menú por código, guard, Perfiles y Permisos, `*appPuede`, página de usuario con pestañas, Bitácora, Autorizaciones (escudo de la barra), autorización en POS y pedido de vendedor, selector de sede funcional |
+| Laravel | `000190_permisos_perfil`, `000191_permisos_pantalla_y_registro`, `000192_permisos_fase2` (P5–P10: acciones especiales, límites con autorización, bitácora, sedes, sesión), `000193_autorizacion_codigo_remota` (autorización con código o aprobación remota) |
+| Config | `PERMISOS_MODO=OBSERVAR` (es el valor por defecto; no poner BLOQUEAR el primer día) |
+| Menú | nada que correr: V191 crea el submódulo "Perfiles y Permisos" |
+| Riesgo | **Medio-alto**: cambia cómo se arma el menú y qué rutas abre cada usuario. Sin V190 el back no arranca (`UsuarioEntity.perfil_id`); sin V192 y V193 tampoco (`usuario.token_version`, `perfil.todas_sedes`, `autorizacion.codigo_hash`). Al subir, los tokens viejos siguen valiendo (`tv` = 0) y la sesión nueva dura 12 h. |
+| Antes de subir (solo lectura en prod) | (1) Chequeo de RRHH apagado (consulta en PLAN_PERMISOS.md). (2) `docs/sql/diagnostico_usuarios_tercero.sql`, parte 1: usuarios sin tercero, de empleado mal ligados y personas duplicadas. |
+| Prueba (copia de prod) | Mínimo: cada tipo de usuario ve el mismo menú que antes; un admin duplicado sin Contabilidad no la ve ni entra por URL; un ajuste por usuario se refleja al recargar; cajero con límite 10% da 15% → código del supervisor y luego aprobación remota; crear usuario sin tercero no deja / tercero repetido no deja; crear usuario desde empleado queda con el tercero del empleado; cambio de sede desde la barra; "Cerrar sesiones"; 5 claves erradas bloquean 15 min. |
+| Después de subir | Correr la parte 2 de `diagnostico_usuarios_tercero.sql` (usuarios de empleado sin tercero) si la parte 1 los mostró; los duplicados se reasignan a mano desde la página del usuario. |
+| Incluye también | **Panel de plataforma rehecho** (responsive, módulos en árbol al crear empresa y en Módulos de la empresa, submódulos con grupo padre, paginación y búsqueda arregladas). Va en este lote porque `SubmoduloEntity` mapea `padre_id` (V190). |
+| Después | Una semana mirando Caja › Perfiles y Permisos › Registro del control; ajustar; otro domingo cambiar a `PERMISOS_MODO=BLOQUEAR` y reiniciar. |
+
 ### Lotes siguientes (por construir)
-- Plan de seguridad: llaves JWT/AES fuera de git + rotación (domingo = nadie trabajando, rotar cierra todas las sesiones).
+- **Seguridad · rotación del `JWT_SECRET` (código listo 2026-10-03).** Las llaves ya se leen del entorno desde
+  agosto; faltaba rotar la JWT, que en producción sigue siendo la que estuvo en git. El código trae
+  `LlavesGuard`: **con la llave vieja el backend no arranca**, así que este lote (o cualquiera posterior que lo
+  incluya) va así, un domingo:
+  1. En el servidor: `openssl rand -base64 64` y poner el resultado en `JWT_SECRET` del entorno de producción
+     (no pasarlo por chat ni por correo; no copiar la llave local).
+  2. `AES_KEY`: confirmar que no es la de git (si lo fuera, `openssl rand -base64 32`; nada cifrado depende de ella).
+  3. Desplegar y reiniciar. Todos los usuarios vuelven a iniciar sesión: avisar antes.
+  4. Si el backend no arranca y el log dice "está quemada", es que el paso 1 no se aplicó.
+  Decisión aparte: purgar el historial de git (reescribe todo el repo y obliga a re-clonar) o dejar la llave
+  como quemada —que es lo que garantiza `LlavesGuard`—. Recomendado: no purgar y revisar quién tiene acceso al repo.
 - D2 en adelante de la cadena documental, **un lote por fase**.
+- Facturación ERP fuera del POS (`docs/PLAN_FACTURACION.md`): FV0+FV1 en un lote (V194+), luego FV2–FV5 uno por lote.
 
 ## Rutina de cada lote
 
@@ -109,3 +138,4 @@ Si falta alguna ≤ 182, se corre primero, sola, antes del Lote 1.
 | 4-oct | 1 | 000183 | | |
 | 11-oct | 2 | 000184–000188 | | |
 | 18-oct | 3 | 000189 | | |
+| 25-oct | 4 | 000190–000191 | | |

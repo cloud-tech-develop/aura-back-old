@@ -89,6 +89,10 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
     @Autowired
     private VentaService ventaService;
 
+    /** Límites de descuento/precio del vendedor (PLAN_PERMISOS P8): se revisan al tomar el pedido. */
+    @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AutorizacionService autorizaciones;
+
     @Autowired
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
@@ -120,6 +124,13 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
 
         UsuarioEntity vendedor = usuarioJPARepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Vendedor no encontrado"));
+
+        // El descuento lo decide el vendedor aquí, no quien despacha: el límite y
+        // la autorización del supervisor se revisan al tomar el pedido.
+        com.cloud_technological.aura_pos.dto.permisos.BitacoraDtos.Exceso exceso =
+                autorizaciones.exceso(comoVenta(dto), usuarioId.intValue(), empresaId);
+        com.cloud_technological.aura_pos.entity.AutorizacionEntity autorizacion =
+                autorizaciones.validarParaVenta(exceso, dto.getAutorizacionId(), usuarioId.intValue(), empresaId);
 
         TerceroEntity cliente = null;
         if (dto.getClienteId() != null) {
@@ -177,8 +188,26 @@ public class PedidoVendedorServiceImpl implements PedidoVendedorService {
         savedPedido.setImpuestoTotal(impuestoTotal);
         savedPedido.setTotal(total);
         pedidoJPARepository.save(savedPedido);
+        if (autorizacion != null) autorizaciones.consumir(autorizacion, "PEDIDO", savedPedido.getId(), exceso);
 
         return obtenerPorId(savedPedido.getId(), empresaId);
+    }
+
+    /** El pedido con la forma de una venta, para medir el descuento contra los límites. */
+    private static CreateVentaDto comoVenta(CreatePedidoVendedorDto dto) {
+        CreateVentaDto v = new CreateVentaDto();
+        List<CreateVentaDetalleDto> lineas = new ArrayList<>();
+        for (CreatePedidoVendedorDetalleDto d : dto.getDetalles() != null ? dto.getDetalles()
+                : List.<CreatePedidoVendedorDetalleDto>of()) {
+            CreateVentaDetalleDto l = new CreateVentaDetalleDto();
+            l.setProductoId(d.getProductoId());
+            l.setCantidad(d.getCantidad());
+            l.setPrecioUnitario(d.getPrecioUnitario());
+            l.setDescuentoValor(d.getDescuentoValor() != null ? d.getDescuentoValor() : BigDecimal.ZERO);
+            lineas.add(l);
+        }
+        v.setDetalles(lineas);
+        return v;
     }
 
     @Override

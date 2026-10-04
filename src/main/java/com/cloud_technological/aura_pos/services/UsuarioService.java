@@ -36,4 +36,7 @@ public interface UsuarioService {
     UsuarioDto actualizarPropio(Integer id, UpdateUsuarioDto dto, Integer empresaId);
 
     void desactivar(Integer id, Integer empresaId);
+
+    /** Cierra todas las sesiones abiertas del usuario (PLAN_PERMISOS P10). */
+    void cerrarSesiones(Integer id, Integer empresaId);
 }

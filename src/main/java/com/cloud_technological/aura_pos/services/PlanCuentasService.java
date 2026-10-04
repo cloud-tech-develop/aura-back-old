@@ -20,5 +20,6 @@ public interface PlanCuentasService {
     PlanCuentaDto crear(Integer empresaId, CreatePlanCuentaDto dto);
     PlanCuentaDto actualizar(Long id, Integer empresaId, CreatePlanCuentaDto dto);
     void eliminar(Long id, Integer empresaId);
-    void seedPUC(Integer empresaId);
+    /** Carga el PUC completo (Decreto 2650) sin tocar lo existente; devuelve cuántas cuentas agregó. */
+    int seedPUC(Integer empresaId);
 }

@@ -61,4 +61,11 @@ public class CreateEmpresaPlataformaDto {
     // Sucursal principal
     @NotBlank
     private String nombreSucursal;
+
+    /**
+     * Submódulos que tendrá la empresa (ids de la tabla submodulos). Sus grupos y
+     * módulos se activan solos. Null = no se activa ninguno (se hace después en
+     * Permisos de la empresa).
+     */
+    private java.util.List<Integer> submodulos;
 }

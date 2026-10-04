@@ -39,6 +39,9 @@ public class NotificacionController {
     private SecurityUtils securityUtils;
 
     @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AutorizacionService autorizacionService;
+
+    @Autowired
     private com.cloud_technological.aura_pos.repositories.cartera.AgendaCobroQueryRepository agendaCobroRepository;
 
     @Autowired
@@ -95,6 +98,7 @@ public class NotificacionController {
      * vencer, acuerdos de pago incumplidos y cuotas por vencer, y promesas.
      */
     private void agregarCartera(Integer empresaId, List<NotificacionDto> notificaciones) {
+        agregarAutorizacionesDescuento(empresaId, notificaciones);
         String rol = securityUtils.getRol();
         if (rol == null || !(rol.equalsIgnoreCase("ADMIN") || rol.equalsIgnoreCase("SUPER_ADMIN"))) return;
         try {
@@ -139,6 +143,26 @@ public class NotificacionController {
             }
         } catch (Exception e) {
             // La campana no se cae por cartera: el inventario sigue avisando.
+        }
+    }
+
+    /**
+     * Solicitudes de descuento que esperan aprobación remota (PLAN_PERMISOS P8). Solo
+     * las ve quien puede autorizar; el servicio devuelve vacío a los demás.
+     */
+    private void agregarAutorizacionesDescuento(Integer empresaId, List<NotificacionDto> notificaciones) {
+        try {
+            Long usuario = securityUtils.getUsuarioId();
+            if (usuario == null) return;
+            int n = autorizacionService.pendientes(usuario.intValue(), empresaId).size();
+            if (n > 0) {
+                notificaciones.add(0, new NotificacionDto("AUTORIZACIONES_DESCUENTO", "danger",
+                        n == 1 ? "1 descuento esperando autorización" : n + " descuentos esperando autorización",
+                        "Un cajero o vendedor pasó su límite y espera su aprobación para terminar la venta.",
+                        n, null, "/autorizaciones", "Responder"));
+            }
+        } catch (Exception e) {
+            log.warn("Campana: no se pudieron leer las solicitudes de descuento: {}", e.getMessage());
         }
     }
 

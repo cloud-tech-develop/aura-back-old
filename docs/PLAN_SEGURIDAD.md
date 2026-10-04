@@ -6,8 +6,8 @@
 > ⚠ **Este documento es un mapa de ataque.** No lo publiques, no lo subas a un
 > tablero público ni lo compartas fuera del equipo hasta cerrar la Fase 0.
 
-**Estado:** Fase 0 implementada el 2026-08-12 salvo CORS (aplazado por decisión)
-y la rotación del `JWT_SECRET` (requiere acceso al despliegue). Fases 1–3
+**Estado:** Fase 0 implementada el 2026-08-12 salvo CORS (aplazado por decisión).
+Rotación del `JWT_SECRET`: local hecha y `LlavesGuard` agregado el 2026-10-03; falta producción (§5.2). Fases 1–3
 pendientes. El detalle de lo hecho está en §4; lo que falta hacer a mano, en §5.
 
 **Índice**
@@ -403,7 +403,16 @@ nuevas: sin ellas la aplicación no arranca.
 | `RATE_LIMIT_WINDOW` | no | `60` | Segundos |
 | `RATE_LIMIT_TRUST_PROXY` | no | `true` | **Ver 5.3** |
 
-### 5.2 Rotación del `JWT_SECRET` — pendiente
+### 5.2 Rotación del `JWT_SECRET` — local hecha 2026-10-03, producción pendiente
+
+**2026-10-03:** se verificó (comparando huellas, sin imprimir valores) que el `JWT_SECRET` del `.env`
+local era el publicado en git; el `AES_KEY` ya no lo era y `AESencryptUtil` no cifra nada hoy, así que
+no hay datos que re-cifrar. Se rotó el `JWT_SECRET` local y se agregó `LlavesGuard`: el backend **no
+arranca** si `JWT_SECRET` o `AES_KEY` son las llaves publicadas (se guardan solo sus SHA-256), si la JWT
+no es base64 o si tiene menos de 32 bytes. Consecuencia: **el despliegue que incluya `LlavesGuard`
+exige rotar antes el `JWT_SECRET` de producción**, o el backend no levanta.
+
+Texto original:
 
 El valor que está hoy en el `.env` es **el mismo que estuvo versionado en git**.
 Se dejó así para no cerrar las sesiones a mitad de jornada, pero **sigue

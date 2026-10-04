@@ -103,10 +103,11 @@ public class ContabilidadController {
     }
 
     @PostMapping("/plan-cuentas/seed")
-    public ResponseEntity<ApiResponse<Void>> seedPUC() {
+    public ResponseEntity<ApiResponse<Integer>> seedPUC() {
         Integer empresaId = securityUtils.getEmpresaId();
-        planCuentasService.seedPUC(empresaId);
-        return ResponseEntity.ok(new ApiResponse<>(200, "PUC básico cargado", false, null));
+        int nuevas = planCuentasService.seedPUC(empresaId);
+        return ResponseEntity.ok(new ApiResponse<>(200,
+                nuevas > 0 ? "PUC cargado: " + nuevas + " cuentas nuevas" : "El PUC ya estaba completo", false, nuevas));
     }
 
     // ── Asientos Contables ───────────────────────────────────────────

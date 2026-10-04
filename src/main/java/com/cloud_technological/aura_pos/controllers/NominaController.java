@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.config.RequerirPermiso;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.AddNovedadDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.HistorialPagoDto;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.NominaDto;
@@ -169,6 +170,7 @@ public class NominaController {
                 HttpStatus.OK);
     }
 
+    @RequerirPermiso(accion = "APROBAR")
     @PutMapping("/{id}/aprobar")
     public ResponseEntity<ApiResponse<NominaDto>> aprobar(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();

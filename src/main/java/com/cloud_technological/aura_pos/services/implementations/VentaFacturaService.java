@@ -213,7 +213,8 @@ public class VentaFacturaService {
                     return ItemFacturaRequest.builder()
                             .sku(d.getProducto().getSku() != null
                                     ? d.getProducto().getSku() : "SIN-SKU")
-                            .nombre(d.getProducto().getNombre())
+                            .nombre(d.getDescripcion() != null && !d.getDescripcion().isBlank()
+                                    ? d.getDescripcion().trim() : d.getProducto().getNombre())
                             .cantidad(d.getCantidad())
                             .precioSinIva(precioConIva)
                             .ivaPorcentaje(ivaPct.toPlainString())

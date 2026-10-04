@@ -41,6 +41,17 @@ public class AuthServiceImpl implements AuthService {
     @org.springframework.beans.factory.annotation.Autowired
     private BodegaService bodegaService;
 
+    /** Bloqueo por intentos y versión de sesión (PLAN_PERMISOS P10). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.security.SesionService sesiones;
+
+    /** Sedes que puede usar según su perfil (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.PermisoUsuarioService permisos;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+
     private final AuthenticationManager authenticationManager;
     private final UsuarioJPARepository usuarioJPARepository;
     private final AuthQueryRepository authQueryRepository;
@@ -149,6 +160,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponseDto login(LoginRequestDto loginDto) {
+        // 0. Bloqueado por intentos fallidos (P10): ni siquiera se prueba la clave.
+        UsuarioEntity candidato = loginDto.getUsername() != null
+                ? usuarioJPARepository.findByUsername(loginDto.getUsername()).orElse(null) : null;
+        if (candidato != null && sesiones.bloqueadoHasta(candidato) != null) {
+            throw new GlobalException(HttpStatus.UNAUTHORIZED, "Usuario bloqueado por intentos fallidos. Intente después de las "
+                    + sesiones.bloqueadoHasta(candidato).toLocalTime().withNano(0));
+        }
         try {
             // 1. Autenticar (Esto valida usuario y contraseña hasheada automáticamente)
             Authentication authentication = authenticationManager.authenticate(
@@ -163,6 +181,7 @@ public class AuthServiceImpl implements AuthService {
             if (Boolean.FALSE.equals(usuario.getActivo())) {
                 throw new GlobalException(HttpStatus.UNAUTHORIZED, "El usuario está inactivo");
             }
+            sesiones.registrarExito(usuario);
 
             // 3. Obtener Sucursales Permitidas (JDBC - Query optimizada)
             List<SucursalSimpleDto> sucursales = authQueryRepository.findSucursalesByUsuario(usuario.getId());
@@ -185,11 +204,12 @@ public class AuthServiceImpl implements AuthService {
             Integer empresaId = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
             // 5. Generar Token (Incluyendo ID de Empresa y Sucursal Actual)
             String token = jwtTokenProvider.generateToken(
-                    authentication,
+                    authentication.getName(),
                     empresaId,
                     sucursalActualId,
                     usuario.getRol(),
-                    Long.valueOf(usuario.getId())
+                    Long.valueOf(usuario.getId()),
+                    usuario.getTokenVersion()
             );
             // 6. Construir Respuesta
             String nombreCompleto = (usuario.getTercero() != null)
@@ -213,6 +233,10 @@ public class AuthServiceImpl implements AuthService {
                     .build();
 
         } catch (BadCredentialsException e) {
+            if (candidato != null && sesiones.registrarFallo(candidato)) {
+                throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas. Por seguridad el usuario quedó"
+                        + " bloqueado " + com.cloud_technological.aura_pos.security.SesionService.MINUTOS_BLOQUEO + " minutos");
+            }
             throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
         } catch (Exception e) {
             // Loguear error real en consola
@@ -222,5 +246,38 @@ public class AuthServiceImpl implements AuthService {
             }
             throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Error en el proceso de login");
         }
+    }
+
+    /**
+     * Cambia la sede de trabajo (PLAN_PERMISOS P9): el selector de la barra superior
+     * pide un token nuevo con la sede elegida. Debe ser una de sus sedes asignadas,
+     * o cualquiera de la empresa si su perfil tiene "todas las sedes".
+     */
+    @Override
+    public LoginResponseDto cambiarSede(Long sucursalId) {
+        Long usuarioId = securityUtils.getUsuarioId();
+        if (usuarioId == null || sucursalId == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Indique la sede");
+        }
+        UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
+                .orElseThrow(() -> new GlobalException(HttpStatus.UNAUTHORIZED, "Usuario no encontrado"));
+        Integer empresaId = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
+        List<SucursalSimpleDto> sucursales = authQueryRepository.findSucursalesByUsuario(usuario.getId());
+        boolean asignada = sucursales.stream().anyMatch(s -> sucursalId.equals(Long.valueOf(s.getId())));
+        boolean todas = empresaId != null && permisos.efectivos(usuario.getId()).isTodasLasSedes()
+                && authQueryRepository.sucursalDeEmpresa(sucursalId, empresaId);
+        if (!asignada && !todas) {
+            throw new GlobalException(HttpStatus.FORBIDDEN, "Esa sede no está asignada a su usuario");
+        }
+        String token = jwtTokenProvider.generateToken(usuario.getUsername(), empresaId, sucursalId, usuario.getRol(),
+                Long.valueOf(usuario.getId()), usuario.getTokenVersion());
+        return LoginResponseDto.builder()
+                .token(token)
+                .tipoToken("Bearer")
+                .usuarioId(usuario.getId())
+                .username(usuario.getUsername())
+                .rol(usuario.getRol())
+                .sucursales(sucursales)
+                .build();
     }
 }

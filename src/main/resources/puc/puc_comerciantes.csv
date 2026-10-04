@@ -1,0 +1,1120 @@
+# Plan de cuentas de la empresa: clases 1 a 7 según el catálogo propio (con auxiliares de 8 dígitos);
+# clases 8 y 9 (cuentas de orden) del PUC para comerciantes, Decreto 2650.
+codigo;nombre
+1;Activo
+11;Disponible
+1105;Caja
+110505;Caja general
+11050501;Caja general
+110510;Cajas menores
+11051001;Caja chica
+110515;Moneda extranjera
+1110;Bancos
+111005;Moneda nacional
+11100501;Banco 1
+111010;Moneda extranjera
+1115;Remesas en tránsito
+111505;Moneda nacional
+111510;Moneda extranjera
+1120;Cuentas de ahorro
+112005;Bancos
+11200501;Bancos
+12;Inversiones
+1205;Acciones
+120505;Acciones
+120535;Comercio al por mayor y al por menor
+12053501;Comercio al por mayor y al por menor
+12053502;Método de participación
+1210;Cuotas o partes de interés social
+1215;Bonos
+121505;Bonos
+1220;Cédulas
+1225;Certificados
+122505;Certificados
+1230;Papeles comerciales
+123005;Papeles comerciales
+1235;Títulos
+1240;Aceptaciones bancarias o financieras
+1250;Derechos de recompra de inversiones negociadas (repos)
+1255;Obligatorias
+1260;Cuentas en participación
+1295;Otras inversiones
+129505;Otras inversiones
+13;Deudores comerciales y otras cuentas por cobrar
+1305;Clientes
+130505;Clientes nacionales
+13050501;Clientes nacionales
+130510;Clientes del exterior
+13051001;Clientes del exterior
+130515;Deudores del sistema
+1310;Cuentas corrientes comerciales
+131005;Casa matriz
+131010;Compañías vinculadas
+131015;Accionistas o socios
+131020;Particulares
+131095;Otras
+13109501;Otros deudores y cuentas por cobrar
+1315;Cuentas por cobrar a casa matriz
+131505;Ventas
+131510;Pagos a nombre de casa matriz
+131515;Valores recibidos por casa matriz
+131520;Préstamos
+1320;Cuentas por cobrar a vinculados económicos
+132005;Filiales
+132010;Subsidiarias
+132015;Sucursales
+1323;Cuentas por cobrar a directores
+1325;Cuentas por cobrar a socios y accionistas
+132505;A socios
+13250501;A socios
+132510;A accionistas
+13251001;A accionistas
+1328;Aportes por cobrar
+1330;Anticipos y avances
+133005;A proveedores
+13300501;A proveedores
+133010;A contratistas
+13301001;A contratistas
+133015;A trabajadores
+13301501;A trabajadores
+13301502;Eventos
+133090;Anticipo de nómina
+13309001;Anticipo de nómina
+1332;Cuentas de operación conjunta
+1335;Depósitos
+1345;Ingresos por cobrar
+134510;Intereses
+1350;Retención sobre contratos
+135005;De construcción
+135010;De prestación de servicios
+1355;Anticipo de impuestos y contribuciones o saldos a favor
+135505;Anticipo de impuestos de renta y complementarios
+135510;Anticipo de impuestos de industria y comercio
+135515;Retención en la fuente
+13551501;Retención en la fuente 2,5%
+13551502;Retención en la fuente 4%
+13551503;Retención en la fuente 6%
+13551504;Retención en la fuente 10%
+13551505;Retención en la fuente 11%
+13551506;Retención en la fuente 3,5%
+13551507;Retención en la fuente 2%
+13551508;Retención en la fuente 1,5%
+135517;Impuesto a las ventas retenido
+13551701;Impuesto a las ventas retenido
+13551702;Devolución impuesto a las ventas retenido
+135518;Impuesto de industria y comercio retenido
+13551801;Rete ICA 11,04
+13551802;Rete ICA 13,08
+13551803;Rete ICA 9,66
+13551804;Rete ICA 8
+13551805;Rete ICA 7
+13551806;Rete ICA 6,9
+13551807;Rete ICA 4
+13551808;Autorretención impuesto de industria y comercio
+135519;Otras retenciones a favor
+135520;Sobrantes en liquidación privada de impuestos
+135525;Contribuciones
+135530;Impuestos descontables
+13553005;Devolución de impuestos descontables
+135590;Impuesto nacional al consumo a favor
+135595;Otros impuestos descontables
+1365;Cuentas por cobrar a trabajadores
+136510;Vehículos
+136515;Educación
+13651501;Educación
+136520;Médicos, odontológicos y similares
+13652001;Médicos, odontológicos y similares
+136525;Calamidad doméstica
+13652501;Calamidad doméstica
+1370;Préstamos a particulares
+137005;Con garantía real
+137010;Con garantía personal
+1380;Deudores varios
+138005;Depositarios
+138010;Comisionistas de bolsas
+138015;Fondo de inversión
+138020;Cuentas por cobrar de terceros
+138025;Pagos por cuenta de terceros
+138035;Devoluciones a proveedores
+13803501;Devoluciones a proveedores
+138095;Incapacidades
+1390;Deudas de difícil cobro
+1399;Provisiones
+139905;Clientes
+139910;Cuentas corrientes comerciales
+139915;Cuentas por cobrar a casa matriz
+139920;Cuentas por cobrar a vinculados económicos
+139925;Cuentas por cobrar a socios y accionistas
+139930;Anticipos y avances
+139932;Cuentas de operación conjunta
+139935;Depósitos
+139940;Promesas de compraventa
+139945;Ingresos por cobrar
+139960;Cuentas por cobrar a trabajadores
+139965;Préstamos a particulares
+139975;Deudores varios
+14;Inventarios
+1430;Productos terminados
+143005;Productos manufacturados
+143010;Productos extraídos y/o procesados
+1435;Mercancías no fabricadas por la empresa
+143505;Mercancías no fabricadas
+14350501;Mercancías no fabricadas
+1455;Materiales, repuestos y accesorios
+15;Propiedades, planta y equipo
+1504;Terrenos
+150405;Urbanos
+15040501;Urbanos
+150410;Rurales
+1508;Construcciones en curso
+150805;Construcciones y edificaciones
+1512;Maquinaria y equipos en montaje
+1516;Construcciones y edificaciones
+151605;Edificios
+15160501;Edificios
+1520;Maquinaria y equipo
+1524;Equipo de oficina
+152405;Muebles y enseres
+15240501;Muebles y enseres
+152410;Equipos
+15241001;Equipos
+1528;Equipo de computación y comunicación
+152805;Equipos de procesamiento de datos
+15280501;Equipos de procesamiento de datos
+1540;Flota y equipo de transporte
+154005;Vehículos
+15400501;Vehículos
+15400502;Vehículos en leasing
+1592;Depreciación acumulada
+159205;Construcciones y edificaciones
+15920501;Construcciones y edificaciones
+159210;Maquinaria y equipo
+15921001;Maquinaria y equipo
+159215;Equipo de oficina
+15921501;Equipo de oficina
+159220;Equipo de computación y comunicación
+15922001;Equipo de computación y comunicación
+159235;Flota y equipo de transporte
+15923501;Flota y equipo de transporte
+1595;Propiedad, planta y equipo (Impuestos descontables)
+1596;Depreciación diferida
+159605;Exceso fiscal sobre la contable
+159610;Defecto fiscal sobre la contable (CR)
+1597;Amortización acumulada
+1599;Provisiones
+16;Intangibles
+1610;Marcas
+161005;Adquiridas
+161010;Formadas
+1615;Patentes
+161505;Adquiridas
+161510;Formadas
+1620;Concesiones y franquicias
+162005;Concesiones
+162010;Franquicias
+1625;Derechos
+162505;Derechos de autor
+1630;Know how
+1635;Licencias
+1698;Depreciación y/o amortización acumulada
+169810;Marcas
+169815;Patentes
+169820;Concesiones y franquicias
+169830;Derechos
+169835;Know how
+169840;Licencias
+1699;Provisiones
+17;Otros activos no financieros
+1705;Gastos pagados por anticipado
+170505;Intereses
+170510;Honorarios
+170515;Comisiones
+170520;Seguros y fianzas
+170525;Arrendamientos
+170530;Bodegajes
+170535;Mantenimiento equipos
+170540;Servicios
+170545;Suscripciones
+1710;Cargos diferidos
+171004;Organización y preoperativos
+171008;Remodelaciones
+171012;Estudios, investigaciones y proyectos
+171016;Programas para computador (software)
+171020;Útiles y papelería
+171024;Mejoras a propiedades ajenas
+171028;Contribuciones y afiliaciones
+171032;Entrenamiento de personal
+171036;Ferias y exposiciones
+171040;Licencias
+171044;Publicidad, propaganda y promoción
+171048;Elementos de aseo y cafetería
+171060;Dotación y suministro a trabajadores
+171076;Impuesto de renta diferido (débitos) por diferencias temporales
+171080;Concursos y licitaciones
+1790;Deterioro acumulado de valor
+1798;Amortización acumulada
+18;Otros activos
+1805;Bienes de arte y cultura
+1895;Diversos
+1899;Otros activos financieros
+19;Otros activos financieros
+1945;De inversiones
+194510;De inversiones
+19451001;De inversiones
+2;Pasivo
+21;Obligaciones financieras
+2105;Bancos nacionales
+210505;Sobregiros
+210510;Pagarés
+210515;Cartas de crédito
+210520;Aceptaciones bancarias
+210525;Tarjetas con entidades bancarias
+210530;Préstamos bancarios
+21053001;Préstamos bancarios
+2110;Bancos del exterior
+211005;Sobregiros
+211010;Pagarés
+211015;Cartas de crédito
+211020;Aceptaciones bancarias
+2115;Corporaciones financieras
+211505;Pagarés
+211510;Aceptaciones financieras
+211515;Cartas de crédito
+211520;Contratos de arrendamiento financiero (leasing)
+2120;Compañías de financiamiento comercial
+212005;Pagarés
+212010;Aceptaciones financieras
+212020;Contratos de arrendamiento financiero (leasing)
+2125;Corporaciones de ahorro y vivienda
+2130;Entidades financieras del exterior
+2135;Compromisos de recompra de inversiones negociadas
+2140;Compromisos de recompra de cartera negociada
+2145;Obligaciones gubernamentales
+214505;Gobierno Nacional
+214510;Entidades oficiales
+2195;Otras obligaciones
+22;Proveedores
+2205;Nacionales
+220505;Proveedores nacionales
+22050501;Cuentas por pagar a proveedores nacionales
+2210;Del exterior
+221005;Proveedores del exterior
+22100501;Cuentas por pagar a proveedores del exterior
+2215;Cuentas corrientes comerciales
+2220;Casa matriz
+2225;Compañías vinculadas
+23;Cuentas por pagar
+2305;Cuentas corrientes comerciales
+230505;Cuentas corrientes comerciales
+23050501;Cuentas corrientes comerciales
+2310;A casa matriz
+2315;A compañías vinculadas
+2320;A contratistas
+2330;Órdenes de compra por utilizar
+2335;Costos y gastos por pagar
+233505;Gastos financieros
+23350501;Gastos financieros
+233510;Gastos legales
+23351001;Gastos legales
+233515;Libros, periódicos y revistas
+233520;Comisiones
+233525;Honorarios
+23352501;Honorarios
+233530;Servicios técnicos
+233535;Servicios de mantenimiento
+23353501;Servicios de mantenimiento
+233540;Arrendamientos
+23354001;Arrendamientos
+233545;Transportes
+233550;Servicios públicos
+233555;Seguros
+23355501;Seguros
+233560;Gastos de viaje
+233565;Gastos de representación y relaciones públicas
+233570;Servicios aduaneros
+2340;Instalamentos por pagar
+2345;Acreedores oficiales
+2350;Regalías por pagar
+2355;Deudas con accionistas o socios
+2357;Deudas con directores
+2360;Dividendos o participaciones por pagar
+236005;Dividendos
+236010;Participaciones
+2365;Retención en la fuente
+236505;Salarios y pagos laborales
+23650501;Salarios y pagos laborales
+236510;Dividendos y/o participaciones
+236515;Honorarios
+23651501;Retenciones honorarios y comisiones 10% por pagar
+23651502;Retenciones honorarios y comisiones 11% por pagar
+236520;Comisiones
+236525;Servicios
+23652501;Retenciones servicios 4% por pagar
+23652502;Retenciones servicios 6% por pagar
+236530;Arrendamientos
+23653001;Retenciones arriendo 3,5% por pagar
+236535;Rendimientos financieros
+236540;Compras
+23654001;Retenciones compra 2,5% por pagar
+236550;Por pagos al exterior
+236555;Por ingresos obtenidos en el exterior
+236560;Enajenación propiedades planta y equipo
+236565;Por impuesto de timbre
+236570;Otras retenciones y patrimonio
+236575;Autorretenciones
+2367;Impuesto a las ventas retenido
+236705;Impuesto a las ventas retenido
+23670501;Retención de IVA por pagar
+2368;Impuesto de industria y comercio retenido
+236805;Impuesto de industria y comercio retenido
+23680501;Rete ICA 11,04
+23680502;Rete ICA 13,08
+23680503;Rete ICA 9,66
+23680504;Rete ICA 8
+23680505;Rete ICA 7
+23680506;Rete ICA 6,9
+23680507;Rete ICA 4
+2369;Otro tipo de retención por pagar
+2370;Retenciones y aportes de nómina
+237005;Aportes a entidades promotoras de salud
+23700501;Aportes a entidades promotoras de salud
+237006;Aportes a administradoras de riesgos profesionales
+23700601;Aportes a administradoras de riesgos profesionales
+237010;Aportes al ICBF
+23701001;Aportes al ICBF
+237015;Aportes al FIC
+237025;Embargos judiciales
+237030;Libranzas
+23703001;Libranzas
+237035;Sindicatos
+237040;Cooperativas
+237045;Fondos
+23704501;Fondos
+2375;Cuotas por devolver
+2380;Acreedores varios
+238005;Depositarios
+238010;Comisionistas de bolsas
+238015;Sociedad administradora-Fondos de inversión
+238020;Reintegros por pagar
+238025;Fondo de perseverancia
+238030;Fondos de cesantías y/o pensiones
+23803001;Fondos de cesantías y/o pensiones
+238035;Donaciones asignadas por pagar
+238090;Devoluciones de clientes
+23809001;Devoluciones de clientes
+24;Impuestos, gravámenes y tasas
+2404;De renta y complementarios
+240405;Vigencia fiscal corriente
+24040501;Vigencia fiscal corriente
+240410;Vigencias fiscales anteriores
+2408;Impuesto sobre las ventas por pagar
+240805;IVA generado
+24080501;IVA generado
+24080502;Devolución de IVA generado
+240810;IVA descontable por compras
+24081001;IVA descontable por compras
+24081002;Devolución de IVA descontable
+240815;Descontable por servicios
+24081501;Descontable por servicios
+240820;Descontable por devoluciones
+24082001;Descontable por devoluciones
+2412;De industria y comercio
+241205;De industria y comercio
+24120501;Impuesto de industria y comercio por pagar
+2436;De vehículos
+2485;Impuesto nacional al consumo
+248505;Impuesto nacional al consumo
+24850501;Impuesto nacional al consumo por pagar
+2495;Otros impuestos
+249505;Otros impuestos
+24950501;Otro tipo de impuesto por pagar
+25;Obligaciones laborales
+2505;Salarios por pagar
+250505;Salarios por pagar
+25050501;Salarios por pagar
+2510;Cesantías consolidadas
+251005;Cesantías
+25100501;Cesantías
+2515;Intereses sobre cesantías
+251505;Intereses sobre cesantías
+25150501;Intereses sobre cesantías
+2520;Prima de servicios
+252005;Prima de servicios
+25200501;Prima de servicios
+2525;Vacaciones consolidadas
+252505;Vacaciones
+25250501;Vacaciones
+2530;Prestaciones extralegales
+253005;Primas
+253010;Auxilios
+253015;Dotación y suministro a trabajadores
+253020;Bonificaciones
+253025;Seguros
+253095;Otras
+25309501;Otras obligaciones laborales
+2532;Pensiones por pagar
+2535;Cuotas partes pensiones de jubilación
+2540;Indemnizaciones laborales
+26;Pasivos estimados y provisiones
+2605;Para costos y gastos
+260505;Intereses
+260510;Comisiones
+260515;Honorarios
+260520;Servicios técnicos
+260525;Transportes, fletes y acarreos
+260530;Gastos de viaje
+260535;Servicios públicos
+260540;Regalías
+260545;Garantías
+260550;Materiales y repuestos
+2610;Para obligaciones laborales
+261005;Cesantías
+261010;Intereses sobre cesantías
+261015;Vacaciones
+261020;Prima de servicios
+261025;Prestaciones extralegales
+261030;Viáticos
+2615;Para obligaciones fiscales
+261505;De renta y complementarios
+261510;De industria y comercio
+261515;Tasa por utilización de puertos
+261520;De vehículos
+261525;De hidrocarburos y minas
+2620;Pensiones de jubilación
+262005;Cálculo actuarial pensiones de jubilación
+262010;Pensiones de jubilación por amortizar (DB)
+2625;Para obras de urbanismo
+2630;Para mantenimiento y reparaciones
+2635;Para contingencias
+2640;Para obligaciones de garantías
+2695;Provisiones diversas
+27;Diferidos
+2705;Ingresos recibidos por anticipado
+270505;Intereses
+270510;Comisiones
+270515;Arrendamientos
+270520;Honorarios
+270525;Servicios técnicos
+270530;De suscriptores
+270535;Transportes, fletes y acarreos
+270540;Mercancía en tránsito ya vendida
+270545;Matrículas y pensiones
+270550;Cuotas de administración
+2710;Abonos diferidos
+2715;Utilidad diferida en ventas a plazos
+2720;Crédito por corrección monetaria diferida
+2725;Impuestos diferidos
+28;Pasivos no financieros
+2805;Anticipos y avances recibidos
+280505;Avances y anticipos recibidos
+28050501;Avances y anticipos recibidos de clientes
+280510;Sobre contratos
+280515;Para obras en proceso
+2810;Depósitos recibidos
+2815;Ingresos recibidos para terceros
+281505;Valores recibidos para terceros
+28150501;Valores recibidos para terceros
+281510;Venta por cuenta de terceros
+2820;Cuentas de operación conjunta
+2830;Embargos judiciales
+283005;Indemnizaciones
+283010;Depósitos judiciales
+2895;Diversos
+29;Bonos y papeles comerciales
+2905;Bonos en circulación
+2910;Bonos obligatoriamente convertibles en acciones
+2915;Papeles comerciales
+2920;Bonos pensionales
+292005;Valor bonos pensionales
+292010;Bonos pensionales por amortizar (DB)
+292015;Intereses causados sobre bonos pensionales
+3;Patrimonio
+31;Capital social
+3105;Capital suscrito y pagado
+310505;Capital suscrito y pagado
+31050501;Capital autorizado
+310510;Capital por suscribir (DB)
+31051001;Capital por suscribir (DB)
+310515;Capital suscrito por cobrar (DB)
+31051501;Capital suscrito por cobrar (DB)
+3120;Capital asignado
+3125;Inversión suplementaria al capital asignado
+3135;Aportes del Estado
+32;Superávit de capital
+3205;Prima en colocación de acciones, cuotas o partes de interés social
+320505;Prima en colocación de acciones
+32050501;Prima en colocación de acciones
+320510;Prima en colocación de acciones por cobrar (DB)
+32051001;Prima en colocación de acciones por cobrar (DB)
+320525;Superávit método de participación
+32052501;Superávit método de participación
+3210;Donaciones
+33;Reservas
+3305;Reservas obligatorias
+330505;Reservas obligatorias
+33050501;Reserva legal
+330515;Reserva para readquisición de acciones
+330516;Acciones propias readquiridas (DB)
+3310;Reservas estatutarias
+3315;Reservas ocasionales
+34;Revalorización del patrimonio
+3405;Ajustes por inflación
+340505;De capital social
+340510;De superávit de capital
+340515;De reservas
+340520;De resultados de ejercicios anteriores
+340545;Superávit método de participación
+35;Dividendos o participaciones decretados en acciones, cuotas o partes de interés social
+3505;Dividendos decretados en acciones
+3510;Participaciones decretadas en cuotas o partes de interés social
+36;Resultados del ejercicio
+3605;Utilidad del ejercicio
+360505;Utilidad del ejercicio
+36050501;Utilidad del ejercicio
+3610;Pérdida del ejercicio
+361005;Pérdida del ejercicio
+36100501;Pérdida del ejercicio
+37;Resultados de ejercicios anteriores
+3705;Utilidades acumuladas
+370505;Utilidades acumuladas
+37050501;Utilidades acumuladas
+3710;Pérdidas acumuladas
+371005;Pérdidas acumuladas
+37100501;Pérdidas acumuladas
+38;Superávit por valorizaciones
+3805;De inversiones
+380505;Acciones
+3810;De propiedades, planta y equipo
+3895;De otros activos
+39;Ajustes por saldos iniciales
+3905;Ajustes por saldos iniciales
+390505;Ajustes iniciales
+39050501;Ajustes iniciales en bancos
+39050502;Ajustes iniciales en inventario
+4;Ingresos
+41;Ingresos de actividades ordinarias
+4101;Ingresos por ventas
+413505;Ingresos por ventas
+41350101;Ventas
+4175;Devoluciones en ventas
+417505;Devoluciones en ventas
+41750501;Devoluciones en ventas
+42;Otros ingresos
+4205;Otras ventas
+4210;Financieros
+421005;Intereses
+42100501;Intereses
+421010;Reajuste monetario-UPAC (hoy UVR)
+421015;Descuentos amortizados
+421020;Diferencia en cambio
+42102001;Diferencia en cambio
+421025;Financiación vehículos
+421045;Descuentos bancarios
+421050;Comisiones cheques de otras plazas
+4215;Dividendos y participaciones
+4218;Ingresos método de participación
+4220;Arrendamientos
+4225;Comisiones
+4230;Honorarios
+4235;Servicios
+4245;Utilidad en venta de propiedades, planta y equipo
+424505;Utilidad en venta de propiedades, planta y equipo
+42450501;Utilidad en venta de activos
+4248;Utilidad en venta de otros bienes
+4250;Recuperaciones
+4255;Indemnizaciones
+4260;Participaciones en concesiones
+4295;Diversos
+429581;Ajuste al peso
+42958101;Ajustes por aproximaciones en cálculos
+47;Ajustes por inflación
+4705;Corrección monetaria
+5;Gastos
+51;Operacionales de administración
+5105;Gastos de personal
+510503;Salario integral
+51050301;Salario integral
+510506;Sueldos
+51050601;Sueldos
+510512;Jornales
+510515;Horas extras y recargos
+51051501;Horas extras y recargos
+510518;Comisiones
+51051801;Comisiones
+510521;Viáticos
+510524;Incapacidades
+51052401;Incapacidades
+510527;Auxilio de transporte
+51052701;Auxilio de transporte
+510530;Cesantías
+51053001;Cesantías
+510533;Intereses sobre cesantías
+51053301;Intereses sobre cesantías
+510536;Prima de servicios
+51053601;Prima de servicios
+510539;Vacaciones
+51053901;Vacaciones
+510542;Primas extralegales
+510545;Auxilios
+510548;Bonificaciones
+510551;Dotación y suministro a trabajadores
+51055101;Dotación y suministro a trabajadores
+510554;Seguros
+510560;Indemnizaciones laborales
+510563;Capacitación al personal
+510566;Gastos deportivos y de recreación
+510568;Aportes a administradoras de riesgos laborales, ARL
+51056801;Aportes a ARL
+510569;Aportes a entidades promotoras de salud, EPS
+51056901;Aportes a EPS
+510570;Aportes a fondos de pensiones y/o cesantías
+51057001;Aportes fondo de pensiones y cesantías
+510572;Aportes cajas de compensación familiar
+51057201;Aportes cajas de compensación familiar
+510575;Aportes ICBF
+51057501;Aportes ICBF
+510578;Aportes SENA
+51057801;Aportes SENA
+510584;Gastos médicos y drogas
+510595;Otros
+51059501;Otros gastos del personal administrativo
+5110;Honorarios
+511005;Junta directiva
+51100501;Junta directiva
+511010;Revisoría fiscal
+511015;Auditoría externa
+511020;Avalúos
+511025;Asesoría jurídica
+51102501;Asesoría jurídica
+511030;Asesoría financiera
+51103001;Asesoría financiera
+511035;Asesoría técnica
+51103501;Asesoría técnica
+511095;Otros
+51109501;Otros honorarios
+5115;Impuestos
+511505;Industria y comercio
+51150501;Industria y comercio
+511510;De timbres
+511515;A la propiedad raíz
+511540;De vehículos
+511570;IVA descontable
+51157001;IVA descontable
+5120;Arrendamientos
+512005;Arrendamiento
+51200501;Arrendamiento de equipos
+51200502;Arrendamiento de oficinas
+5125;Contribuciones y afiliaciones
+512505;Contribuciones y afiliaciones
+51250501;Cuotas y suscripciones
+5130;Seguros
+513020;Vida colectiva
+51302001;Vida colectiva
+513025;Incendio
+51302501;Incendio
+513030;Terremoto
+513035;Sustracción y hurto
+513040;Flota y equipo de transporte
+51304001;Flota y equipo de transporte
+513060;Responsabilidad civil y extracontractual
+513075;Obligatorio accidente de tránsito
+51307501;Obligatorio accidente de tránsito
+513080;Lucro cesante
+513085;Transporte de mercancía
+5135;Servicios
+513505;Aseo y vigilancia
+51350501;Aseo y vigilancia
+513510;Temporales
+513515;Asistencia técnica
+51351501;Asistencia técnica
+513520;Procesamiento electrónico de datos
+513525;Acueducto y alcantarillado
+51352501;Acueducto y alcantarillado
+513530;Energía eléctrica
+51353001;Energía eléctrica
+513535;Teléfono
+51353501;Teléfono
+513540;Correo, portes y telegramas
+513550;Transporte, fletes y acarreos
+51355001;Transporte, fletes y acarreos
+513555;Gas
+51355501;Gas
+513595;Otros
+51359501;Agua
+51359502;Propaganda y publicidad
+51359503;Otros servicios
+5140;Gastos legales
+514005;Notariales
+51400501;Notariales
+514010;Registro mercantil
+51401001;Registro mercantil
+514015;Trámites y licencias
+51401501;Trámites y licencias
+514020;Aduaneros
+5145;Mantenimiento y reparaciones
+514505;Terrenos
+514510;Construcciones y edificaciones
+51451001;Construcciones y edificaciones
+514515;Maquinaria y equipo
+51451501;Maquinaria y equipo
+514520;Equipo de oficina
+51452001;Equipo de oficina
+514525;Equipo de computación y comunicación
+51452501;Equipo de computación y comunicación
+5150;Adecuación e instalación
+515005;Instalaciones eléctricas
+515015;Reparaciones locativas
+5155;Gastos de viaje
+515505;Alojamiento y manutención
+51550501;Alojamiento y manutención
+515510;Pasajes fluviales y/o marítimos
+515515;Pasajes aéreos
+51551501;Pasajes aéreos
+515520;Pasajes terrestres
+515525;Pasajes férreos
+5160;Depreciaciones
+516005;Construcciones y edificaciones
+51600501;Construcciones y edificaciones
+516010;Maquinaria y equipo
+51601001;Maquinaria y equipo
+516015;Equipo de oficina
+51601501;Equipo de oficina
+51601502;Muebles y enseres
+516020;Equipo de computación y comunicación
+51602001;Equipo de computación y comunicación
+516035;Flota y equipo de transporte
+51603501;Flota y equipo de transporte
+5165;Amortizaciones
+516510;Intangibles
+51651001;Intangibles
+516515;Cargos diferidos
+5195;Diversos
+519505;Comisiones
+519510;Libros, suscripciones, periódicos y revistas
+519520;Gastos de representación y relaciones públicas
+51952001;Gastos de representación y relaciones públicas
+519525;Elementos de aseo y cafetería
+51952501;Elementos de aseo y cafetería
+519530;Útiles, papelería y fotocopias
+51953001;Útiles, papelería y fotocopias
+519535;Combustibles y lubricantes
+51953501;Combustibles y lubricantes
+519540;Envases y empaques
+519545;Taxis y buses
+51954501;Taxis y buses
+519550;Estampillas
+519560;Casino y restaurante
+519565;Parqueaderos
+51956501;Parqueaderos
+519570;Indemnización por daños a terceros
+519595;Servicios online
+51959501;Software contables
+5199;Provisiones
+519905;Inversiones
+519910;Deudores
+51991001;Deudores
+519915;Propiedades, planta y equipo
+519995;Otros activos
+52;Operacionales de ventas
+5205;Gastos de personal
+520503;Salario integral
+52050301;Salario integral
+520506;Sueldos
+52050601;Sueldos
+520512;Jornales
+520515;Horas extras y recargos
+52051501;Horas extras y recargos
+520518;Comisiones
+52051801;Comisiones
+520521;Viáticos
+520524;Incapacidades
+52052401;Incapacidades
+520527;Auxilio de transporte
+52052701;Auxilio de transporte
+520530;Cesantías
+52053001;Cesantías
+520533;Intereses sobre cesantías
+52053301;Intereses sobre cesantías
+520536;Prima de servicios
+52053601;Prima de servicios
+520539;Vacaciones
+52053901;Vacaciones
+520542;Primas extralegales
+520545;Auxilios
+520548;Bonificaciones
+520551;Dotación y suministro a trabajadores
+52055101;Dotación y suministro a trabajadores
+520554;Seguros
+520560;Indemnizaciones laborales
+520563;Capacitación al personal
+520566;Gastos deportivos y de recreación
+520568;Aportes a administradoras de riesgos laborales, ARL
+52056801;Aportes a ARL personal de ventas
+520569;Aportes a entidades promotoras de salud, EPS
+52056901;Aportes a EPS personal de ventas
+520570;Aportes a fondos de pensiones y/o cesantías
+52057001;Aportes fondo de pensiones y cesantías personal de ventas
+520572;Aportes cajas de compensación familiar
+52057201;Aportes cajas de compensación familiar personal de ventas
+520575;Aportes ICBF
+52057501;Aportes ICBF personal de ventas
+520578;Aportes SENA
+52057801;Aportes SENA personal de ventas
+520584;Gastos médicos y drogas
+520595;Otros
+52059501;Otros gastos del personal de ventas
+53;No operacionales
+5305;Financieros
+530505;Gastos bancarios
+53050501;Gastos por intereses financieros
+530510;Reajuste monetario-UPAC (hoy UVR)
+530515;Comisiones
+53051501;Comisiones bancarias
+530520;Intereses
+53052001;Gastos por intereses de mora
+530525;Diferencia en cambio
+53052501;Pérdida por diferencia en cambio
+530530;Gastos en negociación certificados de cambio
+530535;Descuentos comerciales condicionados
+530540;Gastos manejo y emisión de bonos
+530545;Prima amortizada
+5310;Pérdida en venta y retiro de bienes
+531005;Venta de inversiones
+531010;Venta de cartera
+531015;Venta de propiedades, planta y equipo
+53101501;Pérdida en venta de activos
+531020;Venta de intangibles
+531025;Venta de otros activos
+531030;Retiro de propiedades, planta y equipo
+53103001;Pérdida por disposición de activos
+531035;Retiro de otros activos
+531040;Pérdidas por siniestros
+5313;Pérdidas método de participación
+5315;Gastos extraordinarios
+531505;Costas y procesos judiciales
+531510;Actividades culturales y cívicas
+531515;Costos y gastos de ejercicios anteriores
+531520;Impuestos asumidos
+5395;Gastos diversos
+539505;Demandas laborales
+539510;Demandas por incumplimiento de contratos
+539515;Indemnizaciones
+539520;Multas, sanciones y litigios
+539525;Donaciones
+539530;Constitución de garantías
+539535;Amortización de bienes entregados en comodato
+539540;Ajustes por aproximaciones en cálculos
+53954001;Ajustes por aproximaciones en cálculos
+54;Impuesto de renta y complementarios
+5405;Impuesto de renta y complementarios
+540505;Impuesto de renta y complementarios
+5410;Impuestos no acreditables
+541005;Impuestos no acreditables
+54100501;Gastos por impuestos no acreditables
+5415;Retención en la fuente asumida
+541505;Retención en la fuente asumida
+54150501;Retención en la fuente asumida
+59;Ganancias y pérdidas
+5905;Ganancias y pérdidas
+590505;Ganancias y pérdidas
+6;Costos de ventas
+61;Costo de ventas y de prestación de servicios
+6101;Costos de ventas
+610105;Costos de la mercancía vendida
+61010501;Costo del inventario
+6102;Costos de servicios
+610205;Costos de servicios
+61020501;Costo de los servicios vendidos
+6135;Comercio al por mayor y al por menor
+6180;Ajustes
+618005;Ajustes de inventario
+61800501;Ajustes de inventario
+618010;Descuentos financieros
+61801001;Descuentos financieros
+62;Compras
+6205;De mercancías
+6210;De materias primas
+6215;De materiales indirectos
+6220;Compra de energía
+6225;Devoluciones en compras (CR)
+622505;Devoluciones en compras
+62250501;Devoluciones en compras de inventario
+7;Costos de producción
+71;Costos de producción o de operación
+7105;Costos de producción o de operación
+710505;Costos de producción o de operación
+71050501;Materia prima
+72;Mano de obra directa
+7205;Mano de obra directa
+720506;Sueldos personal operativo
+72050601;Sueldos personal operativo
+720515;Horas extras y recargos personal operativo
+72051501;Horas extras y recargos personal operativo
+720524;Incapacidades personal operativo
+72052401;Incapacidades personal operativo
+720527;Auxilio de transporte personal operativo
+72052701;Auxilio de transporte personal operativo
+720530;Cesantías personal operativo
+72053001;Cesantías personal operativo
+720533;Intereses sobre cesantías personal operativo
+72053301;Intereses sobre cesantías personal operativo
+720536;Prima de servicios personal operativo
+72053601;Prima de servicios personal operativo
+720539;Vacaciones personal operativo
+72053901;Vacaciones personal operativo
+720551;Dotación a trabajadores personal operativo
+72055101;Dotación a trabajadores personal operativo
+720568;Aportes a ARL personal operativo
+72056801;Aportes a ARL personal operativo
+720569;Aportes a EPS personal operativo
+72056901;Aportes a EPS personal operativo
+720570;Aportes fondo de pensiones y cesantías personal operativo
+72057001;Aportes fondo de pensiones y cesantías personal operativo
+720572;Aportes cajas de compensación familiar personal operativo
+72057201;Aportes cajas de compensación familiar personal operativo
+720575;Aportes ICBF personal operativo
+72057501;Aportes ICBF personal operativo
+720578;Aportes SENA personal operativo
+72057801;Aportes SENA personal operativo
+720595;Otros gastos del personal operativo
+72059501;Otros gastos del personal operativo
+73;Costos indirectos
+74;Contratos de servicios
+8;Cuentas de orden deudoras
+81;Derechos contingentes
+8105;Bienes y valores entregados en custodia
+810505;Valores mobiliarios
+810510;Bienes muebles
+810599;Ajustes por inflación
+8110;Bienes y valores entregados en garantía
+811005;Valores mobiliarios
+811010;Bienes muebles
+811015;Bienes inmuebles
+811020;Contratos de ganado en participación
+811099;Ajustes por inflación
+8115;Bienes y valores en poder de terceros
+811505;En arrendamiento
+811510;En préstamo
+811515;En depósito
+811520;En consignación
+811599;Ajustes por inflación
+8120;Litigios y/o demandas
+812005;Ejecutivos
+812010;Incumplimiento de contratos
+8125;Promesas de compraventa
+8195;Diversas
+819505;Valores adquiridos por recibir
+819595;Otras
+819599;Ajustes por inflación
+82;Deudoras fiscales
+83;Deudoras de control
+8305;Bienes recibidos en arrendamiento financiero
+830505;Bienes muebles
+830510;Bienes inmuebles
+830599;Ajustes por inflación
+8310;Títulos de inversión no colocados
+831005;Acciones
+831010;Bonos
+831095;Otros
+8315;Propiedades, planta y equipo totalmente depreciados, agotados y/o amortizados
+831506;Materiales proyectos petroleros
+831516;Construcciones y edificaciones
+831520;Maquinaria y equipo
+831524;Equipo de oficina
+831528;Equipo de computación y comunicación
+831532;Equipo médico-científico
+831536;Equipo de hoteles y restaurantes
+831540;Flota y equipo de transporte
+831544;Flota y equipo fluvial y/o marítimo
+831548;Flota y equipo aéreo
+831552;Flota y equipo férreo
+831556;Acueductos, plantas y redes
+831560;Armamento de vigilancia
+831562;Envases y empaques
+831564;Plantaciones agrícolas y forestales
+831568;Vías de comunicación
+831572;Minas y canteras
+831576;Pozos artesianos
+831580;Yacimientos
+831584;Semovientes
+831599;Ajustes por inflación
+8320;Créditos a favor no utilizados
+832005;País
+832010;Exterior
+8325;Activos castigados
+832505;Inversiones
+832510;Deudores
+832595;Otros activos
+8330;Títulos de inversión amortizados
+833005;Bonos
+833095;Otros
+8335;Capitalización por revalorización de patrimonio
+8395;Otras cuentas deudoras de control
+839505;Cheques posfechados
+839510;Certificados de depósito a término
+839515;Cheques devueltos
+839520;Bienes y valores en fideicomiso
+839525;Intereses sobre deudas vencidas
+839595;Diversas
+839599;Ajustes por inflación
+8399;Ajustes por inflación activos
+839905;Inversiones
+839910;Inventarios
+839915;Propiedades, planta y equipo
+839920;Intangibles
+839925;Cargos diferidos
+839995;Otros activos
+84;Derechos contingentes por contra (CR)
+85;Deudoras fiscales por contra (CR)
+86;Deudoras de control por contra (CR)
+9;Cuentas de orden acreedoras
+91;Responsabilidades contingentes
+9105;Bienes y valores recibidos en custodia
+910505;Valores mobiliarios
+910510;Bienes muebles
+910599;Ajustes por inflación
+9110;Bienes y valores recibidos en garantía
+911005;Valores mobiliarios
+911010;Bienes muebles
+911015;Bienes inmuebles
+911020;Contratos de ganado en participación
+911099;Ajustes por inflación
+9115;Bienes y valores recibidos de terceros
+911505;En arrendamiento
+911510;En préstamo
+911515;En depósito
+911520;En consignación
+911525;En comodato
+911599;Ajustes por inflación
+9120;Litigios y/o demandas
+912005;Laborales
+912010;Civiles
+912015;Administrativos o arbitrales
+912020;Tributarios
+9125;Promesas de compraventa
+9130;Contratos de administración delegada
+9135;Cuentas en participación
+9195;Otras responsabilidades contingentes
+92;Acreedoras fiscales
+93;Acreedoras de control
+9305;Contratos de arrendamiento financiero
+930505;Bienes muebles
+930510;Bienes inmuebles
+9395;Otras cuentas de orden acreedoras de control
+939505;Documentos por cobrar descontados
+939510;Convenios de pago
+939515;Contratos de construcciones e instalaciones por ejecutar
+939525;Adjudicaciones pendientes de legalizar
+939530;Reserva artículo 3º Ley 4ª de 1980
+939535;Reserva costo reposición semovientes
+939595;Diversas
+939599;Ajustes por inflación
+9399;Ajustes por inflación patrimonio
+939905;Capital social
+939910;Superávit de capital
+939915;Reservas
+939925;Dividendos o participaciones decretadas en acciones, cuotas o partes de interés social
+939930;Resultados de ejercicios anteriores
+94;Responsabilidades contingentes por contra (DB)
+95;Acreedoras fiscales por contra (DB)
+96;Acreedoras de control por contra (DB)

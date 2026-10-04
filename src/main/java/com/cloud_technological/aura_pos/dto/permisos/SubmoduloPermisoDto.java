@@ -12,4 +12,8 @@ public class SubmoduloPermisoDto {
     private String submoduloCodigo;
     private String submoduloNombre;
     private Boolean activo;
+    /** Grupo del que cuelga (tercer nivel); null = directo del módulo. */
+    private Integer padreId;
+    /** Es un grupo (Gestión, Asistencia…), no una pantalla. */
+    private Boolean esGrupo;
 }

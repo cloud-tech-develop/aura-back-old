@@ -54,6 +54,10 @@ public class VentaEntity {
     @Column(name = "tipo_documento")
     private String tipoDocumento;
 
+    /** Centro de costo elegido en la factura; null = el de la sucursal. */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
     private String prefijo;
     private Long consecutivo;
 

@@ -20,4 +20,6 @@ public class CreateSubmoduloDto {
     
     private String descripcion;
     private Integer orden;
+    /** Grupo del que cuelga (mismo módulo); null = directo del módulo. */
+    private Long padreId;
 }

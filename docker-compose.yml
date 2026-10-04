@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend AURA en Docker para desarrollo, con memoria y CPU limitadas.
+#
+#   Arrancar y que se actualice solo con cada cambio:
+#       docker compose up --build --watch
+#   (o en dos pasos: docker compose up -d --build  y luego  docker compose watch)
+#
+#   Ver el log:          docker compose logs -f backend
+#   Ver consumo:         docker stats aura-backend
+#   Apagar:              docker compose down
+#
+# Usa el mismo .env de siempre (no se copia a la imagen). La base sigue siendo
+# el Postgres de la máquina: el contenedor cambia localhost por host.docker.internal.
+#
+# Cada cambio en src/ o en pom.xml reconstruye la imagen (Maven con caché, sin
+# bajar dependencias otra vez) y reinicia el backend. Antes de arrancarlo, cierre
+# el backend que corre desde VS Code: los dos usan el puerto 9001.
+# ─────────────────────────────────────────────────────────────────────────────
+name: aura
+
+services:
+  backend:
+    build: .
+    image: aura-backend:dev
+    container_name: aura-backend
+    env_file: .env
+    ports:
+      - "${SERVER_PORT:-9001}:${SERVER_PORT:-9001}"
+    extra_hosts:
+      # En Linux también resuelve la máquina (Docker Desktop ya lo trae).
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Ajustable sin tocar este archivo: BACK_MEMORIA=2g BACK_CPUS=3 docker compose up …
+          memory: ${BACK_MEMORIA:-1536m}
+          cpus: "${BACK_CPUS:-2}"
+    develop:
+      watch:
+        # Código o dependencias cambiaron: reconstruir la imagen y reiniciar.
+        - action: rebuild
+          path: ./src
+        - action: rebuild
+          path: ./pom.xml
