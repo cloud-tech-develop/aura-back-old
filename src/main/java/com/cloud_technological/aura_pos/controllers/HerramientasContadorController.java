@@ -49,7 +49,8 @@ public class HerramientasContadorController {
     public record TrasladoRequest(Long origenId, Long destinoId,
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            Long terceroId, List<Long> detalleIds, String motivo) {
+            Long terceroId, List<Long> detalleIds, String motivo,
+            Boolean conConfiguracion, Boolean origenAgrupadora, Boolean soloConfiguracion) {
     }
 
     @GetMapping("/traslado-cuentas/vista-previa")
@@ -63,10 +64,16 @@ public class HerramientasContadorController {
     }
 
     @PostMapping("/traslado-cuentas")
-    public ResponseEntity<ApiResponse<Integer>> trasladar(@RequestBody TrasladoRequest r) {
-        int n = service.trasladar(securityUtils.getEmpresaId(), r.origenId(), r.destinoId(), r.desde(), r.hasta(),
-                r.terceroId(), r.detalleIds(), r.motivo(), securityUtils.getUsuarioId());
-        return ok(n + " movimiento(s) trasladado(s)", n);
+    public ResponseEntity<ApiResponse<HerramientasContadorService.ResultadoTraslado>> trasladar(
+            @RequestBody TrasladoRequest r) {
+        var res = service.trasladar(securityUtils.getEmpresaId(), r.origenId(), r.destinoId(), r.desde(), r.hasta(),
+                r.terceroId(), r.detalleIds(), r.motivo(), securityUtils.getUsuarioId(),
+                Boolean.TRUE.equals(r.conConfiguracion()), Boolean.TRUE.equals(r.origenAgrupadora()),
+                Boolean.TRUE.equals(r.soloConfiguracion()));
+        String msg = res.lineas() + " movimiento(s) trasladado(s)"
+                + (res.configuracion() > 0 ? ", " + res.configuracion() + " registro(s) de configuración" : "")
+                + (res.origenAgrupadora() ? "; la cuenta de origen quedó como agrupadora" : "");
+        return ok(msg, res);
     }
 
     @GetMapping("/traslado-cuentas/historial")

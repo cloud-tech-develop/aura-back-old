@@ -16,6 +16,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class ReconteoQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -40,7 +44,7 @@ public class ReconteoQueryRepository {
             FROM reconteos r
             INNER JOIN sucursal s ON r.sucursal_id = s.id
             LEFT JOIN reconteo_detalles rd ON rd.reconteo_id = r.id
-            WHERE r.empresa_id = :empresaId
+            WHERE r.empresa_id = :empresaId /*SEDE:r.sucursal_id*/
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -55,7 +59,7 @@ public class ReconteoQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<ReconteoTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<ReconteoTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(ReconteoTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -84,6 +88,6 @@ public class ReconteoQueryRepository {
             ORDER BY p.nombre
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("reconteoId", reconteoId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ReconteoDetalleResponseDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReconteoDetalleResponseDto.class));
     }
 }

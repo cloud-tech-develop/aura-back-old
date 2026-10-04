@@ -34,6 +34,16 @@ public class ModuloController {
     @Autowired
     private ModuloService moduloService;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.platform.ModuloQueryRepository moduloQueryRepository;
+
+    /** Catálogo completo de módulos y submódulos en árbol, para elegirlos al crear una empresa. */
+    @GetMapping("/arbol")
+    public ResponseEntity<ApiResponse<List<com.cloud_technological.aura_pos.dto.permisos.ModuloPermisoDto>>> arbol() {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Catálogo de módulos", false,
+                moduloQueryRepository.listarPermisosPorEmpresa(null)), HttpStatus.OK);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ModuloDto>> obtenerPorId(@PathVariable Integer id) {
         ModuloDto result = moduloService.obtenerPorId(id);

@@ -16,6 +16,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class BodegaQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     /**
      * Cuidado al tocar este SELECT: el RowMapper es por nombre de columna, así
@@ -51,7 +55,7 @@ public class BodegaQueryRepository {
         JOIN sucursal s ON s.id = b.sucursal_id
         LEFT JOIN usuario u ON u.id = b.responsable_usuario_id
         LEFT JOIN tercero t ON t.id = u.tercero_id
-        WHERE b.empresa_id = :empresaId
+        WHERE b.empresa_id = :empresaId /*SEDE:b.sucursal_id*/
         """;
 
     @Autowired
@@ -78,7 +82,7 @@ public class BodegaQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<BodegaTableDto> list = jdbc.query(sql.toString(), params,
+        List<BodegaTableDto> list = jdbc.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(BodegaTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -89,7 +93,7 @@ public class BodegaQueryRepository {
         String sql = SELECT_TABLA + " AND b.id = :id ";
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId)
                 .addValue("id", id);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(BodegaTableDto.class))
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(BodegaTableDto.class))
                 .stream().findFirst().orElse(null);
     }
 
@@ -118,7 +122,7 @@ public class BodegaQueryRepository {
         }
 
         sql.append(" ORDER BY s.nombre ASC, b.es_principal DESC, b.nombre ASC ");
-        return jdbc.query(sql.toString(), params, new BeanPropertyRowMapper<>(BodegaDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql.toString(), params), params, new BeanPropertyRowMapper<>(BodegaDto.class));
     }
 
     /** Si tiene saldo o movimientos no se puede borrar: solo desactivar. */

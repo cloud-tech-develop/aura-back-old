@@ -44,6 +44,24 @@ public class SubmoduloController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
     }
 
+    /**
+     * Submódulos de un módulo, paginados y con búsqueda.
+     * Cuerpo: {page, rows, search, params: {moduloId}}.
+     */
+    @PostMapping("/page")
+    public ResponseEntity<ApiResponse<org.springframework.data.domain.PageImpl<SubmoduloTableDto>>> paginar(
+            @RequestBody com.cloud_technological.aura_pos.utils.PageableDto<java.util.Map<String, Object>> pageable) {
+        Object m = pageable.getParams() != null ? pageable.getParams().get("moduloId") : null;
+        if (m == null) {
+            throw new com.cloud_technological.aura_pos.utils.GlobalException(HttpStatus.BAD_REQUEST, "Falta el módulo");
+        }
+        Integer moduloId = Integer.valueOf(m.toString());
+        int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
+        int size = pageable.getRows() != null ? pageable.getRows().intValue() : 15;
+        var result = submoduloService.paginar(moduloId, pageable.getSearch(), page, size);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<SubmoduloTableDto>> crear(@Valid @RequestBody CreateSubmoduloDto dto) {
         SubmoduloTableDto result = submoduloService.crear(dto);

@@ -37,8 +37,15 @@ public class SecurityUtils {
 
     private String getTokenFromSecurityContext() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getCredentials() instanceof String) {
-            return (String) authentication.getCredentials();
+        // Sin sesión (login, rutas públicas) Spring deja un usuario anónimo con
+        // credencial "": tomarla como token revienta al leerla ("JWT String
+        // argument cannot be null or empty"). Solo cuenta un token de verdad.
+        if (authentication == null
+                || authentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+            return null;
+        }
+        if (authentication.getCredentials() instanceof String token && !token.isBlank()) {
+            return token;
         }
         return null;
     }

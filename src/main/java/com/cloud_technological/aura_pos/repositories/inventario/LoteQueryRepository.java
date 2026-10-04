@@ -15,6 +15,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class LoteQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -62,7 +66,7 @@ public class LoteQueryRepository {
                  LIMIT 1
             ) c ON true
             LEFT JOIN tercero t ON t.id = c.proveedor_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND l.activo = true
             AND p.deleted_at IS NULL
         """);
@@ -82,7 +86,7 @@ public class LoteQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<LoteTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<LoteTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(LoteTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -107,7 +111,7 @@ public class LoteQueryRepository {
             FROM lote l
             INNER JOIN producto p ON l.producto_id = p.id
             INNER JOIN sucursal s ON l.sucursal_id = s.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND l.activo = true
             AND l.stock_actual > 0
             -- Incluye los ya vencidos con stock: son los que más urge sacar.
@@ -116,7 +120,7 @@ public class LoteQueryRepository {
             ORDER BY l.fecha_vencimiento ASC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(LoteTableDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(LoteTableDto.class));
     }
 
     // Lotes disponibles para un producto en una sucursal (usado en ventas)
@@ -148,7 +152,7 @@ public class LoteQueryRepository {
         params.addValue("productoId", productoId);
         params.addValue("sucursalId", sucursalId);
         params.addValue("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(LoteTableDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(LoteTableDto.class));
     }
 
     /**
@@ -180,7 +184,7 @@ public class LoteQueryRepository {
             INNER JOIN sucursal s ON s.id = l.sucursal_id
             LEFT JOIN categoria c ON c.id = p.categoria_id
             LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
               AND (CAST(:sucursalId AS INTEGER) IS NULL OR l.sucursal_id = :sucursalId)
               AND COALESCE(l.activo, true)
               AND l.stock_actual > 0
@@ -193,7 +197,7 @@ public class LoteQueryRepository {
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId)
                 .addValue("sucursalId", sucursalId)
                 .addValue("dias", dias);
-        return jdbcTemplate.query(sql, params,
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params,
                 new BeanPropertyRowMapper<>(com.cloud_technological.aura_pos.dto.inventario.VencimientoLoteDto.class));
     }
 }

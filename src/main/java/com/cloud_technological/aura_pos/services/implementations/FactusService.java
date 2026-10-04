@@ -107,6 +107,12 @@ public class FactusService {
         return bill;
     }
 
+    /** "company" del cliente en Factus: la razón social si es persona jurídica ("1"), vacío si es natural. */
+    static String razonSocialFactus(String organizacionLegalId, String nombreCliente) {
+        if (!"1".equals(organizacionLegalId)) return "";
+        return nombreCliente != null && !nombreCliente.isBlank() ? nombreCliente.trim() : "";
+    }
+
     private FactusCreateBillRequestDto buildFactusRequest(
             EmpresaEntity empresa, FacturaElectronicaRequest req) {
 
@@ -151,6 +157,11 @@ public class FactusService {
         // como persona natural. Ahora viene del tercero (por defecto, natural).
         customer.setLegalOrganizationId(req.getClienteOrganizacionLegalId() != null
                 ? req.getClienteOrganizacionLegalId() : "2");
+        // Persona jurídica: Factus exige la razón social en "company". Iba vacía,
+        // y Factus (Laravel) convierte "" en null → 422 "El campo razón social
+        // debe ser una cadena de caracteres". El nombre del cliente ya es la
+        // razón social del tercero.
+        customer.setCompany(razonSocialFactus(customer.getLegalOrganizationId(), req.getClienteNombre()));
         customer.setTributeId(req.getClienteTributoId() != null
                 ? req.getClienteTributoId() : "21");
         dto.setCustomer(customer);

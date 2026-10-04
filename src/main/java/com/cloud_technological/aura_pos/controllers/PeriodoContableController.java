@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.config.RequerirPermiso;
 import com.cloud_technological.aura_pos.dto.periodo_contable.AbrirPeriodoDto;
 import com.cloud_technological.aura_pos.dto.periodo_contable.CerrarPeriodoDto;
 import com.cloud_technological.aura_pos.dto.periodo_contable.PeriodoContableTableDto;
@@ -57,6 +58,7 @@ public class PeriodoContableController {
                 HttpStatus.CREATED);
     }
 
+    @RequerirPermiso(accion = "REABRIR")
     @PutMapping("/{id}/reabrir")
     public ResponseEntity<ApiResponse<PeriodoContableTableDto>> reabrir(
             @PathVariable Long id,

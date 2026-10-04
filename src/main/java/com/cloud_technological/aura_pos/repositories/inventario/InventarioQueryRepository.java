@@ -19,6 +19,10 @@ public class InventarioQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     public PageImpl<InventarioTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
@@ -65,6 +69,20 @@ public class InventarioQueryRepository {
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
 
+        // Sede y bodega (params): el front manda por defecto la sede en la que
+        // se trabaja; sin sede = todas (solo quien tiene todas las sedes).
+        Long sucursalId = numero(pageable.getParams(), "sucursalId");
+        Long bodegaId = numero(pageable.getParams(), "bodegaId");
+        if (sucursalId != null) {
+            sql.append(" AND i.sucursal_id = :sucursalId ");
+            params.addValue("sucursalId", sucursalId);
+        }
+        if (bodegaId != null) {
+            sql.append(" AND i.bodega_id = :bodegaId ");
+            params.addValue("bodegaId", bodegaId);
+        }
+        sql.append(alcanceSede.filtro("i.sucursal_id", params));
+
         if (!search.isEmpty()) {
             sql.append("""
                 AND (LOWER(p.nombre) LIKE :search
@@ -84,6 +102,19 @@ public class InventarioQueryRepository {
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
         return new PageImpl<>(list, PageRequest.of(page, size), total);
+    }
+
+    /** Un número de los params del listado (Map); null si no viene o viene vacío. */
+    private static Long numero(Object params, String clave) {
+        if (!(params instanceof java.util.Map<?, ?> m)) return null;
+        Object v = m.get(clave);
+        if (v instanceof Number n) return n.longValue();
+        if (v == null || v.toString().isBlank()) return null;
+        try {
+            return Long.valueOf(v.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     // Usado en ventas y compras para verificar stock disponible

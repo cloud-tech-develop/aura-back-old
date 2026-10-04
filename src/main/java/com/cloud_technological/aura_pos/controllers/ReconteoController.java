@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.config.RequerirPermiso;
 import com.cloud_technological.aura_pos.dto.reconteo.CreateReconteoDto;
 import com.cloud_technological.aura_pos.dto.reconteo.ReconteoResponseDto;
 import com.cloud_technological.aura_pos.dto.reconteo.ReconteoTableDto;
@@ -76,6 +77,7 @@ public class ReconteoController {
                 HttpStatus.OK);
     }
 
+    @RequerirPermiso(accion = "APROBAR")
     @PutMapping("/{id}/aprobar")
     public ResponseEntity<ApiResponse<ReconteoResponseDto>> aprobar(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();

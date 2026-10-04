@@ -31,6 +31,8 @@ public class CreateUsuarioFromEmpleadoDto {
 
     // El rol se obtiene del cargo del empleado, pero se puede override si es necesario
     private String rol;
+    /** Perfil de permisos; null = el perfil de sistema de su rol. */
+    private Long perfilId;
 
     // ID de la sucursal a asignar (requerido para iniciar sesión)
     @NotNull(message = "El ID de la sucursal es obligatorio")

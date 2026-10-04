@@ -10,8 +10,12 @@ import lombok.Setter;
 @Setter
 public class UsuarioDto {
     private Integer id;
+    /** La persona del usuario (V192: obligatoria al crear). */
+    private Long terceroId;
     private String username;
     private String rol;
+    private Long perfilId;
+    private String perfilNombre;
     private Boolean activo;
     private LocalDateTime createdAt;
 

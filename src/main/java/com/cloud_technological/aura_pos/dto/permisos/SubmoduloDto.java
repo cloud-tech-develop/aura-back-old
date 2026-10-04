@@ -14,4 +14,6 @@ public class SubmoduloDto {
     private String descripcion;
     private Boolean activo;
     private Integer orden;
+    private Long padreId;
+    private String padreNombre;
 }

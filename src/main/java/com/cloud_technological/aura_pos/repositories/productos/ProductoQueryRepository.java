@@ -62,16 +62,40 @@ public class ProductoQueryRepository {
                 um.abreviatura AS unidad_abreviatura,
                 COALESCE(p.maneja_lotes, false) AS maneja_lotes,
                 COALESCE(p.maneja_serial, false) AS maneja_serial,
+                st.stock AS stock_sede,
                 COUNT(*) OVER() AS total_rows
             FROM producto p
             LEFT JOIN categoria c ON p.categoria_id = c.id
             LEFT JOIN marca m ON p.marca_id = m.id
             LEFT JOIN unidad_medida um ON um.id = p.unidad_medida_base_id
+            -- Stock en la sede que se está mirando (params.sucursalId): un solo
+            -- catálogo para toda la empresa, la existencia es de cada sede.
+            LEFT JOIN LATERAL (
+                SELECT SUM(inv.stock_actual) AS stock
+                  FROM inventario inv
+                  JOIN bodega b ON b.id = inv.bodega_id AND b.activa = TRUE
+                 WHERE inv.producto_id = p.id
+                   AND CAST(:stockSucursalId AS BIGINT) IS NOT NULL
+                   AND inv.sucursal_id = :stockSucursalId
+            ) st ON TRUE
             WHERE p.empresa_id = :empresaId
             AND p.deleted_at IS NULL
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        Long stockSucursalId = null;
+        boolean conExistencias = false;
+        if (pageable.getParams() instanceof java.util.Map<?, ?> f) {
+            Object suc = f.get("sucursalId");
+            if (suc instanceof Number n) stockSucursalId = n.longValue();
+            else if (suc != null && !suc.toString().isBlank()) stockSucursalId = Long.valueOf(suc.toString().trim());
+            conExistencias = Boolean.parseBoolean(String.valueOf(f.get("conExistencias")));
+        }
+        params.addValue("stockSucursalId", stockSucursalId);
+        // "Solo con existencias aquí": lo que hay en esa sede.
+        if (conExistencias && stockSucursalId != null) {
+            sql.append(" AND COALESCE(st.stock, 0) > 0 ");
+        }
 
         if (!search.isEmpty()) {
             sql.append("""
@@ -303,6 +327,8 @@ public class ProductoQueryRepository {
              WHERE inv.producto_id = p.id
                AND inv.sucursal_id = :sucursalId
                AND b.activa = TRUE
+               -- Con bodega: el saldo de esa sola bodega (traslados entre bodegas).
+               AND (CAST(:bodegaId AS BIGINT) IS NULL OR inv.bodega_id = :bodegaId)
         ) i ON TRUE
         WHERE p.empresa_id = :empresaId
           AND p.deleted_at IS NULL
@@ -321,7 +347,8 @@ public class ProductoQueryRepository {
         StringBuilder sql = new StringBuilder(SELECT_INVENTARIO);
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("empresaId", empresaId)
-                .addValue("sucursalId", sucursalId);
+                .addValue("sucursalId", sucursalId)
+                .addValue("bodegaId", null);
 
         String texto = search != null ? search.trim().toLowerCase() : "";
         if (!texto.isEmpty()) {
@@ -344,9 +371,16 @@ public class ProductoQueryRepository {
 
     /** Coincidencia exacta de SKU (sin distinguir mayúsculas) o de código de barras. Null si no hay. */
     public ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long productoId) {
+        return buscarInventarioPorId(empresaId, sucursalId, null, productoId);
+    }
+
+    /** Con {@code bodegaId}: el stock de esa bodega; sin ella, la suma de la sucursal. */
+    public ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long bodegaId,
+            Long productoId) {
         List<ProductoInventarioDto> encontrados = jdbcTemplate.query(SELECT_INVENTARIO + " AND p.id = :productoId",
                 new MapSqlParameterSource().addValue("empresaId", empresaId)
-                        .addValue("sucursalId", sucursalId).addValue("productoId", productoId),
+                        .addValue("sucursalId", sucursalId).addValue("bodegaId", bodegaId)
+                        .addValue("productoId", productoId),
                 new BeanPropertyRowMapper<>(ProductoInventarioDto.class));
         return encontrados.isEmpty() ? null : encontrados.get(0);
     }
@@ -360,6 +394,7 @@ public class ProductoQueryRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("empresaId", empresaId)
                 .addValue("sucursalId", sucursalId)
+                .addValue("bodegaId", null)
                 .addValue("codigo", codigo);
 
         List<ProductoInventarioDto> encontrados = jdbcTemplate.query(sql, params,

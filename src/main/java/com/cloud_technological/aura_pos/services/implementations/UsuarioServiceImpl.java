@@ -38,6 +38,20 @@ import jakarta.transaction.Transactional;
 @Service
 public class UsuarioServiceImpl implements UsuarioService {
 
+    /** Perfil de permisos al crear o editar (docs/PLAN_PERMISOS.md, fase P1). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.PerfilService perfilService;
+
+    /** Cerrar sesiones al desactivar o cambiar la clave o las sedes (PLAN_PERMISOS P10). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.security.SesionService sesiones;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.BitacoraService bitacora;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.PermisoUsuarioService permisos;
+
     private final UsuarioJPARepository usuarioRepo;
     private final UsuarioSucursalJPARepository usuarioSucursalRepo;
     private final SucursalJPARepository sucursalRepo;
@@ -86,17 +100,23 @@ public class UsuarioServiceImpl implements UsuarioService {
     @Override
     @Transactional
     public UsuarioDto crear(CreateUsuarioDto dto, Integer empresaId) {
-        if (usuarioRepo.existsByUsername(dto.getEmail())) {
+        // La persona es un tercero que ya existe (V192): no se crea uno nuevo por
+        // cada usuario, así queda relacionado con el empleado, vendedor o cliente.
+        TerceroEntity tercero = terceroDeLaEmpresa(dto.getTerceroId(), empresaId, null);
+        String username = dto.getUsername() != null && !dto.getUsername().isBlank()
+                ? dto.getUsername().trim() : tercero.getEmail();
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Escriba el usuario de acceso (el tercero no tiene correo)");
+        }
+        if (usuarioRepo.existsByUsername(username)) {
             throw new IllegalArgumentException("El username ya está en uso");
         }
 
-        TerceroEntity tercero = usuarioMapper.mapTerceroFromCreateDto(dto);
-        tercero = terceroRepo.save(tercero);
-
         UsuarioEntity usuario = usuarioMapper.toEntity(dto);
         usuario.setRol(PoliticaRoles.validarAsignacion(null, dto.getRol(), securityUtils.getRol()));
-        usuario.setUsername(dto.getEmail());
+        usuario.setUsername(username);
         usuario.setPassword(passwordEncoder.encode(dto.getPassword()));
+        usuario.setPinAccesoRapido(null);
         if (dto.getPinAccesoRapido() != null) {
             usuario.setPinAccesoRapido(passwordEncoder.encode(dto.getPinAccesoRapido()));
         }
@@ -106,7 +126,9 @@ public class UsuarioServiceImpl implements UsuarioService {
         usuario.setEmpresa(empresa);
         usuario.setTercero(tercero);
 
+        usuario.setPerfilId(null);
         usuario = usuarioRepo.save(usuario);
+        asignarPerfil(usuario, empresaId, dto.getPerfilId(), null, null);
 
         asignarSucursales(usuario, dto.getSucursales());
 
@@ -119,35 +141,92 @@ public class UsuarioServiceImpl implements UsuarioService {
         UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));
 
-        if (dto.getUsername() != null
-                && usuarioRepo.existsByUsernameAndIdNot(dto.getUsername(), id)) {
-            throw new IllegalArgumentException("El username ya está en uso");
+        // Campo por campo, sin el mapper: copiaba el PIN sin cifrar (o lo borraba
+        // si no venía) y ponía de username el correo.
+        if (dto.getUsername() != null && !dto.getUsername().isBlank()) {
+            String username = dto.getUsername().trim();
+            if (usuarioRepo.existsByUsernameAndIdNot(username, id)) {
+                throw new IllegalArgumentException("El username ya está en uso");
+            }
+            usuario.setUsername(username);
         }
 
-        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+        boolean claveNueva = dto.getPassword() != null && !dto.getPassword().isBlank();
+        if (claveNueva) {
             usuario.setPassword(passwordEncoder.encode(dto.getPassword()));
         }
 
-        if (dto.getPinAccesoRapido() != null) {
+        if (dto.getPinAccesoRapido() != null && !dto.getPinAccesoRapido().isBlank()) {
             usuario.setPinAccesoRapido(passwordEncoder.encode(dto.getPinAccesoRapido()));
         }
 
-        // El mapper copia el rol del DTO tal cual: se toma el anterior antes y
-        // se deja el que permita la política (ver PoliticaRoles).
-        String rolAnterior = usuario.getRol();
-        usuarioMapper.updateEntityFromDto(dto, usuario);
-        usuario.setRol(PoliticaRoles.validarAsignacion(rolAnterior, dto.getRol(), securityUtils.getRol()));
-
-        TerceroEntity tercero = usuario.getTercero();
-        usuarioMapper.updateTerceroFromUpdateDto(dto, tercero);
-        terceroRepo.save(tercero);
-
-        if (dto.getSucursales() != null) {
-            usuarioSucursalRepo.deleteAllByUsuarioId(id);
-            asignarSucursales(usuario, dto.getSucursales());
+        boolean desactivado = false;
+        if (dto.getActivo() != null) {
+            desactivado = Boolean.TRUE.equals(usuario.getActivo()) && !dto.getActivo();
+            usuario.setActivo(dto.getActivo());
         }
 
-        return mapToDtoCompleto(usuarioRepo.save(usuario));
+        // La persona: otro tercero de la empresa que no tenga ya usuario.
+        if (dto.getTerceroId() != null
+                && (usuario.getTercero() == null || !dto.getTerceroId().equals(usuario.getTercero().getId()))) {
+            usuario.setTercero(terceroDeLaEmpresa(dto.getTerceroId(), empresaId, id));
+        }
+
+        // Se deja el rol que permita la política (ver PoliticaRoles).
+        String rolAnterior = usuario.getRol();
+        Long perfilAnterior = usuario.getPerfilId();
+        if (dto.getRol() != null) {
+            usuario.setRol(PoliticaRoles.validarAsignacion(rolAnterior, dto.getRol(), securityUtils.getRol()));
+        }
+        asignarPerfil(usuario, empresaId, dto.getPerfilId(), rolAnterior, perfilAnterior);
+
+        boolean cambioSedes = false;
+        if (dto.getSucursales() != null) {
+            permisos.invalidarUsuario(id);
+            java.util.Set<Long> antes = new java.util.TreeSet<>(permisos.efectivos(id).getSucursales());
+            usuarioSucursalRepo.deleteAllByUsuarioId(id);
+            asignarSucursales(usuario, dto.getSucursales());
+            java.util.Set<Long> despues = new java.util.TreeSet<>();
+            for (CreateUsuarioDto.SucursalAsignacion a : dto.getSucursales()) {
+                if (a.getSucursalId() != null) despues.add(a.getSucursalId().longValue());
+            }
+            cambioSedes = !antes.equals(despues);
+            permisos.invalidarUsuario(id);
+            if (cambioSedes) {
+                bitacora.registrar("caja.usuarios", "CAMBIO_SEDES", "usuario", id,
+                        "Cambió las sedes de " + usuario.getUsername(), antes, despues);
+            }
+        }
+
+        UsuarioEntity guardado = usuarioRepo.save(usuario);
+        if (claveNueva) {
+            bitacora.registrar("caja.usuarios", "CAMBIO_CLAVE", "usuario", id,
+                    "Cambió la clave de " + usuario.getUsername() + " (se cerraron sus sesiones)", null, null);
+        }
+        if (desactivado) {
+            bitacora.registrar("caja.usuarios", "ANULAR", "usuario", id,
+                    "Desactivó el usuario " + usuario.getUsername() + " (se cerraron sus sesiones)", null, null);
+        }
+        // Clave nueva, sedes distintas o desactivado: las sesiones abiertas dejan de servir.
+        if (claveNueva || cambioSedes || desactivado) sesiones.revocar(guardado);
+        return mapToDtoCompleto(guardado);
+    }
+
+    /**
+     * El tercero del usuario: de la misma empresa y sin otro usuario (una persona,
+     * un usuario). Se responde "no encontrado" si es de otra empresa.
+     */
+    private TerceroEntity terceroDeLaEmpresa(Long terceroId, Integer empresaId, Integer exceptoUsuarioId) {
+        if (terceroId == null) {
+            throw new IllegalArgumentException("Elija el tercero del usuario");
+        }
+        TerceroEntity tercero = terceroRepo.findByIdAndEmpresaId(terceroId, empresaId)
+                .orElseThrow(() -> new EntityNotFoundException("Tercero no encontrado"));
+        String otro = queryRepo.usuarioDelTercero(terceroId, exceptoUsuarioId);
+        if (otro != null) {
+            throw new IllegalArgumentException("Ese tercero ya tiene el usuario '" + otro + "'");
+        }
+        return tercero;
     }
 
     @Override
@@ -156,7 +235,8 @@ public class UsuarioServiceImpl implements UsuarioService {
         UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));
 
-        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+        boolean claveNueva = dto.getPassword() != null && !dto.getPassword().isBlank();
+        if (claveNueva) {
             usuario.setPassword(passwordEncoder.encode(dto.getPassword()));
         }
         if (dto.getPinAccesoRapido() != null && !dto.getPinAccesoRapido().isBlank()) {
@@ -169,7 +249,14 @@ public class UsuarioServiceImpl implements UsuarioService {
         usuarioMapper.updateTerceroFromUpdateDto(dto, tercero);
         terceroRepo.save(tercero);
 
-        return mapToDtoCompleto(usuarioRepo.save(usuario));
+        UsuarioEntity guardado = usuarioRepo.save(usuario);
+        if (claveNueva) {
+            bitacora.registrar("caja.usuarios", "CAMBIO_CLAVE", "usuario", id,
+                    usuario.getUsername() + " cambió su propia clave", null, null);
+            // Cierra las sesiones en otros equipos; el front vuelve a pedir el ingreso.
+            sesiones.revocar(guardado);
+        }
+        return mapToDtoCompleto(guardado);
     }
 
     @Override
@@ -178,7 +265,19 @@ public class UsuarioServiceImpl implements UsuarioService {
         UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));
         usuario.setActivo(false);
-        usuarioRepo.save(usuario);
+        sesiones.revocar(usuario);
+        bitacora.registrar("caja.usuarios", "ANULAR", "usuario", id,
+                "Desactivó el usuario " + usuario.getUsername() + " (se cerraron sus sesiones)", null, null);
+    }
+
+    @Override
+    @Transactional
+    public void cerrarSesiones(Integer id, Integer empresaId) {
+        UsuarioEntity usuario = usuarioRepo.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado"));
+        sesiones.revocar(usuario);
+        bitacora.registrar("caja.usuarios", "CERRAR_SESIONES", "usuario", id,
+                "Cerró las sesiones abiertas de " + usuario.getUsername(), null, null);
     }
 
     private void asignarSucursales(UsuarioEntity usuario,
@@ -228,8 +327,26 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     private UsuarioDto mapToDtoCompleto(UsuarioEntity entity) {
         UsuarioDto dto = usuarioMapper.toDto(entity);
+        dto.setTerceroId(entity.getTercero() != null ? entity.getTercero().getId() : null);
         dto.setSucursales(queryRepo.sucursalesDeUsuario(entity.getId()));
+        dto.setPerfilId(entity.getPerfilId());
+        dto.setPerfilNombre(queryRepo.nombrePerfil(entity.getPerfilId()));
         return dto;
+    }
+
+    /**
+     * Valida y guarda el perfil de permisos: el elegido (si quien edita puede
+     * darlo) o, sin elegir, el de sistema del rol. Deja constancia del cambio.
+     */
+    private void asignarPerfil(UsuarioEntity usuario, Integer empresaId, Long solicitado, String rolAnterior,
+            Long perfilAnterior) {
+        Long editor = securityUtils.getUsuarioId();
+        Integer editorId = editor != null ? editor.intValue() : null;
+        Long nuevo = perfilService.perfilParaAsignar(empresaId, editorId, solicitado, usuario.getRol(),
+                rolAnterior, perfilAnterior);
+        usuario.setPerfilId(nuevo);
+        usuarioRepo.save(usuario);
+        perfilService.registrarAsignacion(empresaId, editorId, usuario.getId(), perfilAnterior, nuevo);
     }
 
     @Override
@@ -285,11 +402,16 @@ public class UsuarioServiceImpl implements UsuarioService {
         empresa.setId(empresaId);
         usuario.setEmpresa(empresa);
 
-        // Usar el tercero del empleado si existe, o crear uno
-        // Por ahora no vinculamos tercero, solo empleado
-        usuario.setTercero(null);
+        // El usuario queda ligado a la persona del empleado (su tercero), con la
+        // misma regla que el alta normal: un tercero, un usuario (V192).
+        if (empleado.getTercero() == null) {
+            throw new IllegalArgumentException(
+                    "El empleado no tiene tercero: complételo en Empleados antes de crearle usuario");
+        }
+        usuario.setTercero(terceroDeLaEmpresa(empleado.getTercero().getId(), empresaId, null));
 
         usuario = usuarioRepo.save(usuario);
+        asignarPerfil(usuario, empresaId, dto.getPerfilId(), null, null);
 
         // 5. Asignar la sucursal al usuario
         asignarSucursalesDesdeCreateEmpleado(usuario, dto.getSucursalId());

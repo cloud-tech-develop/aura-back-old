@@ -63,4 +63,21 @@ public class AuthQueryRepository {
              return null;
          }
     }
+
+    /** Versión de sesión vigente del usuario (V192); null si no existe. */
+    public Integer tokenVersion(Long usuarioId) {
+        List<Integer> r = namedParameterJdbcTemplate.queryForList(
+                "SELECT token_version FROM usuario WHERE id = :id",
+                new MapSqlParameterSource("id", usuarioId), Integer.class);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** ¿La sede es de la empresa? (para cambiar de sede con "todas las sedes"). */
+    public boolean sucursalDeEmpresa(Long sucursalId, Integer empresaId) {
+        Integer n = namedParameterJdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sucursal WHERE id = :id AND empresa_id = :empresaId",
+                new MapSqlParameterSource().addValue("id", sucursalId).addValue("empresaId", empresaId),
+                Integer.class);
+        return n != null && n > 0;
+    }
 }

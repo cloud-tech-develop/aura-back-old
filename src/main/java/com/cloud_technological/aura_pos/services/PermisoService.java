@@ -11,5 +11,7 @@ public interface PermisoService {
     List<ModuloPermisoDto> obtenerModulosPorEmpresa(Integer empresaId);
     PermisosEmpresaDto actualizarPermisos(Integer empresaId, UpdatePermisosDto dto);
     List<ModuloPermisoDto> obtenerPermisosPublicos(String nit);
+    /** Activa para la empresa exactamente esos submódulos (con sus grupos y módulos). */
+    PermisosEmpresaDto activarSubmodulos(Integer empresaId, java.util.Collection<Integer> submodulos);
     boolean tienePermiso(Integer empresaId, String moduloCodigo, String submoduloCodigo);
 }

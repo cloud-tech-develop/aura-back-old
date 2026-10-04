@@ -14,8 +14,15 @@ import lombok.Setter;
 @Getter
 @Setter
 public class CreateUsuarioDto {
-        // Datos de acceso
-    @NotBlank
+    /**
+     * La persona: un tercero que ya existe en la empresa (obligatorio). Nombre,
+     * documento y correo salen de él; así el usuario queda relacionado con el
+     * empleado, vendedor o cliente que ya es.
+     */
+    @NotNull(message = "Elija el tercero del usuario")
+    private Long terceroId;
+
+    // Datos de acceso. Sin username, se usa el correo del tercero.
     @Size(max = 100)
     private String username;
 
@@ -28,23 +35,16 @@ public class CreateUsuarioDto {
 
     @NotBlank
     private String rol; // ADMIN, CAJERO, SUPERVISOR
+    /** Perfil de permisos; null = el perfil de sistema de su rol. */
+    private Long perfilId;
 
-    // Datos personales (crea tercero automáticamente)
-    @NotBlank
+    // Ya no se usan: los datos personales salen del tercero (terceroId).
     private String nombres;
-
-    @NotBlank
     private String apellidos;
-
     private String tipoDocumento = "CC";
-
-    @NotBlank
     private String numeroDocumento;
-
     private String telefono;
     private String email;
-
-    /** Marca fiscal del tercero que se crea junto al usuario. Nunca null en BD. */
     private Boolean granContribuyente = Boolean.FALSE;
 
     // Sucursales asignadas: al menos la default

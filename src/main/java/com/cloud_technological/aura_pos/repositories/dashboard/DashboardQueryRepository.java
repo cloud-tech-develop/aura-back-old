@@ -20,6 +20,10 @@ import com.cloud_technological.aura_pos.dto.dashboard.VentaRecienteDto;
 
 @Repository
 public class DashboardQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -30,12 +34,12 @@ public class DashboardQueryRepository {
                 COUNT(*) AS cantidad,
                 COALESCE(AVG(total_pagar), 0) AS promedio
             FROM venta
-            WHERE empresa_id = :empresaId
+            WHERE empresa_id = :empresaId /*SEDE:sucursal_id*/
             AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE(fecha_emision) = CURRENT_DATE
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.queryForObject(sql, params, new BeanPropertyRowMapper<>(ResumenVentasDto.class));
+        return jdbcTemplate.queryForObject(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ResumenVentasDto.class));
     }
 
     public ResumenVentasDto resumenVentasMes(Integer empresaId) {
@@ -45,24 +49,24 @@ public class DashboardQueryRepository {
                 COUNT(*) AS cantidad,
                 COALESCE(AVG(total_pagar), 0) AS promedio
             FROM venta
-            WHERE empresa_id = :empresaId
+            WHERE empresa_id = :empresaId /*SEDE:sucursal_id*/
             AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.queryForObject(sql, params, new BeanPropertyRowMapper<>(ResumenVentasDto.class));
+        return jdbcTemplate.queryForObject(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ResumenVentasDto.class));
     }
 
     public BigDecimal totalComprasMes(Integer empresaId) {
         String sql = """
             SELECT COALESCE(SUM(total), 0)
             FROM compra
-            WHERE empresa_id = :empresaId
+            WHERE empresa_id = :empresaId /*SEDE:sucursal_id*/
             AND estado = 'RECIBIDA'
             AND DATE_TRUNC('month', fecha) = DATE_TRUNC('month', CURRENT_DATE)
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        BigDecimal result = jdbcTemplate.queryForObject(sql, params, BigDecimal.class);
+        BigDecimal result = jdbcTemplate.queryForObject(alcanceSede.aplicar(sql, params), params, BigDecimal.class);
         return result != null ? result : BigDecimal.ZERO;
     }
 
@@ -80,7 +84,7 @@ public class DashboardQueryRepository {
                   FROM inventario i
                   INNER JOIN producto p ON i.producto_id = p.id
                   INNER JOIN sucursal s ON i.sucursal_id = s.id
-                  WHERE s.empresa_id = :empresaId
+                  WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
                   AND i.stock_actual <= i.stock_minimo
                   AND i.stock_minimo > 0
                   AND p.deleted_at IS NULL
@@ -88,7 +92,7 @@ public class DashboardQueryRepository {
                   LIMIT 10
               """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(ProductoStockBajoDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ProductoStockBajoDto.class));
     }
 
     public List<LoteVencimientoDto> lotesProximosVencer(Integer empresaId) {
@@ -104,7 +108,7 @@ public class DashboardQueryRepository {
             FROM lote l
             INNER JOIN producto p ON l.producto_id = p.id
             INNER JOIN sucursal s ON l.sucursal_id = s.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND l.activo = true
             AND l.stock_actual > 0
             -- Los ya vencidos con stock también: son los que más urge sacar. La
@@ -115,7 +119,7 @@ public class DashboardQueryRepository {
             LIMIT 10
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(LoteVencimientoDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(LoteVencimientoDto.class));
     }
 
     public List<VentaRecienteDto> ultimasVentas(Integer empresaId) {
@@ -130,12 +134,12 @@ public class DashboardQueryRepository {
                 v.estado_venta
             FROM venta v
             LEFT JOIN tercero t ON v.cliente_id = t.id
-            WHERE v.empresa_id = :empresaId
+            WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
             ORDER BY v.id DESC
             LIMIT 10
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(VentaRecienteDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(VentaRecienteDto.class));
     }
 
     public List<TopProductoDto> topProductosMes(Integer empresaId) {
@@ -149,7 +153,7 @@ public class DashboardQueryRepository {
             FROM venta_detalle vd
             INNER JOIN venta v ON vd.venta_id = v.id
             INNER JOIN producto p ON vd.producto_id = p.id
-            WHERE v.empresa_id = :empresaId
+            WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
             AND v.estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', v.fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
             GROUP BY p.id, p.nombre, p.sku
@@ -157,7 +161,7 @@ public class DashboardQueryRepository {
             LIMIT 5
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(TopProductoDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(TopProductoDto.class));
     }
 
     public List<MovimientoRecienteDto> ultimosMovimientos(Integer empresaId) {
@@ -173,12 +177,12 @@ public class DashboardQueryRepository {
             FROM movimiento_inventario m
             INNER JOIN producto p ON m.producto_id = p.id
             INNER JOIN sucursal s ON m.sucursal_id = s.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             ORDER BY m.id DESC
             LIMIT 10
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(MovimientoRecienteDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(MovimientoRecienteDto.class));
     }
 
     public BigDecimal totalInventarioCosto(Integer empresaId) {
@@ -187,14 +191,14 @@ public class DashboardQueryRepository {
             FROM inventario i
             INNER JOIN producto p ON i.producto_id = p.id
             INNER JOIN sucursal s ON i.sucursal_id = s.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND p.deleted_at IS NULL
             AND p.activo = true
             AND p.costo IS NOT NULL
             AND p.costo > 0
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        BigDecimal result = jdbcTemplate.queryForObject(sql, params, BigDecimal.class);
+        BigDecimal result = jdbcTemplate.queryForObject(alcanceSede.aplicar(sql, params), params, BigDecimal.class);
         return result != null ? result : BigDecimal.ZERO;
     }
 
@@ -207,14 +211,14 @@ public class DashboardQueryRepository {
                 COALESCE(SUM(total_pagar), 0) AS total,
                 COUNT(*) AS cantidad
             FROM venta
-            WHERE empresa_id = :empresaId
+            WHERE empresa_id = :empresaId /*SEDE:sucursal_id*/
             AND estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND fecha_emision >= DATE_TRUNC('week', CURRENT_DATE)
             GROUP BY TO_CHAR(fecha_emision, 'YYYY-MM-DD'), TO_CHAR(fecha_emision, 'Day')
             ORDER BY fecha ASC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.queryForList(sql, params);
+        return jdbcTemplate.queryForList(alcanceSede.aplicar(sql, params), params);
     }
 
     // Ventas por método de pago del mes (para gráfica de torta)
@@ -226,13 +230,13 @@ public class DashboardQueryRepository {
                 COUNT(DISTINCT v.id) AS cantidad_ventas
             FROM venta_pago vp
             INNER JOIN venta v ON vp.venta_id = v.id
-            WHERE v.empresa_id = :empresaId
+            WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
             AND v.estado_venta IN ('COMPLETADA', 'PAGO_PARCIAL')
             AND DATE_TRUNC('month', v.fecha_emision) = DATE_TRUNC('month', CURRENT_DATE)
             GROUP BY vp.metodo_pago
             ORDER BY total DESC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbcTemplate.queryForList(sql, params);
+        return jdbcTemplate.queryForList(alcanceSede.aplicar(sql, params), params);
     }
 }

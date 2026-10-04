@@ -132,10 +132,11 @@ public class ProductoController {
     @GetMapping("/inventario/id/{productoId}")
     public ResponseEntity<ApiResponse<ProductoInventarioDto>> buscarInventarioPorId(
             @PathVariable Long productoId,
-            @RequestParam(required = false) Long sucursalId) {
+            @RequestParam(required = false) Long sucursalId,
+            @RequestParam(required = false) Long bodegaId) {
         Integer empresaId = securityUtils.getEmpresaId();
         ProductoInventarioDto result = productoService.buscarInventarioPorId(
-                empresaId, resolverSucursal(sucursalId), productoId);
+                empresaId, resolverSucursal(sucursalId), bodegaId, productoId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Producto encontrado", false, result), HttpStatus.OK);
     }
 

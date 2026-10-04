@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.cloud_technological.aura_pos.config.RequerirPermiso;
 import com.cloud_technological.aura_pos.dto.cartera.credito.CreateSolicitudCreditoDto;
 import com.cloud_technological.aura_pos.dto.cartera.credito.ReglaCreditoDto;
 import com.cloud_technological.aura_pos.dto.cartera.credito.SimulacionReglaDto;
@@ -76,6 +77,7 @@ public class ControlCreditoController {
                 solicitudService.crear(dto, securityUtils.getEmpresaId(), securityUtils.getUsuarioId())), HttpStatus.CREATED);
     }
 
+    @RequerirPermiso(accion = "APROBAR_CREDITO")
     @PostMapping("/solicitudes/{id}/aprobar")
     public ResponseEntity<ApiResponse<SolicitudCreditoDto>> aprobar(@PathVariable Long id,
             @RequestBody(required = false) Map<String, Integer> body) {
@@ -83,6 +85,7 @@ public class ControlCreditoController {
         return ok(solicitudService.aprobar(id, horas, securityUtils.getEmpresaId(), securityUtils.getUsuarioId()));
     }
 
+    @RequerirPermiso(accion = "APROBAR_CREDITO")
     @PostMapping("/solicitudes/{id}/rechazar")
     public ResponseEntity<ApiResponse<SolicitudCreditoDto>> rechazar(@PathVariable Long id, @RequestBody Map<String, String> body) {
         return ok(solicitudService.rechazar(id, body != null ? body.get("motivo") : null,

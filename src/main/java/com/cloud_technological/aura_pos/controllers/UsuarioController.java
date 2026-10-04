@@ -100,6 +100,14 @@ public class UsuarioController {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Usuario desactivado correctamente", false, true), HttpStatus.OK);
     }
 
+    /** Cierra todas las sesiones abiertas del usuario: acción especial caja.usuarios:CERRAR_SESIONES. */
+    @PostMapping("/{id}/cerrar-sesiones")
+    @com.cloud_technological.aura_pos.config.RequerirPermiso(accion = "CERRAR_SESIONES")
+    public ResponseEntity<ApiResponse<Boolean>> cerrarSesiones(@PathVariable Integer id) {
+        usuarioService.cerrarSesiones(id, securityUtils.getEmpresaId());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Sesiones cerradas", false, true), HttpStatus.OK);
+    }
+
     // Un cajero o vendedor no administra usuarios: con la API abierta podía
     // cambiarle la clave o el rol a cualquiera (incluso subirse a ADMIN).
 

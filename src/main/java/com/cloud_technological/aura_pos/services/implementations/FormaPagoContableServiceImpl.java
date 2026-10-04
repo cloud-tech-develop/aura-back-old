@@ -22,6 +22,7 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
 
     private final FormaPagoContableJPARepository repo;
     private final PlanCuentaJPARepository planRepo;
+    private final CuentaPorDefectoResolver porDefecto;
 
     @Override
     public List<FormaPagoContableDto> listar(Integer empresaId) {
@@ -133,9 +134,7 @@ public class FormaPagoContableServiceImpl implements FormaPagoContableService {
         if (repo.findByEmpresaIdAndCodigo(empresaId, codigo).isPresent()) {
             return;
         }
-        Long cuentaId = planRepo.findByEmpresaIdAndCodigo(empresaId, codigoCuenta)
-                .map(PlanCuentaEntity::getId)
-                .orElse(null);
+        Long cuentaId = porDefecto.idCuenta(empresaId, codigoCuenta);
         repo.save(FormaPagoContableEntity.builder()
                 .empresaId(empresaId)
                 .codigo(codigo)

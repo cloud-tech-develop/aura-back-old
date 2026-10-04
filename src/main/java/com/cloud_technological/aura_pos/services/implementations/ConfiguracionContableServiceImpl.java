@@ -36,6 +36,9 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
     private ContabilidadConfigLogJPARepository logRepo;
 
     @Autowired
+    private CuentaPorDefectoResolver porDefecto;
+
+    @Autowired
     private com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository empresaRepo;
 
     @Override
@@ -51,13 +54,13 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
             }
         }
 
-        // 2) Fallback: código por defecto del concepto
-        PlanCuentaEntity porDefecto = planRepo
-                .findByEmpresaIdAndCodigo(empresaId, concepto.getCodigoDefault())
-                .filter(c -> Boolean.TRUE.equals(c.getActiva()))
+        // 2) Fallback: la cuenta por defecto del concepto (su auxiliar en el
+        //    catálogo propio, o el código de siempre)
+        PlanCuentaEntity cuentaDefecto = porDefecto
+                .resolver(empresaId, concepto.name(), concepto.getCodigoDefault())
                 .orElse(null);
-        if (porDefecto != null) {
-            return porDefecto;
+        if (cuentaDefecto != null) {
+            return cuentaDefecto;
         }
 
         throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -84,7 +87,7 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
                 porDefecto = false;
             }
             if (cuenta == null) {
-                cuenta = planRepo.findByEmpresaIdAndCodigo(empresaId, concepto.getCodigoDefault()).orElse(null);
+                cuenta = this.porDefecto.resolver(empresaId, concepto.name(), concepto.getCodigoDefault()).orElse(null);
                 porDefecto = true;
             }
 
@@ -213,7 +216,7 @@ public class ConfiguracionContableServiceImpl implements ConfiguracionContableSe
             if (configRepo.findByEmpresaIdAndConcepto(empresaId, concepto).isPresent()) {
                 continue;
             }
-            planRepo.findByEmpresaIdAndCodigo(empresaId, concepto.getCodigoDefault())
+            porDefecto.resolver(empresaId, concepto.name(), concepto.getCodigoDefault())
                     .ifPresent(cuenta -> configRepo.save(CuentaConfigEntity.builder()
                             .empresaId(empresaId)
                             .concepto(concepto)

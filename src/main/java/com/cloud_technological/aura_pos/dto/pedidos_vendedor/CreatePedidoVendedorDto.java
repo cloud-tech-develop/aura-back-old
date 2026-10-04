@@ -17,4 +17,7 @@ public class CreatePedidoVendedorDto {
     @NotEmpty
     @Valid
     private List<CreatePedidoVendedorDetalleDto> detalles;
+
+    /** Autorización del supervisor si el descuento pasa el límite del vendedor (V192). */
+    private Long autorizacionId;
 }

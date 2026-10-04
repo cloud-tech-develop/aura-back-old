@@ -18,6 +18,10 @@ import com.cloud_technological.aura_pos.dto.carrito.CarritoAbandonadoDtos.Item;
 /** Lectura de los carritos abandonados para el reporte. */
 @Repository
 public class CarritoAbandonadoQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbc;
@@ -39,12 +43,12 @@ public class CarritoAbandonadoQueryRepository {
             LEFT JOIN usuario u  ON u.id = c.usuario_id
             LEFT JOIN sucursal s ON s.id = c.sucursal_id
             LEFT JOIN tercero t  ON t.id = c.cliente_id
-            WHERE c.empresa_id = :empresaId
+            WHERE c.empresa_id = :empresaId /*SEDE:c.sucursal_id*/
               AND c.vaciado_at >= :desde AND c.vaciado_at < :hasta
               AND (CAST(:sucursalId AS INTEGER) IS NULL OR c.sucursal_id = :sucursalId)
             ORDER BY c.vaciado_at DESC
             """;
-        List<CarritoConCajero> out = jdbc.query(sql, p, (rs, i) -> {
+        List<CarritoConCajero> out = jdbc.query(alcanceSede.aplicar(sql, p), p, (rs, i) -> {
             Carrito c = new Carrito();
             c.setId(rs.getLong("id"));
             c.setIniciadoAt(rs.getTimestamp("iniciado_at").toLocalDateTime());

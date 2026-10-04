@@ -21,10 +21,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserDetailsService userDetailsService;
+    private final SesionService sesiones;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserDetailsService userDetailsService,
+            SesionService sesiones) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userDetailsService = userDetailsService;
+        this.sesiones = sesiones;
     }
 
     @Override
@@ -39,6 +42,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 String username = jwtTokenProvider.getUsername(token);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+
+                // Sesión revocada (V192): desactivado, clave nueva o "Cerrar sesiones".
+                Long usuarioId = jwtTokenProvider.getUsuarioId(token);
+                Integer vigente = usuarioId != null ? sesiones.versionActual(usuarioId) : null;
+                if (vigente != null && vigente != jwtTokenProvider.getTokenVersion(token)) {
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"error\": \"Su sesión se cerró. Vuelva a iniciar sesión\","
+                            + " \"codigo\": \"SESION_REVOCADA\"}");
+                    return;
+                }
 
                 UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                         userDetails,

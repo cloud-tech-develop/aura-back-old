@@ -25,6 +25,7 @@ public class ImpuestoServiceImpl implements ImpuestoService {
 
     private final ImpuestoJPARepository repo;
     private final PlanCuentaJPARepository planRepo;
+    private final CuentaPorDefectoResolver porDefecto;
 
     @Override
     public List<ImpuestoDto> listar(Integer empresaId) {
@@ -135,9 +136,9 @@ public class ImpuestoServiceImpl implements ImpuestoService {
         return t;
     }
 
+    /** La cuenta por defecto: su auxiliar en el catálogo propio, o el código de siempre. */
     private Long idCuenta(Integer empresaId, String codigo) {
-        return planRepo.findByEmpresaIdAndCodigo(empresaId, codigo)
-                .map(PlanCuentaEntity::getId).orElse(null);
+        return porDefecto.idCuenta(empresaId, codigo);
     }
 
     private String etiqueta(Integer empresaId, Long cuentaId) {

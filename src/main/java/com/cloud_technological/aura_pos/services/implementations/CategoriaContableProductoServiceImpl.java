@@ -32,6 +32,7 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
 
     private final CategoriaContableProductoJPARepository repo;
     private final PlanCuentaJPARepository planRepo;
+    private final CuentaPorDefectoResolver porDefecto;
 
     @Override
     public List<CategoriaContableProductoDto> listar(Integer empresaId) {
@@ -223,9 +224,9 @@ public class CategoriaContableProductoServiceImpl implements CategoriaContablePr
         return t;
     }
 
+    /** La cuenta por defecto: su auxiliar en el catálogo propio, o el código de siempre. */
     private Long idCuenta(Integer empresaId, String codigo) {
-        return planRepo.findByEmpresaIdAndCodigo(empresaId, codigo)
-                .map(PlanCuentaEntity::getId).orElse(null);
+        return porDefecto.idCuenta(empresaId, codigo);
     }
 
     private String etiqueta(Integer empresaId, Long cuentaId) {

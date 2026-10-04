@@ -41,6 +41,9 @@ public interface ProductoService {
     ProductoInventarioDto buscarPorCodigo(Integer empresaId, Long sucursalId, String codigo);
 
     ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long productoId);
+
+    /** Con bodega: el stock de esa sola bodega (traslados entre bodegas de la misma sede). */
+    ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long bodegaId, Long productoId);
     /** Componentes que saldrían del inventario por {@code cantidad} unidades de un producto con receta. */
     List<ConsumoComponenteDto> explosion(Long productoId, BigDecimal cantidad, Long sucursalId, Integer empresaId);
 }

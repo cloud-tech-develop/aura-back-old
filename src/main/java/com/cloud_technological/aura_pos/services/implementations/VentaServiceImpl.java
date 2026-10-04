@@ -84,6 +84,14 @@ public class VentaServiceImpl implements VentaService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.BodegaService bodegaService;
 
+    /** Límites de descuento/precio y autorización del supervisor (PLAN_PERMISOS P8). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AutorizacionService autorizaciones;
+
+    /** Acciones especiales que se deciden aquí (vender a crédito). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.ControlPermisoService controlPermisos;
+
 
     private final VentaQueryRepository ventaRepository;
     private final VentaJPARepository ventaJPARepository;
@@ -231,7 +239,9 @@ public class VentaServiceImpl implements VentaService {
             }
             sucursal = turno.getCaja().getSucursal();
         } else {
-            if (hayEfectivo) {
+            // Facturación cobra de contado sin caja: el efectivo va a la caja
+            // general por la forma de pago, fuera de cualquier arqueo.
+            if (hayEfectivo && !dto.isDesdeFacturacion()) {
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
                         "Debe abrir un turno de caja para registrar ventas en efectivo");
             }
@@ -287,6 +297,26 @@ public class VentaServiceImpl implements VentaService {
             solicitudAutorizadaId = validacion.getSolicitudAutorizadaId();
         }
 
+        // 2.3.1 Permisos de la venta (PLAN_PERMISOS P6/P8): vender a crédito es una
+        // acción especial, y el descuento o la rebaja de precio por encima del
+        // límite del usuario necesita la autorización de un supervisor.
+        // La venta que nace del despacho de un pedido de vendedor ya pasó por el
+        // límite cuando el vendedor tomó el pedido, y es a crédito por diseño:
+        // no se revisa otra vez con el usuario del vendedor.
+        // La factura de Facturación tampoco: el precio lo pone quien factura, con
+        // el permiso de su módulo, no el límite de descuento del cajero.
+        boolean desdePedido = dto.getPedidoVendedorId() != null || dto.isDesdeFacturacion();
+        if (tienePagoCredito && controlPermisos != null && !desdePedido) {
+            controlPermisos.exigirEspecial(usuarioId.intValue(), empresaId, securityUtils.getRol(),
+                    com.cloud_technological.aura_pos.services.permisos.AutorizacionService.CLAVES_CREDITO,
+                    "vender a crédito");
+        }
+        final com.cloud_technological.aura_pos.dto.permisos.BitacoraDtos.Exceso exceso = autorizaciones != null
+                && !desdePedido ? autorizaciones.exceso(dto, usuarioId.intValue(), empresaId) : null;
+        final com.cloud_technological.aura_pos.entity.AutorizacionEntity autorizacion = exceso != null
+                ? autorizaciones.validarParaVenta(exceso, dto.getAutorizacionId(), usuarioId.intValue(), empresaId)
+                : null;
+
         // 2.4. Venta que sale de una cotización (D1): se bloquea la cotización y
         // se valida que siga vendible antes de mover nada.
         final CotizacionConversionService.Conversion conversion = dto.getCotizacionId() != null
@@ -332,6 +362,7 @@ public class VentaServiceImpl implements VentaService {
         }
 
         venta = ventaJPARepository.save(venta);
+        if (autorizacion != null) autorizaciones.consumir(autorizacion, "VENTA", venta.getId(), exceso);
 
         BigDecimal subtotalAcumulado = BigDecimal.ZERO;
         BigDecimal descuentoAcumulado = BigDecimal.ZERO;
@@ -711,7 +742,7 @@ public class VentaServiceImpl implements VentaService {
                             "Pedido de vendedor no encontrado"));
             pedido.setVenta(venta);
             pedidoVendedorJPARepository.save(pedido);
-        } else if (usuario.getEmpleado() != null) {
+        } else if (usuario.getEmpleado() != null && !dto.isDesdeFacturacion()) {
             crearPedidoVendedorDesdeVenta(venta, usuario, empresa, sucursal, cliente);
         }
 

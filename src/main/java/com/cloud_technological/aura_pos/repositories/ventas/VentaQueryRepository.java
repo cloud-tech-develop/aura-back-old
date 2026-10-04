@@ -20,6 +20,10 @@ public class VentaQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     public PageImpl<VentaTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
         int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
         int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
@@ -57,6 +61,7 @@ public class VentaQueryRepository {
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        sql.append(alcanceSede.filtro("v.sucursal_id", params));
 
         if (!search.isEmpty()) {
             sql.append("""

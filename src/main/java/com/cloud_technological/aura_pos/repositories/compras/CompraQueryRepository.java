@@ -22,6 +22,10 @@ public class CompraQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     /** Notas crédito no anuladas que cuelgan de la compra. */
     public long notasCreditoVigentes(Long compraId, Integer empresaId) {
         Long n = jdbcTemplate.queryForObject("""
@@ -65,6 +69,7 @@ public class CompraQueryRepository {
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        sql.append(alcanceSede.filtro("c.sucursal_id", params));
 
         if (!search.isEmpty()) {
             sql.append("""

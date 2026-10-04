@@ -31,6 +31,10 @@ import com.cloud_technological.aura_pos.utils.CategoriaGasto;
  */
 @Repository
 public class ReporteGastosQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -196,6 +200,8 @@ public class ReporteGastosQueryRepository {
 
     private void aplicarFiltros(StringBuilder sql, MapSqlParameterSource params,
             ReporteGastosFiltroDto f) {
+
+        sql.append(alcanceSede.filtro("g.sucursal_id", params));
 
         // Sin estado explícito solo cuentan los vigentes: un gasto eliminado
         // que sume en el total es una cifra que el contador no puede explicar.

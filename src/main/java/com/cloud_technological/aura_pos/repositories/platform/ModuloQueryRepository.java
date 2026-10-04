@@ -167,63 +167,128 @@ public class ModuloQueryRepository {
                 .stream().findFirst().orElse(null);
     }
 
+    /**
+     * Módulos y submódulos con lo que la empresa tiene activo, en orden de menú y
+     * con el árbol del tercer nivel (padreId / esGrupo): primero cada grupo y
+     * enseguida sus pantallas. Con empresaId null trae el catálogo completo (todo
+     * en false), para elegir los módulos al crear una empresa.
+     */
     public List<ModuloPermisoDto> listarPermisosPorEmpresa(Integer empresaId) {
         String sql = """
-            SELECT 
-                m.id as modulo_id, m.codigo as modulo_codigo, m.nombre as modulo_nombre,
-                COALESCE(em.activo, false) as modulo_activo,
-                s.id as submodulo_id, s.codigo as submodulo_codigo, s.nombre as submodulo_nombre,
-                COALESCE(es.activo, false) as submodulo_activo
+            SELECT
+                m.id AS modulo_id, m.codigo AS modulo_codigo, m.nombre AS modulo_nombre,
+                COALESCE(em.activo, false) AS modulo_activo,
+                s.id AS submodulo_id, s.codigo AS submodulo_codigo, s.nombre AS submodulo_nombre,
+                COALESCE(es.activo, false) AS submodulo_activo,
+                s.padre_id,
+                EXISTS (SELECT 1 FROM submodulos h WHERE h.padre_id = s.id AND h.deleted_at IS NULL) AS es_grupo
             FROM modulos m
-            LEFT JOIN submodulos s ON m.id = s.modulo_id
+            LEFT JOIN submodulos s ON m.id = s.modulo_id AND s.deleted_at IS NULL AND s.activo = true
+            LEFT JOIN submodulos pa ON pa.id = s.padre_id
             LEFT JOIN empresa_modulo em ON m.id = em.modulo_id AND em.empresa_id = :empresaId
             LEFT JOIN empresa_submodulo es ON s.id = es.submodulo_id AND es.empresa_id = :empresaId
-            WHERE m.activo = true
-            ORDER BY m.orden ASC, m.id ASC, s.orden ASC, s.id ASC
+            WHERE m.activo = true AND m.deleted_at IS NULL
+            ORDER BY m.orden ASC, m.id ASC,
+                     COALESCE(pa.orden, s.orden) ASC, COALESCE(pa.id, s.id) ASC,
+                     CASE WHEN s.padre_id IS NULL THEN 0 ELSE 1 END, s.orden ASC, s.id ASC
             """;
-        
-        List<Map<String, Object>> rows = jdbc.query(sql, Map.of("empresaId", empresaId), (rs, rowNum) -> {
-            Map<String, Object> row = new HashMap<>();
-            row.put("modulo_id", rs.getInt("modulo_id"));
-            row.put("modulo_codigo", rs.getString("modulo_codigo"));
-            row.put("modulo_nombre", rs.getString("modulo_nombre"));
-            row.put("modulo_activo", rs.getBoolean("modulo_activo"));
-            row.put("submodulo_id", rs.getInt("submodulo_id"));
-            row.put("submodulo_codigo", rs.getString("submodulo_codigo"));
-            row.put("submodulo_nombre", rs.getString("submodulo_nombre"));
-            row.put("submodulo_activo", rs.getBoolean("submodulo_activo"));
-            return row;
-        });
-        
-        // Agrupar por modulo
-        Map<Integer, ModuloPermisoDto> modulosMap = new HashMap<>();
-        for (Map<String, Object> row : rows) {
-            Integer moduloId = (Integer) row.get("modulo_id");
-            Integer submoduloId = (Integer) row.get("submodulo_id");
-            
+        MapSqlParameterSource p = new MapSqlParameterSource("empresaId", empresaId);
+
+        // LinkedHashMap: conserva el orden de menú que trae la consulta.
+        Map<Integer, ModuloPermisoDto> modulosMap = new java.util.LinkedHashMap<>();
+        jdbc.query(sql, p, rs -> {
+            Integer moduloId = rs.getInt("modulo_id");
             ModuloPermisoDto modulo = modulosMap.get(moduloId);
             if (modulo == null) {
                 modulo = ModuloPermisoDto.builder()
                         .moduloId(moduloId)
-                        .moduloCodigo((String) row.get("modulo_codigo"))
-                        .moduloNombre((String) row.get("modulo_nombre"))
-                        .activo((Boolean) row.get("modulo_activo"))
+                        .moduloCodigo(rs.getString("modulo_codigo"))
+                        .moduloNombre(rs.getString("modulo_nombre"))
+                        .activo(rs.getBoolean("modulo_activo"))
                         .submodulos(new ArrayList<>())
                         .build();
                 modulosMap.put(moduloId, modulo);
             }
-            
-            if (submoduloId != null && submoduloId != 0) {
-                SubmoduloPermisoDto submodulo = SubmoduloPermisoDto.builder()
+            int submoduloId = rs.getInt("submodulo_id");
+            if (!rs.wasNull() && submoduloId != 0) {
+                // padre_id es bigint: el driver no lo convierte a Integer con getObject(.., Integer.class).
+                Object padreRaw = rs.getObject("padre_id");
+                Integer padre = padreRaw != null ? ((Number) padreRaw).intValue() : null;
+                modulo.getSubmodulos().add(SubmoduloPermisoDto.builder()
                         .submoduloId(submoduloId)
-                        .submoduloCodigo((String) row.get("submodulo_codigo"))
-                        .submoduloNombre((String) row.get("submodulo_nombre"))
-                        .activo((Boolean) row.get("submodulo_activo"))
-                        .build();
-                modulo.getSubmodulos().add(submodulo);
+                        .submoduloCodigo(rs.getString("submodulo_codigo"))
+                        .submoduloNombre(rs.getString("submodulo_nombre"))
+                        .activo(rs.getBoolean("submodulo_activo"))
+                        .padreId(padre)
+                        .esGrupo(rs.getBoolean("es_grupo"))
+                        .build());
             }
-        }
-        
+        });
         return new ArrayList<>(modulosMap.values());
+    }
+
+    /** Submódulos de un módulo, paginados y con búsqueda, con su grupo padre. */
+    public PageImpl<SubmoduloTableDto> paginarSubmodulos(Integer moduloId, String search, int page, int size) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT s.id, s.modulo_id, m.nombre AS modulo_nombre, s.nombre, s.codigo, s.descripcion,
+                   s.activo, s.orden, s.padre_id, pa.nombre AS padre_nombre,
+                   EXISTS (SELECT 1 FROM submodulos h WHERE h.padre_id = s.id AND h.deleted_at IS NULL) AS es_grupo,
+                   COUNT(*) OVER() AS total_rows
+            FROM submodulos s
+            JOIN modulos m ON m.id = s.modulo_id
+            LEFT JOIN submodulos pa ON pa.id = s.padre_id
+            WHERE s.modulo_id = :moduloId AND s.deleted_at IS NULL
+            """);
+        MapSqlParameterSource p = new MapSqlParameterSource("moduloId", moduloId);
+        String q = search != null ? search.trim().toLowerCase() : "";
+        if (!q.isEmpty()) {
+            sql.append("""
+                AND (LOWER(s.nombre) LIKE :q OR LOWER(s.codigo) LIKE :q
+                     OR LOWER(COALESCE(s.descripcion, '')) LIKE :q OR LOWER(COALESCE(pa.nombre, '')) LIKE :q)
+                """);
+            p.addValue("q", "%" + q + "%");
+        }
+        // Orden de árbol: cada grupo seguido de sus pantallas.
+        sql.append("""
+            ORDER BY COALESCE(pa.orden, s.orden), COALESCE(pa.id, s.id),
+                     CASE WHEN s.padre_id IS NULL THEN 0 ELSE 1 END, s.orden, s.id
+            LIMIT :limit OFFSET :offset
+            """);
+        p.addValue("limit", size);
+        p.addValue("offset", page * size);
+        List<SubmoduloTableDto> list = jdbc.query(sql.toString(), p, (rs, i) -> SubmoduloTableDto.builder()
+                .id(rs.getInt("id"))
+                .moduloId(rs.getInt("modulo_id"))
+                .moduloNombre(rs.getString("modulo_nombre"))
+                .nombre(rs.getString("nombre"))
+                .codigo(rs.getString("codigo"))
+                .descripcion(rs.getString("descripcion"))
+                .activo(rs.getBoolean("activo"))
+                .orden(rs.getInt("orden"))
+                .padreId((Long) rs.getObject("padre_id", Long.class))
+                .padreNombre(rs.getString("padre_nombre"))
+                .esGrupo(rs.getBoolean("es_grupo"))
+                .totalRows(rs.getInt("total_rows"))
+                .build());
+        long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
+        return new PageImpl<>(list, PageRequest.of(page, Math.max(size, 1)), total);
+    }
+
+    /** ¿Ya existe ese código en el módulo? (la unicidad es por módulo, no global). */
+    public boolean codigoSubmoduloEnUso(Integer moduloId, String codigo, Integer exceptoId) {
+        Integer n = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM submodulos
+            WHERE modulo_id = :moduloId AND codigo = :codigo AND deleted_at IS NULL
+              AND (CAST(:excepto AS INTEGER) IS NULL OR id <> :excepto)
+            """, new MapSqlParameterSource().addValue("moduloId", moduloId).addValue("codigo", codigo)
+                .addValue("excepto", exceptoId), Integer.class);
+        return n != null && n > 0;
+    }
+
+    /** Hijos de un submódulo (para no anidar más de un nivel de grupos). */
+    public int hijosDeSubmodulo(Integer submoduloId) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM submodulos WHERE padre_id = :id AND deleted_at IS NULL",
+                new MapSqlParameterSource("id", submoduloId), Integer.class);
+        return n != null ? n : 0;
     }
 }
