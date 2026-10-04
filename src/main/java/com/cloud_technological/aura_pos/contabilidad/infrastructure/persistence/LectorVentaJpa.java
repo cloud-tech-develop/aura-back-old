@@ -55,8 +55,9 @@ public class LectorVentaJpa implements LectorVenta {
                 .map(p -> new PagoVenta(p.getMetodoPago(), p.getMonto(), p.getCuentaBancariaId()))
                 .toList();
 
-        Long centroCostoId = venta.getSucursal() != null
-                ? venta.getSucursal().getCentroCostoId() : null;
+        // El de la factura (Facturación) manda; si no, el de la sucursal.
+        Long centroCostoId = venta.getCentroCostoId() != null ? venta.getCentroCostoId()
+                : venta.getSucursal() != null ? venta.getSucursal().getCentroCostoId() : null;
 
         return new VentaContable(fecha, documento, clienteId,
                 venta.getTotalPagar(), venta.getImpuestosTotal(),

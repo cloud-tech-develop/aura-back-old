@@ -54,6 +54,15 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
     private final PasswordResetTokenRepository tokenRepo;
     private final PasswordEncoder passwordEncoder;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.PermisoService permisoService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.PerfilesSistemaService perfilesSistema;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository permisoQuery;
+
     public EmpresaPlataformaServiceImpl(EmpresaPlataformaQueryRepository queryRepo,
                                         EmpresaJPARepository empresaRepo,
                                         SucursalJPARepository sucursalRepo,
@@ -156,6 +165,16 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 .rol("ADMIN")
                 .activo(true)
                 .build();
+        usuario = usuarioRepo.save(usuario);
+
+        // 4.1 Módulos que tendrá la empresa y perfil Administrador para su admin
+        //     (docs/PLAN_PERMISOS.md): sin esto la empresa nace sin nada que ver.
+        if (dto.getSubmodulos() != null && !dto.getSubmodulos().isEmpty()) {
+            permisoService.activarSubmodulos(empresa.getId(), dto.getSubmodulos());
+        }
+        perfilesSistema.asegurar(empresa.getId());
+        usuario.setPerfilId(permisoQuery.perfilIdPorCodigo(empresa.getId(),
+                com.cloud_technological.aura_pos.services.permisos.PerfilesSistema.ADMINISTRADOR));
         usuario = usuarioRepo.save(usuario);
 
         // 5. Vincular usuario ↔ sucursal

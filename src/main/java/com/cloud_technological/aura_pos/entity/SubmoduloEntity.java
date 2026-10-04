@@ -38,6 +38,13 @@ public class SubmoduloEntity {
     @Builder.Default
     private Integer orden = 0;
 
+    /**
+     * Grupo del que cuelga (tercer nivel, p. ej. RRHH → Gestión → Empleados).
+     * Null = cuelga directo del módulo. Un grupo no puede tener padre. (V190)
+     */
+    @Column(name = "padre_id")
+    private Long padreId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

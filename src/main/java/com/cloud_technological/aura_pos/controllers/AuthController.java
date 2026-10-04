@@ -35,12 +35,20 @@ public class AuthController {
     @Autowired private UsuarioJPARepository usuarioRepo;
     @Autowired private PasswordResetTokenRepository tokenRepo;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private com.cloud_technological.aura_pos.security.SesionService sesiones;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponseDto>> login(
             @Valid @RequestBody LoginRequestDto loginRequest) throws BusinessException {
         LoginResponseDto responseDto = authService.login(loginRequest);
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Login exitoso", false, responseDto));
+    }
+
+    /** Cambia la sede de trabajo: devuelve un token nuevo con la sede elegida (PLAN_PERMISOS P9). */
+    @PostMapping("/cambiar-sede")
+    public ResponseEntity<ApiResponse<LoginResponseDto>> cambiarSede(@RequestBody java.util.Map<String, Long> body) {
+        LoginResponseDto r = authService.cambiarSede(body != null ? body.get("sucursalId") : null);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Sede cambiada", false, r));
     }
 
     @PostMapping("/register")
@@ -64,7 +72,10 @@ public class AuthController {
         }
 
         resetToken.getUsuario().setPassword(passwordEncoder.encode(dto.getNuevaPassword()));
-        usuarioRepo.save(resetToken.getUsuario());
+        // Clave nueva: se desbloquea y se cierran las sesiones abiertas (PLAN_PERMISOS P10).
+        resetToken.getUsuario().setIntentosFallidos(0);
+        resetToken.getUsuario().setBloqueadoHasta(null);
+        sesiones.revocar(resetToken.getUsuario());
 
         resetToken.setUsado(true);
         tokenRepo.save(resetToken);

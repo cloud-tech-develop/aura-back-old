@@ -15,6 +15,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class SerialQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -43,7 +47,7 @@ public class SerialQueryRepository {
             INNER JOIN sucursal s ON sp.sucursal_id = s.id
             LEFT JOIN compra_detalle cd ON cd.id = sp.compra_detalle_id
             LEFT JOIN compra c ON c.id = cd.compra_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND p.deleted_at IS NULL
         """);
 
@@ -62,7 +66,7 @@ public class SerialQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<SerialProductoTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<SerialProductoTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(SerialProductoTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -92,7 +96,7 @@ public class SerialQueryRepository {
         params.addValue("productoId", productoId);
         params.addValue("sucursalId", sucursalId);
         params.addValue("empresaId", empresaId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(SerialProductoTableDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(SerialProductoTableDto.class));
     }
 
     /** Serial DISPONIBLE en la sucursal con ese texto (el POS lo escanea como si fuera un código). */
@@ -103,7 +107,7 @@ public class SerialQueryRepository {
             FROM serial_producto sp
             INNER JOIN producto p ON p.id = sp.producto_id
             INNER JOIN sucursal s ON s.id = sp.sucursal_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
               AND sp.sucursal_id = :sucursalId
               AND sp.estado = 'DISPONIBLE'
               AND UPPER(TRIM(sp.serial)) = UPPER(TRIM(:codigo))
@@ -139,7 +143,7 @@ public class SerialQueryRepository {
             FROM serial_producto sp
             INNER JOIN producto p ON p.id = sp.producto_id
             INNER JOIN sucursal s ON s.id = sp.sucursal_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
               AND UPPER(TRIM(sp.serial)) LIKE '%' || UPPER(TRIM(:serial)) || '%'
             ORDER BY sp.serial
             LIMIT 20

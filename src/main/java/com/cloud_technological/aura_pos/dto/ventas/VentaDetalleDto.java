@@ -22,4 +22,6 @@ public class VentaDetalleDto {
     private BigDecimal impuestoValor;
     private BigDecimal subtotalLinea;
     private String unidadMedidaNombre;
+    /** Texto propio de la línea (Facturación); null = nombre del producto. */
+    private String descripcion;
 }

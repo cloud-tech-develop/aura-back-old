@@ -35,7 +35,33 @@ public class HerramientasContadorService {
     // ── Traslado de cuentas ─────────────────────────────────────────────
 
     public record ResumenTraslado(int lineas, BigDecimal debitos, BigDecimal creditos, List<String> periodosCerrados,
-            List<Map<String, Object>> movimientos) {
+            List<Map<String, Object>> movimientos, Map<String, Integer> configuracion) {
+    }
+
+    /** Nombre legible de cada configuración que puede apuntar a una cuenta. */
+    private static final Map<String, String> NOMBRE_CONFIG = Map.ofEntries(
+            Map.entry("cuenta_config", "Configuración contable (conceptos)"),
+            Map.entry("forma_pago_contable", "Formas de pago"),
+            Map.entry("categoria_contable_producto", "Categorías contables de producto"),
+            Map.entry("producto", "Productos"),
+            Map.entry("impuesto", "Impuestos"),
+            Map.entry("concepto_caja", "Conceptos de caja"),
+            Map.entry("concepto_consumo_interno", "Conceptos de consumo interno"),
+            Map.entry("cuenta_bancaria", "Cuentas bancarias"),
+            Map.entry("tarifa_retencion", "Tarifas de retención"),
+            Map.entry("activo_fijo", "Activos fijos"),
+            Map.entry("diferido", "Diferidos"),
+            Map.entry("causacion_programada_linea", "Causaciones programadas"),
+            Map.entry("nota_diario_plantilla_linea", "Plantillas de notas"));
+
+    /** Cuántos registros de configuración apuntan a la cuenta, agrupados por pantalla. */
+    private Map<String, Integer> configuracionQueUsa(Long cuentaId) {
+        Map<String, Integer> m = new LinkedHashMap<>();
+        for (Referencia r : repo.configuracionDeCuentas()) {
+            int n = repo.contar(r, cuentaId);
+            if (n > 0) m.merge(NOMBRE_CONFIG.getOrDefault(r.tabla(), r.tabla()), n, Integer::sum);
+        }
+        return m;
     }
 
     public ResumenTraslado vistaPreviaTraslado(Integer empresaId, Long origenId, Long destinoId, LocalDate desde,
@@ -45,35 +71,62 @@ public class HerramientasContadorService {
         return new ResumenTraslado(((Number) r.get("lineas")).intValue(), (BigDecimal) r.get("debitos"),
                 (BigDecimal) r.get("creditos"),
                 repo.periodosCerradosEnTraslado(empresaId, origenId, desde, hasta, terceroId),
-                repo.movimientosTraslado(empresaId, origenId, desde, hasta, terceroId));
+                repo.movimientosTraslado(empresaId, origenId, desde, hasta, terceroId),
+                configuracionQueUsa(origenId));
+    }
+
+    public record ResultadoTraslado(int lineas, int configuracion, boolean origenAgrupadora) {
     }
 
     /**
-     * Mueve los movimientos de una cuenta a otra en el rango. Solo cambia el
-     * mayor: si la cuenta vieja sigue configurada en un concepto o en una
-     * categoría, los documentos nuevos seguirán yendo allá.
+     * Mueve los movimientos de una cuenta a otra en el rango. Si se pide,
+     * también la configuración que apunta a la cuenta vieja (conceptos, formas
+     * de pago, categorías…) para que los documentos nuevos vayan a la nueva, y
+     * deja la vieja como agrupadora si quedó vacía: así se pasa, por ejemplo,
+     * de 110505 a su auxiliar 11050501.
      */
     @Transactional
-    public int trasladar(Integer empresaId, Long origenId, Long destinoId, LocalDate desde, LocalDate hasta,
-            Long terceroId, List<Long> detalleIds, String motivo, Long usuarioId) {
+    public ResultadoTraslado trasladar(Integer empresaId, Long origenId, Long destinoId, LocalDate desde,
+            LocalDate hasta, Long terceroId, List<Long> detalleIds, String motivo, Long usuarioId,
+            boolean conConfiguracion, boolean origenAgrupadora, boolean soloConfiguracion) {
         if (motivo == null || motivo.isBlank())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Escriba el motivo del traslado: queda en la bitácora");
         validarTraslado(empresaId, origenId, destinoId, desde, hasta);
+        if (soloConfiguracion && !conConfiguracion)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "No hay nada que trasladar");
         boolean elegidos = detalleIds != null && !detalleIds.isEmpty();
         // Con movimientos elegidos solo importan los meses de esos; sin elegir,
         // los de todo el rango.
-        List<String> cerrados = elegidos
+        List<String> cerrados = soloConfiguracion ? List.of() : elegidos
                 ? repo.periodosCerradosDeLineas(empresaId, detalleIds)
                 : repo.periodosCerradosEnTraslado(empresaId, origenId, desde, hasta, terceroId);
         if (!cerrados.isEmpty())
             throw new GlobalException(HttpStatus.CONFLICT,
                     "El traslado toca meses cerrados (" + String.join(", ", cerrados)
                             + "). Reábralos, acorte el rango o quite esos movimientos");
-        int movidas = repo.trasladar(empresaId, origenId, destinoId, desde, hasta, terceroId, detalleIds);
-        if (movidas == 0)
-            throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta no tiene movimientos en ese rango");
-        repo.logTraslado(empresaId, origenId, destinoId, desde, hasta, terceroId, movidas, motivo.trim(), usuarioId);
-        return movidas;
+        int movidas = soloConfiguracion ? 0
+                : repo.trasladar(empresaId, origenId, destinoId, desde, hasta, terceroId, detalleIds);
+        int config = 0;
+        if (conConfiguracion) {
+            for (Referencia r : repo.configuracionDeCuentas()) {
+                config += repo.mover(r, origenId, destinoId);
+            }
+        }
+        if (movidas == 0 && config == 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, conConfiguracion
+                    ? "La cuenta no tiene movimientos en ese rango ni configuración que la use"
+                    : "La cuenta no tiene movimientos en ese rango");
+        // Solo se cierra si de verdad quedó vacía: sin asientos y sin nada que la use.
+        boolean agrupadora = false;
+        if (origenAgrupadora && !repo.tieneMovimientos(origenId) && configuracionQueUsa(origenId).isEmpty()) {
+            repo.volverAgrupadora(origenId);
+            agrupadora = true;
+        }
+        String detalle = motivo.trim()
+                + (config > 0 ? " · configuración movida: " + config : "")
+                + (agrupadora ? " · origen queda agrupadora" : "");
+        repo.logTraslado(empresaId, origenId, destinoId, desde, hasta, terceroId, movidas, detalle, usuarioId);
+        return new ResultadoTraslado(movidas, config, agrupadora);
     }
 
     public List<Map<String, Object>> historialTraslados(Integer empresaId) {

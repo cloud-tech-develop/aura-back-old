@@ -36,6 +36,12 @@ public class SecurityConfig {
     private final RateLimitFilter rateLimitFilter;
     private final CustomUserDetailsService customUserDetailsService;
 
+    // Alcance por sede en los parámetros (PLAN_PERMISOS P9): va después del JWT.
+    private final com.cloud_technological.aura_pos.services.permisos.PermisoUsuarioService permisoUsuarioService;
+    private final com.cloud_technological.aura_pos.repositories.permisos.PermisoBloqueoLogRepository permisoBloqueoLog;
+    private final com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+    private final PermisoInterceptor permisoInterceptor;
+
     /** Swagger publica el catálogo completo de endpoints: solo en desarrollo. */
     @Value("${app.swagger.enabled:false}")
     private boolean swaggerHabilitado;
@@ -74,7 +80,11 @@ public class SecurityConfig {
 
             // El límite de peticiones va antes de todo: frena la fuerza bruta
             // sin gastar ciclos validando credenciales.
-            .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class);
+            .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class)
+
+            // Alcance por sede en los parámetros de la URL (PLAN_PERMISOS P9).
+            .addFilterAfter(new com.cloud_technological.aura_pos.security.AlcanceSedeFilter(permisoUsuarioService,
+                    permisoBloqueoLog, securityUtils, permisoInterceptor), JwtAuthenticationFilter.class);
 
         return http.build();
     }

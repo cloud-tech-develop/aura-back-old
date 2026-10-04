@@ -20,6 +20,11 @@ public class UpdateUsuarioDto {
     private String pinAccesoRapido;
 
     private String rol;
+    /** Perfil de permisos; null = se conserva (o pasa al del rol nuevo si tenía el del rol anterior). */
+    private Long perfilId;
+
+    /** Cambiar la persona del usuario (otro tercero de la empresa); null = no cambia. */
+    private Long terceroId;
 
     private String nombres;
     private String telefono;

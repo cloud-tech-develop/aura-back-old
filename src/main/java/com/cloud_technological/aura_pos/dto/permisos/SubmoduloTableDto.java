@@ -21,5 +21,10 @@ public class SubmoduloTableDto {
     private String descripcion;
     private Boolean activo;
     private Integer orden;
+    /** Grupo del que cuelga (null = directo del módulo). */
+    private Long padreId;
+    private String padreNombre;
+    /** Tiene submódulos colgando: es un grupo, no una pantalla. */
+    private Boolean esGrupo;
     private Integer totalRows;
 }

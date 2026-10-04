@@ -19,6 +19,10 @@ public class GastoQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     /**
      * La cuenta por pagar de un gasto a crédito, viva. No hay columna que las
      * enlace: se reconoce por la observación que escribe el propio sistema al
@@ -73,6 +77,7 @@ public class GastoQueryRepository {
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        sql.append(alcanceSede.filtro("g.sucursal_id", params));
 
         if (!search.isEmpty()) {
             sql.append(" AND (LOWER(g.categoria) LIKE :search OR LOWER(g.descripcion) LIKE :search) ");

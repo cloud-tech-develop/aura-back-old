@@ -1,0 +1,13 @@
+# Lo único que necesita la imagen es pom.xml y src/.
+target/
+.git/
+.github/
+.vscode/
+.idea/
+.claude/
+docs/
+*.log
+
+# Los secretos NUNCA dentro de la imagen: se pasan al correr (env_file).
+.env
+.env.*

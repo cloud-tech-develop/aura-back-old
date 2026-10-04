@@ -20,6 +20,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class MermaQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -44,7 +48,7 @@ public class MermaQueryRepository {
             FROM merma m
             INNER JOIN sucursal s ON m.sucursal_id = s.id
             INNER JOIN motivo_merma mm ON m.motivo_id = mm.id
-            WHERE m.empresa_id = :empresaId
+            WHERE m.empresa_id = :empresaId /*SEDE:m.sucursal_id*/
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -62,7 +66,7 @@ public class MermaQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<MermaTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<MermaTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(MermaTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -92,7 +96,7 @@ public class MermaQueryRepository {
             ORDER BY md.id
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("mermaId", mermaId);
-        List<MermaDetalleDto> detalles = jdbcTemplate.query(sql, params,
+        List<MermaDetalleDto> detalles = jdbcTemplate.query(alcanceSede.aplicar(sql, params), params,
                 new BeanPropertyRowMapper<>(MermaDetalleDto.class));
 
         Map<Long, List<ConsumoComponenteDto>> componentes = consumoQueryRepository.porDetalle(

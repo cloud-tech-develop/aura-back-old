@@ -28,5 +28,7 @@ public class ProductoTableDto {
     private String unidadAbreviatura;
     private Boolean manejaLotes;
     private Boolean manejaSerial;
+    /** Existencia en la sede que se está mirando (params.sucursalId); null sin sede. */
+    private BigDecimal stockSede;
     private long totalRows;
 }

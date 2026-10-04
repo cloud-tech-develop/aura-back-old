@@ -24,6 +24,10 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario.Familia;
 
 @Repository
 public class KardexQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -62,7 +66,7 @@ public class KardexQueryRepository {
             INNER JOIN producto p ON m.producto_id = p.id
             INNER JOIN sucursal s ON m.sucursal_id = s.id
             LEFT JOIN lote l ON m.lote_id = l.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -72,7 +76,7 @@ public class KardexQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<KardexTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<KardexTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(KardexTableDto.class));
         list.forEach(this::etiquetar);
 
@@ -124,7 +128,7 @@ public class KardexQueryRepository {
               FROM movimiento_inventario m
               INNER JOIN producto p ON p.id = m.producto_id
               INNER JOIN sucursal s ON s.id = m.sucursal_id
-             WHERE s.empresa_id = :empresaId
+             WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -219,7 +223,7 @@ public class KardexQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<KardexReporteLineaDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<KardexReporteLineaDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(KardexReporteLineaDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
@@ -267,7 +271,7 @@ public class KardexQueryRepository {
             INNER JOIN producto p ON p.id = m.producto_id
             INNER JOIN sucursal s ON s.id = m.sucursal_id
             LEFT JOIN lote l ON l.id = m.lote_id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -277,7 +281,7 @@ public class KardexQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<KardexDetalleLineaDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<KardexDetalleLineaDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(KardexDetalleLineaDto.class));
 
         // La etiqueta y el grupo se resuelven en Java: son del catálogo, no de
@@ -333,11 +337,11 @@ public class KardexQueryRepository {
                 + "       COUNT(*) AS movimientos\n"
                 + "  FROM movimiento_inventario m\n"
                 + "  JOIN sucursal s ON s.id = m.sucursal_id\n"
-                + " WHERE s.empresa_id = :empresaId\n"
+                + " WHERE s.empresa_id = :empresaId /*SEDE:s.id*/\n"
                 + "   AND m.created_at::date BETWEEN :desde AND :hasta\n"
                 + " GROUP BY 1 ORDER BY salidas DESC";
 
-        return jdbcTemplate.query(sql, params, (rs, i) -> new MovimientoPorFamilia(
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, (rs, i) -> new MovimientoPorFamilia(
                 rs.getString("familia"),
                 rs.getBigDecimal("entradas"), rs.getBigDecimal("salidas"),
                 rs.getBigDecimal("valor_entradas"), rs.getBigDecimal("valor_salidas"),
@@ -441,7 +445,7 @@ public class KardexQueryRepository {
             FROM inventario i
             INNER JOIN sucursal s ON i.sucursal_id = s.id
             INNER JOIN producto p ON i.producto_id = p.id
-            WHERE s.empresa_id = :empresaId
+            WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
             AND p.id = :productoId
             -- El saldo vive por bodega (V172): la sucursal es la suma de las suyas.
             GROUP BY s.id, s.nombre, p.id, p.nombre, p.sku
@@ -450,6 +454,6 @@ public class KardexQueryRepository {
         MapSqlParameterSource params = new MapSqlParameterSource();
         params.addValue("empresaId", empresaId);
         params.addValue("productoId", productoId);
-        return jdbcTemplate.query(sql, params, new BeanPropertyRowMapper<>(KardexResumenDto.class));
+        return jdbcTemplate.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(KardexResumenDto.class));
     }
 }

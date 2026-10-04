@@ -21,6 +21,9 @@ F0 Estabilización ──► F1 Contención P0 ──► F2 Integridad transacci
                                    │                     │                              │
                                    │                     └──────► F4 Cadena documental y notas ◄┘
                                    │                                        │
+                                   │                                        ▼
+                                   │                     FV Facturación ERP (fuera del POS) ◄── C-011/B-027 (F6), A-014 (F7)
+                                   │                                        │
                                    └──► F5 Autorización fina y auditoría    │
                                                      │                      ▼
                                                      └────► F6 Motor contable único y parametrización
@@ -91,6 +94,20 @@ scripts de corrección de datos aprobados y ejecutados.
 - TASK-B-014 edición de compra segura; TASK-B-018 origen de fondos en reembolsos.
 **Depende de:** F2, F3. **Salida:** matriz de efectos documentales (baseline §5) sin ⚠; subledger CxC/CxP = mayor.
 
+## FV — Facturación ERP fuera del POS (**P0 para empresa mediana**, agregada 2026-10-02)
+
+**Objetivo:** que facturación/cartera cree facturas de venta (bienes y servicios, contado o crédito) sin pasar por el POS,
+con FE al emitir. Hoy toda factura nace en `POST /api/ventas/create` amarrada a turno de caja. Detalle en
+[PLAN_FACTURACION.md](../PLAN_FACTURACION.md).
+- FV0 modelo (V194+): origen `FACTURACION`, borrador, condición de pago, vendedor, centro de costo, OC del cliente, línea de servicio.
+- FV1 borrador → emitir sin caja (consecutivo, stock, asiento y CxC en una transacción); pantalla Facturación › Facturas.
+- FV2 FE al emitir + correo al cliente. FV3 retenciones en la factura.
+- FV4 desde cotización/pedido/remisión y anticipos. FV5 NC/ND, recurrentes, AIU.
+**Depende de:** F2 (numerador y stock únicos) y F4/D0. **Adelanta** de F6 la parametrización de retenciones
+(C-011, B-027) para FV3 y de F7 las resoluciones por documento (A-014) para FV2.
+**Va después de** subir los lotes de productos y permisos. **Salida:** una factura a crédito de servicios con retención,
+emitida y validada por la DIAN sin abrir caja, con cartera y asiento correctos.
+
 ## F5 — Autorización fina y auditoría (paralela a F3/F4 tras F1)
 
 - TASK-A-010 RBAC por acción con overrides por usuario; TASK-C-016 catálogo de acciones contables.
@@ -153,5 +170,7 @@ conciliación automática por banco, ficha de activo extendida, copiar parametri
 
 ## Siguiente bloque ejecutable
 
-**F0 + F1 frente Seguridad (TASK-A-001 → A-004).** Sin cambios de esquema; A-001 cierra una escalada activa.
-En paralelo, diagnósticos de solo lectura para B0 y C0.
+*(Actualizado 2026-10-02)* F0–F4 están hechas en local y suben por lotes (ver `docs/PLAN_DESPLIEGUE.md`).
+1. Subir los lotes pendientes: productos/costo promedio y permisos por perfil.
+2. **FV0 + FV1** (Facturación sin caja), con las decisiones 1, 3 y 4 de `PLAN_FACTURACION.md` tomadas antes.
+3. En paralelo, adelantar C-011/B-027 (retenciones parametrizadas) y A-014 (resoluciones por documento) para FV2/FV3.

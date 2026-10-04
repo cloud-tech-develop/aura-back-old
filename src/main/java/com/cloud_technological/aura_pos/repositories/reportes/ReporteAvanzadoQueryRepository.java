@@ -24,6 +24,10 @@ import com.cloud_technological.aura_pos.dto.reportes.ReporteVentasVendedorDto;
 
 @Repository
 public class ReporteAvanzadoQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbc;
@@ -45,7 +49,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY c.id, c.nombre
@@ -55,7 +59,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("empresaId", empresaId)
                 .addValue("desde", desde)
                 .addValue("hasta", hasta);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteVentasCategoriaDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteVentasCategoriaDto.class));
     }
 
     // ── Top productos ─────────────────────────────────────────────────────────
@@ -76,7 +80,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY p.id, p.nombre, p.sku, c.nombre
@@ -88,7 +92,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("desde", desde)
                 .addValue("hasta", hasta)
                 .addValue("limite", limite);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteTopProductoDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteTopProductoDto.class));
     }
 
     // ── Ventas por vendedor ───────────────────────────────────────────────────
@@ -108,7 +112,7 @@ public class ReporteAvanzadoQueryRepository {
                 FROM venta v
                 INNER JOIN usuario u ON v.usuario_id = u.id
                 LEFT JOIN tercero t ON u.tercero_id = t.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY u.id, u.username, t.razon_social, t.nombres, t.apellidos
@@ -118,7 +122,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("empresaId", empresaId)
                 .addValue("desde", desde)
                 .addValue("hasta", hasta);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteVentasVendedorDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteVentasVendedorDto.class));
     }
 
     // ── Márgenes por producto ─────────────────────────────────────────────────
@@ -145,7 +149,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY p.id, p.nombre, p.sku, c.nombre, p.costo
@@ -155,7 +159,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("empresaId", empresaId)
                 .addValue("desde", desde)
                 .addValue("hasta", hasta);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteMargenesProductoDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteMargenesProductoDto.class));
     }
 
     // ── Rotación de inventario ────────────────────────────────────────────────
@@ -188,12 +192,12 @@ public class ReporteAvanzadoQueryRepository {
                 FROM producto p
                 LEFT JOIN categoria c ON p.categoria_id = c.id
                 LEFT JOIN inventario inv ON inv.producto_id = p.id
-                    AND inv.sucursal_id IN (SELECT id FROM sucursal WHERE empresa_id = :empresaId)
+                    AND inv.sucursal_id IN (SELECT id FROM sucursal WHERE empresa_id = :empresaId) /*SEDE:inv.sucursal_id*/
                 LEFT JOIN (
                     SELECT vd.producto_id, SUM(vd.cantidad) AS unidades_vendidas
                     FROM venta v
                     INNER JOIN venta_detalle vd ON vd.venta_id = v.id
-                    WHERE v.empresa_id = :empresaId
+                    WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                       AND v.estado_venta = 'COMPLETADA'
                       AND v.fecha_emision >= NOW() - INTERVAL '30 days'
                     GROUP BY vd.producto_id
@@ -205,7 +209,7 @@ public class ReporteAvanzadoQueryRepository {
                 ORDER BY rotacion DESC
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
-        return jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteRotacionInventarioDto.class));
+        return jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteRotacionInventarioDto.class));
     }
 
     // ── Resumen avanzado ──────────────────────────────────────────────────────
@@ -226,7 +230,7 @@ public class ReporteAvanzadoQueryRepository {
                     COUNT(v.id) AS cantidad_ventas,
                     COALESCE(ROUND(AVG(v.total_pagar), 2), 0) AS ticket_promedio
                 FROM venta v
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
@@ -235,7 +239,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("desde", desde)
                 .addValue("hasta", hasta);
 
-        jdbc.query(sqlKpis, p, rs -> {
+        jdbc.query(alcanceSede.aplicar(sqlKpis, p), p, rs -> {
             dto.setTotalVentasPeriodo(rs.getBigDecimal("total_ventas"));
             dto.setCantidadTransacciones(rs.getLong("cantidad_ventas"));
             dto.setTicketPromedio(rs.getBigDecimal("ticket_promedio"));
@@ -245,7 +249,7 @@ public class ReporteAvanzadoQueryRepository {
         String sqlAnterior = """
                 SELECT COALESCE(SUM(v.total_pagar), 0) AS total_ventas
                 FROM venta v
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
@@ -253,7 +257,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("empresaId", empresaId)
                 .addValue("desde", desdeAnterior)
                 .addValue("hasta", hastaAnterior);
-        BigDecimal totalAnterior = jdbc.queryForObject(sqlAnterior, pAnterior, BigDecimal.class);
+        BigDecimal totalAnterior = jdbc.queryForObject(alcanceSede.aplicar(sqlAnterior, pAnterior), pAnterior, BigDecimal.class);
         dto.setTotalVentasPeriodoAnterior(totalAnterior != null ? totalAnterior : BigDecimal.ZERO);
 
         // Variación
@@ -273,11 +277,11 @@ public class ReporteAvanzadoQueryRepository {
         String sqlCompras = """
                 SELECT COALESCE(SUM(c.total), 0)
                 FROM compra c
-                WHERE c.empresa_id = :empresaId
+                WHERE c.empresa_id = :empresaId /*SEDE:c.sucursal_id*/
                   AND c.estado = 'RECIBIDA'
                   AND c.fecha::date BETWEEN :desde AND :hasta
                 """;
-        BigDecimal totalCompras = jdbc.queryForObject(sqlCompras, p, BigDecimal.class);
+        BigDecimal totalCompras = jdbc.queryForObject(alcanceSede.aplicar(sqlCompras, p), p, BigDecimal.class);
         dto.setTotalComprasPeriodo(totalCompras != null ? totalCompras : BigDecimal.ZERO);
 
         // Margen comercial: precio con IVA − costo con IVA, que es como el comerciante
@@ -295,11 +299,11 @@ public class ReporteAvanzadoQueryRepository {
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto pr ON vd.producto_id = pr.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
-        BigDecimal margen = jdbc.queryForObject(sqlMargen, p, BigDecimal.class);
+        BigDecimal margen = jdbc.queryForObject(alcanceSede.aplicar(sqlMargen, p), p, BigDecimal.class);
         dto.setMargenBrutoPeriodo(margen != null ? margen : BigDecimal.ZERO);
 
         // Clientes nuevos vs recurrentes
@@ -310,7 +314,7 @@ public class ReporteAvanzadoQueryRepository {
                 FROM (
                     SELECT v.cliente_id, MIN(v.fecha_emision::date) AS primera_compra
                     FROM venta v
-                    WHERE v.empresa_id = :empresaId
+                    WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                       AND v.cliente_id IS NOT NULL
                       AND v.estado_venta = 'COMPLETADA'
                     GROUP BY v.cliente_id
@@ -318,13 +322,13 @@ public class ReporteAvanzadoQueryRepository {
                 WHERE sub.cliente_id IN (
                     SELECT DISTINCT v2.cliente_id
                     FROM venta v2
-                    WHERE v2.empresa_id = :empresaId
+                    WHERE v2.empresa_id = :empresaId /*SEDE:v2.sucursal_id*/
                       AND v2.estado_venta = 'COMPLETADA'
                       AND v2.fecha_emision::date BETWEEN :desde AND :hasta
                       AND v2.cliente_id IS NOT NULL
                 )
                 """;
-        jdbc.query(sqlClientes, p, rs -> {
+        jdbc.query(alcanceSede.aplicar(sqlClientes, p), p, rs -> {
             dto.setClientesNuevos(rs.getLong("nuevos"));
             dto.setClientesRecurrentes(rs.getLong("recurrentes"));
         });
@@ -347,14 +351,14 @@ public class ReporteAvanzadoQueryRepository {
                     TO_CHAR(v.fecha_emision::date, 'YYYY-MM-DD') AS dia,
                     SUM(v.total_pagar) AS total
                 FROM venta v
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY v.fecha_emision::date
                 ORDER BY v.fecha_emision::date
                 """;
         List<Map<String, Object>> porDia = new ArrayList<>();
-        jdbc.query(sqlPorDia, p, rs -> {
+        jdbc.query(alcanceSede.aplicar(sqlPorDia, p), p, rs -> {
             Map<String, Object> row = new HashMap<>();
             row.put("dia", rs.getString("dia"));
             row.put("total", rs.getBigDecimal("total"));
@@ -367,14 +371,14 @@ public class ReporteAvanzadoQueryRepository {
                 SELECT vp.metodo_pago AS metodo_pago, SUM(vp.monto) AS total
                 FROM venta v
                 INNER JOIN venta_pago vp ON vp.venta_id = v.id
-                WHERE v.empresa_id = :empresaId
+                WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                   AND v.estado_venta = 'COMPLETADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY vp.metodo_pago
                 ORDER BY total DESC
                 """;
         List<Map<String, Object>> porMetodo = new ArrayList<>();
-        jdbc.query(sqlMetodo, p, rs -> {
+        jdbc.query(alcanceSede.aplicar(sqlMetodo, p), p, rs -> {
             Map<String, Object> row = new HashMap<>();
             row.put("metodoPago", rs.getString("metodo_pago"));
             row.put("total", rs.getBigDecimal("total"));
@@ -407,7 +411,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN sucursal s ON c.sucursal_id = s.id
                 INNER JOIN usuario u ON mc.usuario_id = u.id
                 LEFT JOIN tercero t ON u.tercero_id = t.id
-                WHERE s.empresa_id = :empresaId
+                WHERE s.empresa_id = :empresaId /*SEDE:s.id*/
                   AND mc.created_at::date BETWEEN :desde AND :hasta
                 ORDER BY mc.created_at ASC
                 """;
@@ -417,7 +421,7 @@ public class ReporteAvanzadoQueryRepository {
                 .addValue("hasta", hasta);
 
         List<ReporteLineaMovimientoCajaDto> movimientos =
-                jdbc.query(sql, params, new BeanPropertyRowMapper<>(ReporteLineaMovimientoCajaDto.class));
+                jdbc.query(alcanceSede.aplicar(sql, params), params, new BeanPropertyRowMapper<>(ReporteLineaMovimientoCajaDto.class));
 
         BigDecimal totalIngresos = movimientos.stream()
                 .filter(m -> "INGRESO".equals(m.getTipo()))

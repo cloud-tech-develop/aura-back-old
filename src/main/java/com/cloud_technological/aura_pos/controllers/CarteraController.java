@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.cloud_technological.aura_pos.config.RequerirPermiso;
 import com.cloud_technological.aura_pos.dto.cartera.CarteraDashboardDto;
 import com.cloud_technological.aura_pos.dto.cartera.ClienteCarteraDto;
 import com.cloud_technological.aura_pos.dto.cartera.CreateGestionCobroDto;
@@ -133,6 +134,7 @@ public class CarteraController {
 
     // ── Solicitudes de autorización ───────────────────────────────────────────
 
+    @RequerirPermiso(accion = "APROBAR_CREDITO")
     @PatchMapping("/solicitudes/{id}/aprobar")
     public ResponseEntity<ApiResponse<Void>> aprobar(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -141,6 +143,7 @@ public class CarteraController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Solicitud aprobada", false, null));
     }
 
+    @RequerirPermiso(accion = "APROBAR_CREDITO")
     @PatchMapping("/solicitudes/{id}/rechazar")
     public ResponseEntity<ApiResponse<Void>> rechazar(
             @PathVariable Long id,

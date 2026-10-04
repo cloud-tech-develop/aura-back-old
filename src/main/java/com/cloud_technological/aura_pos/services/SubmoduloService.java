@@ -13,4 +13,5 @@ public interface SubmoduloService {
     void eliminar(Integer id);
     SubmoduloDto obtenerPorId(Integer id);
     List<SubmoduloTableDto> listarPorModulo(Integer moduloId);
+    org.springframework.data.domain.PageImpl<SubmoduloTableDto> paginar(Integer moduloId, String search, int page, int size);
 }

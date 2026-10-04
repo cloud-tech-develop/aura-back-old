@@ -141,6 +141,67 @@ public class HerramientasContadorQueryRepository {
             """, new MapSqlParameterSource("e", empresaId));
     }
 
+    // ── Configuración que apunta a una cuenta ───────────────────────────
+
+    /**
+     * Lo que decide a qué cuenta van los documentos NUEVOS: conceptos, formas
+     * de pago, categorías, productos, impuestos, conceptos de caja, cuentas
+     * bancarias, retenciones, activos, diferidos y plantillas. Lo ya
+     * contabilizado (asientos, ventas, pagos) no está aquí: eso es historia.
+     */
+    private static final List<Referencia> CONFIG_CUENTA = List.of(
+            new Referencia("cuenta_config", "cuenta_id"),
+            new Referencia("forma_pago_contable", "cuenta_contable_id"),
+            new Referencia("categoria_contable_producto", "cuenta_ingreso_id"),
+            new Referencia("categoria_contable_producto", "cuenta_inventario_id"),
+            new Referencia("categoria_contable_producto", "cuenta_costo_id"),
+            new Referencia("categoria_contable_producto", "cuenta_devolucion_id"),
+            new Referencia("categoria_contable_producto", "cuenta_depreciacion_id"),
+            new Referencia("categoria_contable_producto", "cuenta_gasto_depreciacion_id"),
+            new Referencia("producto", "cuenta_ingreso_id"),
+            new Referencia("producto", "cuenta_costo_id"),
+            new Referencia("producto", "cuenta_inventario_id"),
+            new Referencia("impuesto", "cuenta_generado_id"),
+            new Referencia("impuesto", "cuenta_descontable_id"),
+            new Referencia("concepto_caja", "cuenta_contable_id"),
+            new Referencia("concepto_consumo_interno", "cuenta_id"),
+            new Referencia("cuenta_bancaria", "cuenta_contable_id"),
+            new Referencia("tarifa_retencion", "cuenta_contable_id"),
+            new Referencia("activo_fijo", "cuenta_activo_id"),
+            new Referencia("activo_fijo", "cuenta_depreciacion_id"),
+            new Referencia("activo_fijo", "cuenta_gasto_dep_id"),
+            new Referencia("diferido", "cuenta_gasto_id"),
+            new Referencia("diferido", "cuenta_diferido_id"),
+            new Referencia("causacion_programada_linea", "cuenta_id"),
+            new Referencia("nota_diario_plantilla_linea", "cuenta_id"));
+
+    /** Las de CONFIG_CUENTA que existen en esta base (alguna tabla puede no estar migrada). */
+    public List<Referencia> configuracionDeCuentas() {
+        Set<String> existentes = new LinkedHashSet<>(jdbc.queryForList("""
+            SELECT table_name || '.' || column_name
+              FROM information_schema.columns
+             WHERE table_schema = current_schema()
+            """, new MapSqlParameterSource(), String.class));
+        List<Referencia> refs = new ArrayList<>();
+        for (Referencia r : CONFIG_CUENTA) {
+            if (existentes.contains(r.tabla() + "." + r.columna())) refs.add(r);
+        }
+        return refs;
+    }
+
+    /** ¿La cuenta todavía tiene movimientos en el mayor? */
+    public boolean tieneMovimientos(Long cuentaId) {
+        Boolean b = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM asiento_detalle WHERE cuenta_id = :c)",
+                new MapSqlParameterSource("c", cuentaId), Boolean.class);
+        return Boolean.TRUE.equals(b);
+    }
+
+    /** Deja la cuenta como agrupadora: ya no recibe movimiento ni es medio de pago. */
+    public void volverAgrupadora(Long cuentaId) {
+        jdbc.update("UPDATE plan_cuenta SET auxiliar = FALSE, es_medio_pago = FALSE WHERE id = :c",
+                new MapSqlParameterSource("c", cuentaId));
+    }
+
     // ── Fusión de terceros ──────────────────────────────────────────────
 
     /** Tabla y columna que apuntan a un tercero. */

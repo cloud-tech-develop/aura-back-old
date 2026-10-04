@@ -43,6 +43,11 @@ import jakarta.transaction.Transactional;
 @Service
 public class ProductoServiceImpl implements ProductoService {
 
+    /** Bitácora de cambios de precio y costo (PLAN_PERMISOS P7). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.cloud_technological.aura_pos.services.permisos.BitacoraService bitacora;
+
+
     private static final List<String> USOS = List.of("VENTA", "INSUMO", "AMBOS");
 
     private final ProductoQueryRepository productoRepository;
@@ -168,6 +173,8 @@ public class ProductoServiceImpl implements ProductoService {
         Boolean vendePorUnidadActual = entity.getVendePorUnidad();
         boolean manejabaLotes = Boolean.TRUE.equals(entity.getManejaLotes());
         Integer mesesGarantiaActual = entity.getMesesGarantia();
+        // Bitácora (PLAN_PERMISOS P7): precios y costo antes del cambio.
+        java.util.Map<String, Object> preciosAntes = preciosDe(entity);
         productoMapper.updateEntityFromDto(dto, entity);
         // Igual con la garantía: una pantalla que no la maneja no la borra.
         if (dto.getMesesGarantia() == null)
@@ -202,12 +209,33 @@ public class ProductoServiceImpl implements ProductoService {
         entity.setUnidadMedidaBase(unidad);
 
         ProductoEntity guardado = productoJPARepository.save(entity);
+        java.util.Map<String, Object> preciosDespues = preciosDe(guardado);
+        if (bitacora != null && !preciosAntes.equals(preciosDespues)) {
+            bitacora.registrar("catalogo.productos", "CAMBIO_PRECIO", "producto", guardado.getId(),
+                    "Cambió precios/costo de " + guardado.getNombre(), preciosAntes, preciosDespues);
+        }
         // El stock que ya tenía no está en ningún lote: pasa a SIN-LOTE para que
         // la suma de los lotes siga siendo el inventario.
         if (!manejabaLotes && Boolean.TRUE.equals(guardado.getManejaLotes())) {
             loteStock.cuadrarSinLote(guardado, empresaId);
         }
         return productoMapper.toDto(guardado);
+    }
+
+    /** Precios y costo comparables (sin ceros de escala) para la bitácora. */
+    private static java.util.Map<String, Object> preciosDe(ProductoEntity p) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("precio", plano(p.getPrecio()));
+        m.put("precio2", plano(p.getPrecio2()));
+        m.put("precio3", plano(p.getPrecio3()));
+        m.put("costo", plano(p.getCosto()));
+        m.put("ivaPorcentaje", plano(p.getIvaPorcentaje()));
+        m.put("ivaIncluido", p.getIvaIncluido());
+        return m;
+    }
+
+    private static String plano(java.math.BigDecimal v) {
+        return v == null ? null : v.stripTrailingZeros().toPlainString();
     }
 
     @Override
@@ -305,7 +333,14 @@ public class ProductoServiceImpl implements ProductoService {
 
     @Override
     public ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long productoId) {
-        ProductoInventarioDto producto = productoRepository.buscarInventarioPorId(empresaId, sucursalId, productoId);
+        return buscarInventarioPorId(empresaId, sucursalId, null, productoId);
+    }
+
+    @Override
+    public ProductoInventarioDto buscarInventarioPorId(Integer empresaId, Long sucursalId, Long bodegaId,
+            Long productoId) {
+        ProductoInventarioDto producto = productoRepository.buscarInventarioPorId(empresaId, sucursalId, bodegaId,
+                productoId);
         if (producto == null)
             throw new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado");
         return producto;

@@ -8,6 +8,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
     private final long maxAge = 3600;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private PermisoInterceptor permisoInterceptor;
+
+    /** Permisos por perfil en cada petición al API (docs/PLAN_PERMISOS.md, fase P3). */
+    @Override
+    public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
+        registry.addInterceptor(permisoInterceptor).addPathPatterns("/api/**");
+    }
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**") // Aplica a todos los endpoints

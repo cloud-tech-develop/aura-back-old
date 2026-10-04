@@ -21,6 +21,10 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
 public class ConsumoInternoQueryRepository {
+    /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
@@ -48,7 +52,7 @@ public class ConsumoInternoQueryRepository {
             INNER JOIN sucursal s                  ON s.id = ci.sucursal_id
             INNER JOIN concepto_consumo_interno c  ON c.id = ci.concepto_id
             LEFT  JOIN tercero t                   ON t.id = ci.responsable_tercero_id
-            WHERE ci.empresa_id = :empresaId
+            WHERE ci.empresa_id = :empresaId /*SEDE:ci.sucursal_id*/
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -68,7 +72,7 @@ public class ConsumoInternoQueryRepository {
         params.addValue("offset", page * size);
         params.addValue("limit", size);
 
-        List<ConsumoInternoTableDto> list = jdbcTemplate.query(sql.toString(), params,
+        List<ConsumoInternoTableDto> list = jdbcTemplate.query(alcanceSede.aplicar(sql.toString(), params), params,
                 new BeanPropertyRowMapper<>(ConsumoInternoTableDto.class));
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();

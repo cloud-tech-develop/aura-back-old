@@ -30,7 +30,15 @@ public class JwtTokenProvider {
 
     // Generar Token con Claims personalizados (Empresa y Sucursal)
     public String generateToken(Authentication authentication, Integer empresaId, Long sucursalId, String rol, Long usuarioId) {
-        String username = authentication.getName();
+        return generateToken(authentication.getName(), empresaId, sucursalId, rol, usuarioId, 0);
+    }
+
+    /**
+     * {@code tokenVersion} va en el claim {@code tv}: si el usuario la sube
+     * (desactivado, clave nueva, "Cerrar sesiones"), el token deja de servir (V192).
+     */
+    public String generateToken(String username, Integer empresaId, Long sucursalId, String rol, Long usuarioId,
+            Integer tokenVersion) {
         Date currentDate = new Date();
         Date expireDate = new Date(currentDate.getTime() + jwtExpirationDate);
 
@@ -39,6 +47,7 @@ public class JwtTokenProvider {
         claims.put("sucursalId", sucursalId); // ID de la sede donde está trabajando
         claims.put("rol", rol);
         claims.put("usuarioId", usuarioId);
+        claims.put("tv", tokenVersion != null ? tokenVersion : 0);
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username)
@@ -50,6 +59,18 @@ public class JwtTokenProvider {
 
     private Key key() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+    }
+
+    /** Usuario del token (claim usuarioId). */
+    public Long getUsuarioId(String token) {
+        Object v = getClaims(token).get("usuarioId");
+        return v == null ? null : Long.valueOf(v.toString());
+    }
+
+    /** Versión de sesión del token; los emitidos antes de V192 no la traen = 0. */
+    public int getTokenVersion(String token) {
+        Object v = getClaims(token).get("tv");
+        return v == null ? 0 : Integer.parseInt(v.toString());
     }
 
     // Obtener username del token

@@ -36,5 +36,19 @@ public class CreateVentaDto {
     @NotEmpty(message = "Debe agregar al menos un método de pago")
     private List<CreateVentaPagoDto> pagos;
     private java.math.BigDecimal descuentoGeneral;
+    /**
+     * Autorización del supervisor cuando el descuento o la rebaja de precio pasan
+     * el límite del usuario (POST /api/autorizaciones). De un solo uso.
+     */
+    private Long autorizacionId;
+
+    /**
+     * La venta la arma Facturación (FacturaVentaService), no el POS: sin turno
+     * de caja aunque haya efectivo (entra a la caja general), sin límites de
+     * descuento del cajero y sin pedido de vendedor espejo. Nunca llega del
+     * JSON: solo lo pone el servidor.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean desdeFacturacion;
 }
 
