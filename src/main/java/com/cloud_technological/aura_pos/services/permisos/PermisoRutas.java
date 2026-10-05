@@ -138,6 +138,7 @@ public final class PermisoRutas {
         m.put("/api/importacion", List.of("contabilidad.importar-datos"));
         m.put("/api/tarifas-retencion", List.of("contabilidad.tarifas-retencion"));
         // Recursos humanos
+        m.put("/api/recursos-humanos", List.of("recursos-humanos.*"));
         m.put("/api/empleados", List.of("recursos-humanos.empleados"));
         m.put("/api/contrato", List.of("recursos-humanos.empleados"));
         m.put("/api/afiliacion", List.of("recursos-humanos.empleados"));
