@@ -37,6 +37,7 @@ public class GlobalExceptionHandler {
 	// Manejo de la excepción RuntimeException
 	@ExceptionHandler(RuntimeException.class)
 	public ResponseEntity<?> handleRuntimeException(RuntimeException ex, HttpServletRequest request) {
+		logger.error("Error no controlado en {} {}", request.getMethod(), request.getRequestURI(), ex);
 		registrarError(HttpStatus.CONFLICT.value(), ex.getMessage(), stackTrace(ex), request);
 		ApiResponse<Object> response = new ApiResponse<>(HttpStatus.CONFLICT.value(), ex.getMessage(), true, null);
 		return new ResponseEntity<>(response, HttpStatus.CONFLICT);
@@ -177,7 +178,20 @@ public class GlobalExceptionHandler {
 		sb.append(ex.toString()).append("\n");
 		for (var el : ex.getStackTrace()) {
 			sb.append("\tat ").append(el).append("\n");
-			if (sb.length() > 4000) { sb.append("..."); break; }
+			if (sb.length() > 4000) { sb.append("...\n"); break; }
+		}
+		// La causa real suele venir envuelta ("Could not commit JPA transaction"):
+		// sin la cadena de causas el registro no sirve para diagnosticar.
+		Throwable causa = ex.getCause();
+		int vueltas = 0;
+		while (causa != null && causa != causa.getCause() && vueltas++ < 8) {
+			sb.append("Caused by: ").append(causa).append("\n");
+			int frames = 0;
+			for (var el : causa.getStackTrace()) {
+				sb.append("\tat ").append(el).append("\n");
+				if (++frames >= 6) { sb.append("\t...\n"); break; }
+			}
+			causa = causa.getCause();
 		}
 		return sb.toString();
 	}

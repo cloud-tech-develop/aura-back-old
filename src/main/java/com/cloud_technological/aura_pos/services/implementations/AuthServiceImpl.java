@@ -52,6 +52,10 @@ public class AuthServiceImpl implements AuthService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
+    /** Líneas de uso y tablero de inicio (docs/PLAN_PERFIL_EMPRESA.md). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService configuracionEmpresa;
+
     private final AuthenticationManager authenticationManager;
     private final UsuarioJPARepository usuarioJPARepository;
     private final AuthQueryRepository authQueryRepository;
@@ -155,6 +159,9 @@ public class AuthServiceImpl implements AuthService {
                 .build();
         usuarioSucursalRepository.save(vinculacion);
 
+        // 7. Arranque contable (PUC + configuración por defecto) al confirmar.
+        configuracionEmpresa.inicializar(empresa, java.util.List.of());
+
         return true;
     }
 
@@ -230,6 +237,8 @@ public class AuthServiceImpl implements AuthService {
                     .rol(usuario.getRol())
                     .facturaElectronica(usuario.getEmpresa().isFacturaElectronica())
                     .sucursales(sucursales) // El front usará esto para pintar el selector de sedes
+                    .lineas(empresa != null ? lineasDe(empresa) : null)
+                    .inicio(empresa != null ? configuracionEmpresa.inicio(empresa).name() : null)
                     .build();
 
         } catch (BadCredentialsException e) {
@@ -278,6 +287,12 @@ public class AuthServiceImpl implements AuthService {
                 .username(usuario.getUsername())
                 .rol(usuario.getRol())
                 .sucursales(sucursales)
+                .lineas(usuario.getEmpresa() != null ? lineasDe(usuario.getEmpresa()) : null)
+                .inicio(usuario.getEmpresa() != null ? configuracionEmpresa.inicio(usuario.getEmpresa()).name() : null)
                 .build();
+    }
+
+    private List<String> lineasDe(EmpresaEntity empresa) {
+        return configuracionEmpresa.lineas(empresa).stream().map(Enum::name).toList();
     }
 }
