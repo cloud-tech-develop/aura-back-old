@@ -1,5 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
+import java.util.List;
+
 import javax.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.dto.empresas.ConfiguracionEmpresaDtos.ActualizarConfiguracionDto;
+import com.cloud_technological.aura_pos.dto.empresas.ConfiguracionEmpresaDtos.ConfiguracionEmpresaDto;
+import com.cloud_technological.aura_pos.dto.empresas.ConfiguracionEmpresaDtos.LineaUsoDto;
 import com.cloud_technological.aura_pos.dto.error_log.ErrorLogDetalleDto;
 import com.cloud_technological.aura_pos.dto.error_log.ErrorLogGrupoDto;
 import com.cloud_technological.aura_pos.dto.error_log.ErrorLogPageParamsDto;
@@ -28,6 +33,7 @@ import com.cloud_technological.aura_pos.dto.super_admin.EmpresaTableDto;
 import com.cloud_technological.aura_pos.dto.super_admin.UpdateEmpresaPlataformaDto;
 import com.cloud_technological.aura_pos.services.EmpresaPlataformaService;
 import com.cloud_technological.aura_pos.services.ErrorLogService;
+import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -42,6 +48,9 @@ public class PlatformAdminController {
 
     @Autowired
     private ErrorLogService errorLogService;
+
+    @Autowired
+    private ConfiguracionEmpresaService configuracionService;
 
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<DashboardPlataformaDto>> dashboard() {
@@ -89,6 +98,35 @@ public class PlatformAdminController {
     public ResponseEntity<ApiResponse<Boolean>> activar(@PathVariable Integer id) {
         empresaService.activar(id);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Empresa activada correctamente", false, true), HttpStatus.OK);
+    }
+
+    // ─── Líneas de uso (docs/PLAN_PERFIL_EMPRESA.md) ──────────
+
+    /** Catálogo de líneas con los submódulos que cada una trae marcados en el árbol. */
+    @GetMapping("/lineas-uso")
+    public ResponseEntity<ApiResponse<List<LineaUsoDto>>> lineasUso() {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Líneas de uso", false,
+                configuracionService.catalogo()), HttpStatus.OK);
+    }
+
+    @GetMapping("/empresas/{id}/configuracion")
+    public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> configuracion(@PathVariable Integer id) {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Configuración obtenida", false,
+                configuracionService.obtener(id)), HttpStatus.OK);
+    }
+
+    @PutMapping("/empresas/{id}/configuracion")
+    public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> actualizarConfiguracion(@PathVariable Integer id,
+            @RequestBody ActualizarConfiguracionDto dto) {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Líneas de uso actualizadas", false,
+                configuracionService.actualizar(id, dto)), HttpStatus.OK);
+    }
+
+    /** Vuelve a correr el arranque (PUC y configuración por defecto); no duplica nada. */
+    @PostMapping("/empresas/{id}/arranque")
+    public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> reintentarArranque(@PathVariable Integer id) {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Arranque ejecutado", false,
+                configuracionService.reintentarArranque(id)), HttpStatus.OK);
     }
 
     // ─── Error Logs ───────────────────────────────────────────

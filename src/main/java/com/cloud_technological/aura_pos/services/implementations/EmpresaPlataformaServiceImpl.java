@@ -30,6 +30,8 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.users.PasswordResetTokenRepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.EmpresaPlataformaService;
+import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
+import com.cloud_technological.aura_pos.services.empresa.LineaUso;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -62,6 +64,9 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository permisoQuery;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ConfiguracionEmpresaService configuracionService;
 
     public EmpresaPlataformaServiceImpl(EmpresaPlataformaQueryRepository queryRepo,
                                         EmpresaJPARepository empresaRepo,
@@ -106,6 +111,8 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya existe una empresa con ese NIT");
         if (usuarioRepo.findByUsername(dto.getEmailAdmin()).isPresent())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El email ya está registrado");
+        // Antes de crear nada: un código de línea mal escrito es error, no se ignora.
+        java.util.List<LineaUso> lineas = ConfiguracionEmpresaService.parsear(dto.getLineas());
 
         // 1. Empresa
         EmpresaEntity empresa = EmpresaEntity.builder()
@@ -169,9 +176,17 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
 
         // 4.1 Módulos que tendrá la empresa y perfil Administrador para su admin
         //     (docs/PLAN_PERMISOS.md): sin esto la empresa nace sin nada que ver.
-        if (dto.getSubmodulos() != null && !dto.getSubmodulos().isEmpty()) {
-            permisoService.activarSubmodulos(empresa.getId(), dto.getSubmodulos());
+        java.util.Collection<Integer> submodulos = dto.getSubmodulos();
+        if ((submodulos == null || submodulos.isEmpty()) && !lineas.isEmpty()) {
+            submodulos = configuracionService.plantilla(lineas);
         }
+        if (submodulos != null && !submodulos.isEmpty()) {
+            permisoService.activarSubmodulos(empresa.getId(), submodulos);
+        }
+        // 4.2 Líneas de uso y arranque (PUC + configuración contable): el arranque
+        //     corre al confirmar, en su propia transacción; si falla, la empresa queda
+        //     creada y se reintenta desde el panel.
+        configuracionService.inicializar(empresa, lineas);
         perfilesSistema.asegurar(empresa.getId());
         usuario.setPerfilId(permisoQuery.perfilIdPorCodigo(empresa.getId(),
                 com.cloud_technological.aura_pos.services.permisos.PerfilesSistema.ADMINISTRADOR));

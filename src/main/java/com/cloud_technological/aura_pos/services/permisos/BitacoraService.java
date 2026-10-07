@@ -65,7 +65,21 @@ public class BitacoraService {
     /** Igual, con quien autorizó la acción. */
     public void registrar(String clave, String accion, String entidad, Object entidadId, String descripcion,
             Object antes, Object despues, Integer autorizadoPor) {
-        Integer empresaId = securityUtils.getEmpresaId();
+        registrar(securityUtils.getEmpresaId(), clave, accion, entidad, entidadId, descripcion, antes, despues,
+                autorizadoPor);
+    }
+
+    /**
+     * Anota en la bitácora de otra empresa: el administrador de plataforma no tiene
+     * empresa en su sesión, pero el cambio debe verse en la de la empresa afectada.
+     */
+    public void registrarEnEmpresa(Integer empresaId, String clave, String accion, String entidad, Object entidadId,
+            String descripcion, Object antes, Object despues) {
+        registrar(empresaId, clave, accion, entidad, entidadId, descripcion, antes, despues, null);
+    }
+
+    private void registrar(Integer empresaId, String clave, String accion, String entidad, Object entidadId,
+            String descripcion, Object antes, Object despues, Integer autorizadoPor) {
         if (empresaId == null) return;
         Long usuario = securityUtils.getUsuarioId();
         AuditoriaEventoEntity e = nuevo(empresaId, usuario != null ? usuario.intValue() : null, clave, accion);

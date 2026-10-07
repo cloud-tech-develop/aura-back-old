@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cloud_technological.aura_pos.dto.empresas.ConfiguracionEmpresaDtos.ConfiguracionEmpresaDto;
 import com.cloud_technological.aura_pos.dto.empresas.EmpresaDto;
 import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaContactoDto;
 import com.cloud_technological.aura_pos.services.IEmpresaService;
+import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -28,6 +30,9 @@ public class EmpresaController {
     @Autowired
     private SecurityUtils securityUtils;
 
+    @Autowired
+    private ConfiguracionEmpresaService configuracionService;
+
     @GetMapping
     public ResponseEntity<ApiResponse<EmpresaDto>> obtenerEmpresaActual() {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -36,6 +41,15 @@ public class EmpresaController {
         EmpresaDto result = empresaService.obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Empresa obtenida exitosamente", false, result),
+                HttpStatus.OK);
+    }
+
+    /** Líneas de uso, tablero de inicio y estado del arranque (docs/PLAN_PERFIL_EMPRESA.md). */
+    @GetMapping("/configuracion")
+    public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> configuracion() {
+        ConfiguracionEmpresaDto result = configuracionService.obtener(securityUtils.getEmpresaId());
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Configuración obtenida", false, result),
                 HttpStatus.OK);
     }
 
