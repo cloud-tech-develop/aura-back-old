@@ -24,4 +24,8 @@ public class LoginResponseDto {
     private String rol;
     private String logo_url;
     private List<SucursalSimpleDto> sucursales;
+    /** Líneas de uso de la empresa (POS, COMERCIAL, CONTABILIDAD, NOMINA); null para plataforma. */
+    private List<String> lineas;
+    /** Línea cuyo tablero ve al entrar; null para plataforma. */
+    private String inicio;
 }

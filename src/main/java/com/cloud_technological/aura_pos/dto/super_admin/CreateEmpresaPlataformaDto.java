@@ -68,4 +68,11 @@ public class CreateEmpresaPlataformaDto {
      * Permisos de la empresa).
      */
     private java.util.List<Integer> submodulos;
+
+    /**
+     * Líneas de uso (POS, COMERCIAL, CONTABILIDAD, NOMINA). Si llegan sin
+     * submódulos, se activa la plantilla de esas líneas. Null o vacía = no se
+     * declara nada y la empresa se trata como POS (docs/PLAN_PERFIL_EMPRESA.md).
+     */
+    private java.util.List<String> lineas;
 }

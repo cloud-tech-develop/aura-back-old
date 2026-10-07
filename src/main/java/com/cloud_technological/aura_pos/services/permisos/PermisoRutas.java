@@ -50,6 +50,8 @@ public final class PermisoRutas {
         Map<String, List<String>> m = new LinkedHashMap<>();
         // Principal / POS
         m.put("/api/dashboard", List.of("principal.dashboard"));
+        // Tableros de inicio por línea de uso (PLAN_PERFIL_EMPRESA): la puerta es el inicio.
+        m.put("/api/tablero", List.of("principal.dashboard"));
         m.put("/api/pos/carritos-abandonados/reporte", List.of("reportes.carritos-abandonados"));
         m.put("/api/pos/carritos-abandonados", List.of(POS));
         // Catálogo y precios
