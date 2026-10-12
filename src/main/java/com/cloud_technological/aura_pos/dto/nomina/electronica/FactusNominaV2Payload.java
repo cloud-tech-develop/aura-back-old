@@ -121,6 +121,7 @@ public class FactusNominaV2Payload {
         private List<Incapacidad> inca;     // incapacidades
         private List<Licencia> lice;        // licencias
         private List<Otro> otro;            // otros conceptos
+        private Monto inde;                 // indemnización
     }
 
     // ── Deducciones ─────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ public class FactusNominaV2Payload {
     public static class Deductions {
         private Aporte salu;   // salud (empleado)
         private Aporte pens;   // pensión (empleado)
-        private Aporte dedu;   // fondo de solidaridad pensional (>= 4 SMMLV)
+        private List<Aporte> dedu;   // fondo de solidaridad pensional (>= 4 SMMLV)
         private Monto rete;    // retención en la fuente
         private List<MontoDesc> libr;  // libranzas
         private List<Monto> otra;      // otras deducciones

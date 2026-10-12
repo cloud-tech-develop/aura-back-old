@@ -43,6 +43,10 @@ public class VistaPreviaAsientoDto {
         private BigDecimal retefuentePct;
         private BigDecimal reteivaPct;
         private BigDecimal reteicaPct;
+        /** Tarifa de cada retención: el asiento usa la cuenta de su concepto. */
+        private Long retefuenteTarifaId;
+        private Long reteivaTarifaId;
+        private Long reteicaTarifaId;
         /** CONTADO | CREDITO */
         private String formaPago;
         private List<LineaCompra> lineas;

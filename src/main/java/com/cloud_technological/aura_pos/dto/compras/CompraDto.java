@@ -32,6 +32,9 @@ public class CompraDto {
     private BigDecimal reteicaPct;
     private BigDecimal reteicaValor;
     private BigDecimal totalRetenciones;
+    private Long retefuenteTarifaId;
+    private Long reteivaTarifaId;
+    private Long reteicaTarifaId;
     private BigDecimal netaAPagar;
     private String formaPago;
 

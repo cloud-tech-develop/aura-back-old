@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,6 +40,7 @@ import com.cloud_technological.aura_pos.repositories.turno_caja.TurnoCajaQueryRe
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.TurnoCajaService;
+import com.cloud_technological.aura_pos.services.cartera.CastigoCarteraService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -219,9 +221,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Usuario no encontrado"));
 
         if ("INGRESO".equals(dto.getTipo()) && dto.getCuentaCobrarId() != null) {
-            CuentaCobrarEntity cuenta = cuentaCobrarRepository.findById(dto.getCuentaCobrarId())
+            CuentaCobrarEntity cuenta = cuentaCobrarRepository.findById(dto.getCuentaCobrarId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por cobrar no encontrada"));
 
+            CastigoCarteraService.exigirNoCastigada(cuenta);
             if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta por cobrar ya está pagada");
 
@@ -262,7 +265,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         }
 
         if ("EGRESO".equals(dto.getTipo()) && dto.getCuentaPagarId() != null) {
-            CuentaPagarEntity cuenta = cuentaPagarRepository.findById(dto.getCuentaPagarId())
+            CuentaPagarEntity cuenta = cuentaPagarRepository.findById(dto.getCuentaPagarId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cuenta por pagar no encontrada"));
 
             if (cuenta.getSaldoPendiente().compareTo(BigDecimal.ZERO) <= 0)

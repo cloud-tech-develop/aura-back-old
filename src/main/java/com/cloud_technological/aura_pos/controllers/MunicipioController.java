@@ -28,7 +28,10 @@ public class MunicipioController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<List<MunicipioDto>>> buscar(@RequestBody BuscarMunicipioRequest request) {
-        List<MunicipioDto> result = municipioQueryRepository.buscar(request.getSearch());
+        // Con departamento: sus municipios (select dependiente). Sin él: búsqueda libre.
+        List<MunicipioDto> result = request.getDepartamento() != null && !request.getDepartamento().isBlank()
+                ? municipioQueryRepository.buscarEnDepartamento(request.getDepartamento(), request.getSearch())
+                : municipioQueryRepository.buscar(request.getSearch());
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "", false, result),
                 HttpStatus.OK);
@@ -42,6 +45,14 @@ public class MunicipioController {
                 new ApiResponse<>(status.value(), result != null ? "" : "Municipio no encontrado",
                         result == null, result),
                 status);
+    }
+
+    /** Departamentos de Colombia (select que filtra los municipios). */
+    @GetMapping("/departamentos")
+    public ResponseEntity<ApiResponse<List<String>>> departamentos() {
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "", false, municipioQueryRepository.departamentos()),
+                HttpStatus.OK);
     }
 
     /** Resuelve un municipio por su código DANE (para mostrar el nombre). */
@@ -59,5 +70,7 @@ public class MunicipioController {
     @Setter
     public static class BuscarMunicipioRequest {
         private String search;
+        /** Opcional: limita la búsqueda a un departamento. */
+        private String departamento;
     }
 }

@@ -29,6 +29,7 @@ import com.cloud_technological.aura_pos.repositories.nomina.PilaJPARepositories.
 import com.cloud_technological.aura_pos.repositories.nomina.PilaJPARepositories.PilaPlanillaRepo;
 import com.cloud_technological.aura_pos.services.implementations.AfiliacionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasAprendiz;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -337,17 +338,16 @@ public class GeneradorPila {
         cot.setDiasCotizadosArl(bases.getDiasArl());
         cot.setDiasCotizadosCcf(bases.getDiasCcf());
 
-        // B-10 — el aprendiz SENA no cotiza pensión ni parafiscales; en lectiva
-        // tampoco ARL (solo salud). Sin este ajuste, PILA reporta IBC de pensión
-        // con aporte cero y la validación lo marca como omisión ante la UGPP.
-        if ("APRENDIZAJE".equals(c.getTipoContrato())) {
-            cot.setIbcPension(BigDecimal.ZERO);
-            cot.setDiasCotizadosPension(0);
+        // Aprendiz SENA (Ley 2466/2025): nunca cotiza caja. En lectiva tampoco
+        // pensión (solo salud, a cargo de la empresa, y ARL); en práctica cotiza
+        // pensión. Sin este ajuste PILA reporta IBC con aporte cero y la validación
+        // lo marca como omisión ante la UGPP.
+        if (ReglasAprendiz.esAprendiz(c)) {
             cot.setIbcCcf(BigDecimal.ZERO);
             cot.setDiasCotizadosCcf(0);
-            if (!"PRACTICA".equals(c.getFase())) {   // lectiva: solo salud
-                cot.setIbcArl(BigDecimal.ZERO);
-                cot.setDiasCotizadosArl(0);
+            if (ReglasAprendiz.enLectiva(c)) {
+                cot.setIbcPension(BigDecimal.ZERO);
+                cot.setDiasCotizadosPension(0);
             }
         }
 

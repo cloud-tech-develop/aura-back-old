@@ -12,17 +12,42 @@ import com.cloud_technological.aura_pos.entity.NominaEntity;
 
 public interface NominaJPARepository extends JpaRepository<NominaEntity, Long> {
     Optional<NominaEntity> findByIdAndEmpresaId(Long id, Integer empresaId);
-    List<NominaEntity> findByPeriodoIdAndEmpresaId(Long periodoId, Integer empresaId);
+
+    // ── Flujo viejo por período ─────────────────────────────────────────────
+    // V215: solo las filas SIN documento. Las prenóminas y nóminas por documento
+    // comparten período, pero se manejan desde su documento.
+
+    @Query("""
+            SELECT n FROM NominaEntity n
+             WHERE n.periodo.id = :periodoId AND n.empresa.id = :empresaId AND n.documentoId IS NULL
+            """)
+    List<NominaEntity> findByPeriodoIdAndEmpresaId(@Param("periodoId") Long periodoId,
+                                                   @Param("empresaId") Integer empresaId);
 
     /** @deprecated Usar {@link #findByContratoIdAndPeriodoId}. Con multi-vínculo, un empleado puede tener varias nóminas por período. */
     @Deprecated
-    boolean existsByEmpleadoIdAndPeriodoId(Long empleadoId, Long periodoId);
+    @Query("""
+            SELECT COUNT(n) > 0 FROM NominaEntity n
+             WHERE n.empleado.id = :empleadoId AND n.periodo.id = :periodoId AND n.documentoId IS NULL
+            """)
+    boolean existsByEmpleadoIdAndPeriodoId(@Param("empleadoId") Long empleadoId,
+                                           @Param("periodoId") Long periodoId);
 
     // ── V103: la nómina se liquida contra un CONTRATO ───────────────────────
 
-    Optional<NominaEntity> findByContratoIdAndPeriodoId(Long contratoId, Long periodoId);
+    @Query("""
+            SELECT n FROM NominaEntity n
+             WHERE n.contrato.id = :contratoId AND n.periodo.id = :periodoId AND n.documentoId IS NULL
+            """)
+    Optional<NominaEntity> findByContratoIdAndPeriodoId(@Param("contratoId") Long contratoId,
+                                                        @Param("periodoId") Long periodoId);
 
-    boolean existsByContratoIdAndPeriodoId(Long contratoId, Long periodoId);
+    @Query("""
+            SELECT COUNT(n) > 0 FROM NominaEntity n
+             WHERE n.contrato.id = :contratoId AND n.periodo.id = :periodoId AND n.documentoId IS NULL
+            """)
+    boolean existsByContratoIdAndPeriodoId(@Param("contratoId") Long contratoId,
+                                           @Param("periodoId") Long periodoId);
 
     /**
      * Nóminas liquidadas de un contrato cuyo período cae en un rango (el mes de
@@ -35,6 +60,7 @@ public interface NominaJPARepository extends JpaRepository<NominaEntity, Long> {
                AND n.periodo.fechaInicio <= :hasta
                AND n.periodo.fechaFin >= :desde
                AND n.estado IN ('APROBADO', 'PAGADO')
+               AND n.esPrenomina = false
              ORDER BY n.periodo.fechaInicio
             """)
     List<NominaEntity> findByContratoEnRango(@Param("contratoId") Long contratoId,
@@ -46,7 +72,9 @@ public interface NominaJPARepository extends JpaRepository<NominaEntity, Long> {
 
     /**
      * F3 — días de vacaciones ya tomados por un empleado (novedades VACACIONES de
-     * sus nóminas no anuladas). Sirve para calcular el saldo disponible.
+     * sus nóminas no anuladas). Sirve para calcular el saldo disponible. Las que
+     * vienen del módulo de vacaciones (origen VACACIONES, R7) no cuentan: el saldo
+     * las lee de nomina_vacacion.
      */
     @Query("""
             SELECT COALESCE(SUM(nv.dias), 0)
@@ -54,7 +82,9 @@ public interface NominaJPARepository extends JpaRepository<NominaEntity, Long> {
              WHERE n.empresa.id = :empresaId
                AND n.empleado.id = :empleadoId
                AND n.estado <> 'ANULADO'
+               AND n.esPrenomina = false
                AND nv.tipo = 'VACACIONES'
+               AND nv.origen <> 'VACACIONES'
             """)
     Long sumDiasVacacionesTomados(@Param("empresaId") Integer empresaId,
                                   @Param("empleadoId") Long empleadoId);
@@ -69,24 +99,28 @@ public interface NominaJPARepository extends JpaRepository<NominaEntity, Long> {
     @Query("""
         SELECT COALESCE(SUM(n.provisionPrima), 0) FROM NominaEntity n
         WHERE n.empresa.id = :empresaId AND n.empleado.id = :empleadoId AND n.estado <> 'ANULADO'
+          AND n.esPrenomina = false
         """)
     BigDecimal sumProvisionPrima(@Param("empresaId") Integer empresaId, @Param("empleadoId") Long empleadoId);
 
     @Query("""
         SELECT COALESCE(SUM(n.provisionVacaciones), 0) FROM NominaEntity n
         WHERE n.empresa.id = :empresaId AND n.empleado.id = :empleadoId AND n.estado <> 'ANULADO'
+          AND n.esPrenomina = false
         """)
     BigDecimal sumProvisionVacaciones(@Param("empresaId") Integer empresaId, @Param("empleadoId") Long empleadoId);
 
     @Query("""
         SELECT COALESCE(SUM(n.provisionCesantias), 0) FROM NominaEntity n
         WHERE n.empresa.id = :empresaId AND n.empleado.id = :empleadoId AND n.estado <> 'ANULADO'
+          AND n.esPrenomina = false
         """)
     BigDecimal sumProvisionCesantias(@Param("empresaId") Integer empresaId, @Param("empleadoId") Long empleadoId);
 
     @Query("""
         SELECT COALESCE(SUM(n.provisionIntCesantias), 0) FROM NominaEntity n
         WHERE n.empresa.id = :empresaId AND n.empleado.id = :empleadoId AND n.estado <> 'ANULADO'
+          AND n.esPrenomina = false
         """)
     BigDecimal sumProvisionIntCesantias(@Param("empresaId") Integer empresaId, @Param("empleadoId") Long empleadoId);
 }

@@ -17,6 +17,7 @@ import com.cloud_technological.aura_pos.entity.NominaEntity;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaElectronicaJPARepositories.NominaElectronicaLogRepo;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaElectronicaJPARepositories.NominaElectronicaRepo;
+import com.cloud_technological.aura_pos.repositories.nomina.NominaElectronicaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
 import com.cloud_technological.aura_pos.services.nomina.NominaElectronicaPayloadBuilder;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -49,19 +50,22 @@ public class NominaElectronicaService {
     private final EmpresaJPARepository empresaRepo;
     private final NominaElectronicaPayloadBuilder payloadBuilder;
     private final FactusNominaService factusNominaService;
+    private final NominaElectronicaQueryRepository neQuery;
 
     public NominaElectronicaService(NominaElectronicaRepo neRepo,
                                     NominaElectronicaLogRepo logRepo,
                                     NominaJPARepository nominaRepo,
                                     EmpresaJPARepository empresaRepo,
                                     NominaElectronicaPayloadBuilder payloadBuilder,
-                                    FactusNominaService factusNominaService) {
+                                    FactusNominaService factusNominaService,
+                                    NominaElectronicaQueryRepository neQuery) {
         this.neRepo = neRepo;
         this.logRepo = logRepo;
         this.nominaRepo = nominaRepo;
         this.empresaRepo = empresaRepo;
         this.payloadBuilder = payloadBuilder;
         this.factusNominaService = factusNominaService;
+        this.neQuery = neQuery;
     }
 
     /**
@@ -96,7 +100,7 @@ public class NominaElectronicaService {
         ne.setNomina(nomina);
         ne.setAgno(agno);
         ne.setMes(fin.getMonthValue());
-        ne.setConsecutivo(neRepo.reservarConsecutivo(empresaId, agno));
+        ne.setConsecutivo(neQuery.reservarConsecutivo(empresaId, agno));
         ne.setEstado(Estado.PENDIENTE);
 
         return neRepo.save(ne);

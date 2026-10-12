@@ -99,9 +99,55 @@ public class FactusNominaV2Service {
         return llamar(empresaId, url + "/reference/" + referenceCode, HttpMethod.GET);
     }
 
-    /** Eliminar una nómina por reference_code. {@code DELETE /v2/payrolls/reference/{ref}}. */
-    public com.fasterxml.jackson.databind.JsonNode eliminar(Integer empresaId, String referenceCode) {
-        return llamar(empresaId, url + "/reference/" + referenceCode, HttpMethod.DELETE);
+    /** Ver una nómina por su reference_code, con el código HTTP (404 = Factus no la tiene). */
+    public RespuestaFactus verPorReferencia(Integer empresaId, String referenceCode) {
+        return llamarConCodigo(empresaId, url + "/reference/" + referenceCode, HttpMethod.GET, null);
+    }
+
+    /** Ver una nómina por su número (prefijo + consecutivo). {@code GET /v2/payrolls/{number}}. */
+    public RespuestaFactus verPorNumero(Integer empresaId, String number) {
+        return llamarConCodigo(empresaId, url + "/" + number, HttpMethod.GET, null);
+    }
+
+    /**
+     * Eliminar una nómina que la DIAN no validó, para crearla de nuevo corregida.
+     * {@code DELETE /v2/payrolls/reference/{ref}}.
+     */
+    public RespuestaFactus eliminar(Integer empresaId, String referenceCode) {
+        return llamarConCodigo(empresaId, url + "/reference/" + referenceCode, HttpMethod.DELETE, null);
+    }
+
+    /**
+     * PDF de una nómina en base64 ({@code pdf_base_64_encoded} y {@code file_name}).
+     * {@code GET /v2/payrolls/{number}/download-pdf}.
+     */
+    public RespuestaFactus descargarPdf(Integer empresaId, String number) {
+        return llamarConCodigo(empresaId, url + "/" + number + "/download-pdf", HttpMethod.GET, null);
+    }
+
+    // ── Notas de ajuste (eliminación) ───────────────────────────────────────
+
+    /** Ver una nota de ajuste por su número. {@code GET /v2/adjustment-payrolls/{number}}. */
+    public RespuestaFactus verAjuste(Integer empresaId, String number) {
+        return llamarConCodigo(empresaId, adjustmentUrl + "/" + number, HttpMethod.GET, null);
+    }
+
+    /**
+     * Eliminar una nota de ajuste que la DIAN no validó.
+     * {@code DELETE /v2/adjustment-payrolls/reference/{ref}}.
+     */
+    public RespuestaFactus eliminarAjuste(Integer empresaId, String referenceCode) {
+        return llamarConCodigo(empresaId, adjustmentUrl + "/reference/" + referenceCode, HttpMethod.DELETE, null);
+    }
+
+    /** XML de una nota de ajuste en base64. {@code GET /v2/adjustment-payrolls/{number}/download-xml}. */
+    public RespuestaFactus descargarXmlAjuste(Integer empresaId, String number) {
+        return llamarConCodigo(empresaId, adjustmentUrl + "/" + number + "/download-xml", HttpMethod.GET, null);
+    }
+
+    /** PDF de una nota de ajuste en base64. {@code GET /v2/adjustment-payrolls/{number}/download-pdf}. */
+    public RespuestaFactus descargarPdfAjuste(Integer empresaId, String number) {
+        return llamarConCodigo(empresaId, adjustmentUrl + "/" + number + "/download-pdf", HttpMethod.GET, null);
     }
 
     /**
@@ -112,14 +158,14 @@ public class FactusNominaV2Service {
      * @param referenceCode  código único de ESTA nota de eliminación.
      * @param numberingRangeId opcional; solo si hay varios rangos activos.
      */
-    public com.fasterxml.jackson.databind.JsonNode notaEliminacion(
+    public RespuestaFactus notaEliminacion(
             Integer empresaId, String payrollNumber, String referenceCode, String numberingRangeId) {
         java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("payroll_number", payrollNumber);
         body.put("reference_code", referenceCode);
         if (numberingRangeId != null && !numberingRangeId.isBlank())
             body.put("numbering_range_id", numberingRangeId);
-        return llamarConBody(empresaId, adjustmentUrl, HttpMethod.POST, body);
+        return llamarConCodigo(empresaId, adjustmentUrl, HttpMethod.POST, body);
     }
 
     /**
@@ -171,21 +217,33 @@ public class FactusNominaV2Service {
         }
     }
 
-    private com.fasterxml.jackson.databind.JsonNode llamarConBody(Integer empresaId, String fullUrl,
-                                                                 HttpMethod method, Object body) {
+    /**
+     * Llama a Factus y devuelve el código HTTP con el cuerpo, para que quien llama
+     * sepa si la operación se hizo (un 4xx trae el detalle del error en el cuerpo).
+     *
+     * @param body cuerpo JSON, o null si no lleva
+     */
+    private RespuestaFactus llamarConCodigo(Integer empresaId, String fullUrl, HttpMethod method, Object body) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(tokenService.obtenerToken(empresaId));
         try {
-            String json = mapper.writeValueAsString(body);
-            ResponseEntity<String> raw = restTemplate.exchange(fullUrl, method,
-                    new HttpEntity<>(json, headers), String.class);
-            return parse(raw.getBody());
+            HttpEntity<String> entity;
+            if (body != null) {
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                entity = new HttpEntity<>(mapper.writeValueAsString(body), headers);
+            } else {
+                entity = new HttpEntity<>(headers);
+            }
+            ResponseEntity<String> raw = restTemplate.exchange(fullUrl, method, entity, String.class);
+            log.info("[Factus Nómina v2] {} {} -> HTTP {}", method, fullUrl, raw.getStatusCode());
+            return new RespuestaFactus(raw.getStatusCode().value(), parse(raw.getBody()));
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
             log.warn("[Factus Nómina v2] {} {} -> HTTP {} | {}", method, fullUrl,
                     e.getStatusCode(), e.getResponseBodyAsString());
-            return parse(e.getResponseBodyAsString());
+            return new RespuestaFactus(e.getStatusCode().value(), parse(e.getResponseBodyAsString()));
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            throw new FactusNoDisponibleException("Factus no está disponible: " + e.getMessage());
         } catch (Exception e) {
             throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Error llamando a Factus (" + fullUrl + "): " + e.getMessage());
@@ -223,4 +281,36 @@ public class FactusNominaV2Service {
 
     public record Respuesta(int codigoHttp, String requestBody, String responseBody,
                             String cune, String referenceCode, int duracionMs, boolean exitoso) {}
+
+    /** Respuesta de Factus con su código HTTP y el cuerpo ya leído como JSON. */
+    public record RespuestaFactus(int codigoHttp, com.fasterxml.jackson.databind.JsonNode cuerpo) {
+
+        public boolean exitosa() {
+            return codigoHttp >= 200 && codigoHttp < 300;
+        }
+
+        /** Texto de un campo del cuerpo por ruta 'a/b/c' (null si no está). */
+        public String texto(String... rutas) {
+            if (cuerpo == null) return null;
+            for (String ruta : rutas) {
+                com.fasterxml.jackson.databind.JsonNode n = cuerpo;
+                for (String parte : ruta.split("/")) {
+                    if (n == null) break;
+                    n = n.get(parte);
+                }
+                if (n != null && !n.isNull() && !n.isContainerNode()) return n.asText();
+            }
+            return null;
+        }
+
+        /** Mensaje de error de Factus (message + errors) para mostrarle al usuario. */
+        public String error() {
+            if (cuerpo == null || cuerpo.isNull()) return "Factus respondió HTTP " + codigoHttp;
+            StringBuilder sb = new StringBuilder(cuerpo.path("message").asText("Factus respondió HTTP " + codigoHttp));
+            com.fasterxml.jackson.databind.JsonNode errores = cuerpo.path("data").path("errors");
+            if (errores.isMissingNode()) errores = cuerpo.path("errors");
+            if (!errores.isMissingNode() && !errores.isNull()) sb.append(": ").append(errores.toString());
+            return sb.toString();
+        }
+    }
 }

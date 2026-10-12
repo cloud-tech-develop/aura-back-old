@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import com.cloud_technological.aura_pos.dto.empresas.EmpresaDto;
 import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaContactoDto;
+import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaDatosDto;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.SucursalEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
@@ -12,6 +13,7 @@ import com.cloud_technological.aura_pos.repositories.sucursales.SucursalJPARepos
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.IEmpresaService;
+import com.cloud_technological.aura_pos.services.permisos.BitacoraService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class EmpresaServiceImpl implements IEmpresaService {
     private final SucursalJPARepository sucursalRepository;
     private final UsuarioJPARepository usuarioRepository;
     private final TerceroJPARepository terceroRepository;
+    private final BitacoraService bitacora;
 
     @Override
     public EmpresaDto obtenerEmpresaActual(Integer empresaId, Long sucursalId, Long usuarioId) {
@@ -80,6 +83,9 @@ public class EmpresaServiceImpl implements IEmpresaService {
                 .resolucionHasta(empresa.getResolucionHasta())
                 .resolucionFechaDesde(empresa.getResolucionFechaDesde())
                 .resolucionFechaHasta(empresa.getResolucionFechaHasta())
+                .factusNumberingRangeId(empresa.getFactusNumberingRangeId())
+                .factusNominaNumberingRangeId(empresa.getFactusNominaNumberingRangeId())
+                .esFirmaContable(Boolean.TRUE.equals(empresa.getEsFirmaContable()))
                 .sucursalId(sucursal != null ? sucursal.getId() : null)
                 .sucursalNombre(sucursal != null ? sucursal.getNombre() : null)
                 .sucursalDireccion(sucursal != null ? sucursal.getDireccion() : null)
@@ -116,6 +122,57 @@ public class EmpresaServiceImpl implements IEmpresaService {
         }
 
         return obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
+    }
+
+    @Override
+    @jakarta.transaction.Transactional
+    public EmpresaDto actualizarDatos(UpdateEmpresaDatosDto dto, Integer empresaId,
+            Long sucursalId, Long usuarioId) {
+
+        EmpresaEntity empresa = empresaRepository.findById(empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
+
+        Integer desde = dto.getResolucionDesde();
+        Integer hasta = dto.getResolucionHasta();
+        if (desde != null && hasta != null && desde > hasta)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El consecutivo inicial de la resolución no puede ser mayor que el final");
+        String fechaDesde = limpiar(dto.getResolucionFechaDesde());
+        String fechaHasta = limpiar(dto.getResolucionFechaHasta());
+        // AAAA-MM-DD se compara bien como texto.
+        if (fechaDesde != null && fechaHasta != null && fechaDesde.compareTo(fechaHasta) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La fecha inicial de la resolución no puede ser posterior a la final");
+
+        EmpresaDto antes = obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
+
+        // El contacto vive en el tercero de la empresa: mismo camino que "Mi perfil".
+        UpdateEmpresaContactoDto contacto = new UpdateEmpresaContactoDto();
+        contacto.setTelefono(dto.getTelefono() != null ? dto.getTelefono() : "");
+        contacto.setCorreo(dto.getCorreo() != null ? dto.getCorreo() : "");
+        contacto.setDireccion(dto.getDireccion() != null ? dto.getDireccion() : "");
+        contacto.setMunicipio(dto.getMunicipio() != null ? dto.getMunicipio() : "");
+        if (terceroDeLaEmpresa(empresa, empresaId) != null) {
+            actualizarContacto(contacto, empresaId, sucursalId, usuarioId);
+            empresa = empresaRepository.findById(empresaId).orElse(empresa);
+        }
+
+        empresa.setNombreComercial(limpiar(dto.getNombreComercial()));
+        empresa.setLogoUrl(limpiar(dto.getLogoUrl()));
+        empresa.setResolucionNumero(limpiar(dto.getResolucionNumero()));
+        empresa.setResolucionPrefijo(limpiar(dto.getResolucionPrefijo()));
+        empresa.setResolucionDesde(desde);
+        empresa.setResolucionHasta(hasta);
+        empresa.setResolucionFechaDesde(fechaDesde);
+        empresa.setResolucionFechaHasta(fechaHasta);
+        empresa.setFactusNumberingRangeId(dto.getFactusNumberingRangeId());
+        empresa.setFactusNominaNumberingRangeId(limpiar(dto.getFactusNominaNumberingRangeId()));
+        empresaRepository.save(empresa);
+
+        EmpresaDto despues = obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
+        bitacora.registrar("caja.usuarios", "EDITAR_EMPRESA", "empresa", empresaId,
+                "Actualizó los datos de la empresa (resolución, rangos, logo o contacto)", antes, despues);
+        return despues;
     }
 
     /** El tercero con el NIT de la empresa; si no existe, el del SUPER_ADMIN. */

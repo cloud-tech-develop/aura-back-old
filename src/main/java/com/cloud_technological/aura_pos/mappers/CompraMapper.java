@@ -32,6 +32,9 @@ public interface CompraMapper {
         @Mapping(target = "totalRetenciones", ignore = true),
         @Mapping(target = "netaAPagar", ignore = true),
         @Mapping(target = "formaPago", ignore = true),
+        @Mapping(target = "retefuenteTarifaId", ignore = true),
+        @Mapping(target = "reteivaTarifaId", ignore = true),
+        @Mapping(target = "reteicaTarifaId", ignore = true),
     })
     CompraEntity toEntity(CreateCompraDto dto);
 

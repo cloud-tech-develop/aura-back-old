@@ -16,6 +16,16 @@ public interface ErrorLogService {
                         String mensaje, String detalle,
                         String username, String ipOrigen);
 
+    /**
+     * Igual, con la empresa ya resuelta (la del token o la del evento). Hay que
+     * pasarla: un usuario de una firma contable trabaja en empresas que no son
+     * la suya, y buscarla por el username daría la de la firma.
+     */
+    @Async("errorLogExecutor")
+    void registrarAsync(String metodo, String endpoint, int statusCode,
+                        String mensaje, String detalle,
+                        String username, String ipOrigen, Integer empresaId);
+
     PageImpl<ErrorLogTableDto> listar(PageableDto<ErrorLogPageParamsDto> pageable);
 
     PageImpl<ErrorLogGrupoDto> listarGrupos(PageableDto<ErrorLogPageParamsDto> pageable);

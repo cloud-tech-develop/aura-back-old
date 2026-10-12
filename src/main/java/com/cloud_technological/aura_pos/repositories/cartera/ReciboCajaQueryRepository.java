@@ -139,7 +139,7 @@ public class ReciboCajaQueryRepository {
                             ELSE CURRENT_DATE - cc.fecha_vencimiento::date END AS dias
                 FROM cuentas_cobrar cc
                 WHERE cc.empresa_id = :empresaId AND cc.tercero_id = :terceroId
-                  AND cc.deleted_at IS NULL AND cc.estado NOT IN ('pagada','anulada')
+                  AND cc.deleted_at IS NULL AND cc.estado NOT IN ('pagada','anulada','castigada')
                   AND cc.saldo_pendiente > 0
             ), ultimo AS (
                 SELECT a.fecha_pago, a.monto
@@ -200,7 +200,7 @@ public class ReciboCajaQueryRepository {
             LEFT JOIN acuerdo_pago_cuenta apc ON apc.cuenta_cobrar_id = cc.id AND apc.activo
             LEFT JOIN acuerdo_pago ap ON ap.id = apc.acuerdo_pago_id
             WHERE cc.empresa_id = :empresaId AND cc.tercero_id = :terceroId
-              AND cc.deleted_at IS NULL AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.deleted_at IS NULL AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.saldo_pendiente > 0
             ORDER BY cc.fecha_vencimiento ASC NULLS LAST, cc.id ASC
             """;

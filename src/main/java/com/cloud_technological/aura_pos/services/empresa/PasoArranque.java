@@ -11,7 +11,13 @@ public enum PasoArranque {
      * categorías contables, impuestos y mapeos de exógena
      * ({@code PlanCuentasService.seedPUC}).
      */
-    CONTABLE("Plan de cuentas y configuración contable");
+    CONTABLE("Plan de cuentas y configuración contable"),
+
+    /**
+     * Bancos y entidades de seguridad social (EPS, AFP, cesantías, ARL, cajas) con su
+     * código PILA ({@code TercerosNacionalesService}): no hay que crearlos a mano.
+     */
+    TERCEROS("Bancos y entidades de seguridad social");
 
     private final String nombre;
 

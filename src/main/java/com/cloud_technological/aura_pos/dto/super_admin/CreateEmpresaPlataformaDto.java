@@ -75,4 +75,19 @@ public class CreateEmpresaPlataformaDto {
      * declara nada y la empresa se trata como POS (docs/PLAN_PERFIL_EMPRESA.md).
      */
     private java.util.List<String> lineas;
+
+    /** La empresa es una firma contable: gratis, atiende la contabilidad de otras (V199). */
+    private Boolean esFirmaContable;
+
+    /** Firma contable que atiende a esta empresa; null = ninguna. */
+    private Integer firmaContableId;
+
+    // ── Facturación electrónica (Factus): las credenciales las pone solo la plataforma ──
+    private Boolean facturaElectronica;
+    private String factusClientId;
+    private String factusClientSecret;
+    private String factusUsername;
+    private String factusPassword;
+    private Integer factusNumberingRangeId;
+    private String factusPrefijo;
 }

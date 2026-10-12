@@ -30,6 +30,13 @@ public class EmpresaDto {
     private Integer resolucionHasta;
     private String  resolucionFechaDesde;
     private String  resolucionFechaHasta;
+    // Rangos de numeración en Factus
+    private Integer factusNumberingRangeId;
+    private String  factusNominaNumberingRangeId;
+    /** El back decide si quien consulta puede editar (caja.usuarios:EDITAR_EMPRESA). */
+    private Boolean puedeEditar;
+    /** La empresa es una firma contable (menú "Clientes de la firma"). */
+    private Boolean esFirmaContable;
     private Integer sucursalId;
     private String sucursalNombre;
     private String sucursalDireccion;

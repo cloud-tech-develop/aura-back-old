@@ -17,7 +17,8 @@ public class VacacionesSaldoDto {
     /** 15 días hábiles por año → antigüedad × 15/360. */
     private BigDecimal diasCausados;
     private BigDecimal saldoInicial;
-    private Integer diasTomados;
+    /** Novedades de vacaciones, lotes del módulo de Prestaciones y vacaciones registradas (R7). */
+    private BigDecimal diasTomados;
     /** saldoInicial + causados − tomados. Lo que puede tomar hoy. */
     private BigDecimal diasDisponibles;
     /** Si la empresa permite tomar más de lo disponible (anticipadas). */

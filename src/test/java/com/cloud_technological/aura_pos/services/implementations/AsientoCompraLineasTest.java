@@ -23,6 +23,8 @@ import com.cloud_technological.aura_pos.entity.AsientoDetalleEntity;
 import com.cloud_technological.aura_pos.entity.ConceptoContable;
 import com.cloud_technological.aura_pos.entity.PlanCuentaEntity;
 import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
+import com.cloud_technological.aura_pos.repositories.retenciones.TarifaRetencionQueryRepository;
+import com.cloud_technological.aura_pos.repositories.retenciones.TarifaRetencionQueryRepository.TipoYCuenta;
 import com.cloud_technological.aura_pos.services.ConfiguracionContableService;
 import com.cloud_technological.aura_pos.services.implementations.ContabilidadAutoServiceImpl.DatosCompraAsiento;
 import com.cloud_technological.aura_pos.services.implementations.ContabilidadAutoServiceImpl.LineaCompraAsiento;
@@ -37,7 +39,9 @@ class AsientoCompraLineasTest {
 
     private static final Integer EMPRESA = 1;
     private static final long INVENTARIO = 1435, ACTIVO = 1528, IVA = 240802, RETEFUENTE = 2365,
-            PROVEEDORES = 2205, CAJA = 110505;
+            PROVEEDORES = 2205, CAJA = 110505, RETE_HONORARIOS = 23651502;
+    /** Tarifa "Honorarios 11 %" con su cuenta, y una tarifa sin cuenta propia. */
+    private static final long TARIFA_HONORARIOS = 5, TARIFA_SIN_CUENTA = 6;
 
     private ContabilidadAutoServiceImpl service;
 
@@ -64,6 +68,12 @@ class AsientoCompraLineasTest {
         ReflectionTestUtils.setField(service, "config", config);
         ReflectionTestUtils.setField(service, "resolucionCuentaPago", pago);
         ReflectionTestUtils.setField(service, "planRepo", plan);
+        TarifaRetencionQueryRepository tarifas = mock(TarifaRetencionQueryRepository.class);
+        when(tarifas.tipoYCuenta(TARIFA_HONORARIOS, EMPRESA))
+                .thenReturn(java.util.Optional.of(new TipoYCuenta("RETEFUENTE", RETE_HONORARIOS)));
+        when(tarifas.tipoYCuenta(TARIFA_SIN_CUENTA, EMPRESA))
+                .thenReturn(java.util.Optional.of(new TipoYCuenta("RETEFUENTE", null)));
+        ReflectionTestUtils.setField(service, "tarifaRetencionQueryRepo", tarifas);
     }
 
     private static PlanCuentaEntity cuenta(long id) {
@@ -97,7 +107,7 @@ class AsientoCompraLineasTest {
                 List.of(new LineaCompraAsiento(10L, new BigDecimal("2000"), new BigDecimal("380")),
                         new LineaCompraAsiento(20L, new BigDecimal("1000"), new BigDecimal("190"))),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                List.of(new PagoCompraAsiento("EFECTIVO", null, null, neta))));
+                List.of(new PagoCompraAsiento("EFECTIVO", null, null, neta)), null, null, null));
 
         Map<Long, BigDecimal> db = debitos(l);
         igual("2200", db.get(INVENTARIO)); // 2.000 + 2/3 del flete
@@ -112,7 +122,7 @@ class AsientoCompraLineasTest {
         List<AsientoDetalleEntity> l = service.lineasCompra(EMPRESA, new DatosCompraAsiento(
                 new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("975"), 7L,
                 false, null, List.of(new LineaCompraAsiento(10L, new BigDecimal("1000"), BigDecimal.ZERO)),
-                new BigDecimal("25"), BigDecimal.ZERO, BigDecimal.ZERO, List.of()));
+                new BigDecimal("25"), BigDecimal.ZERO, BigDecimal.ZERO, List.of(), null, null, null));
 
         Map<Long, BigDecimal> cr = creditos(l);
         igual("1000", debitos(l).get(INVENTARIO));
@@ -121,11 +131,38 @@ class AsientoCompraLineasTest {
     }
 
     @Test
+    void retencionPorHonorariosVaALaCuentaDeSuConcepto() {
+        // $1.000 de servicio, retefuente por honorarios 11 % = $110: antes caía
+        // en la cuenta de retención por compras (la del concepto por defecto).
+        List<AsientoDetalleEntity> l = service.lineasCompra(EMPRESA, new DatosCompraAsiento(
+                new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("890"), 7L,
+                false, null, List.of(new LineaCompraAsiento(10L, new BigDecimal("1000"), BigDecimal.ZERO)),
+                new BigDecimal("110"), BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                TARIFA_HONORARIOS, null, null));
+
+        Map<Long, BigDecimal> cr = creditos(l);
+        igual("110", cr.get(RETE_HONORARIOS));
+        assertEquals(null, cr.get(RETEFUENTE));
+        igual("890", cr.get(PROVEEDORES));
+    }
+
+    @Test
+    void tarifaSinCuentaUsaLaCuentaPorDefecto() {
+        List<AsientoDetalleEntity> l = service.lineasCompra(EMPRESA, new DatosCompraAsiento(
+                new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("975"), 7L,
+                false, null, List.of(new LineaCompraAsiento(10L, new BigDecimal("1000"), BigDecimal.ZERO)),
+                new BigDecimal("25"), BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                TARIFA_SIN_CUENTA, null, null));
+
+        igual("25", creditos(l).get(RETEFUENTE));
+    }
+
+    @Test
     void notaCreditoInvierteLosLados() {
         List<AsientoDetalleEntity> l = service.lineasCompra(EMPRESA, new DatosCompraAsiento(
                 new BigDecimal("-500"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("-500"), 7L,
                 true, null, List.of(new LineaCompraAsiento(10L, new BigDecimal("-500"), BigDecimal.ZERO)),
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of()));
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of(), null, null, null));
 
         igual("500", creditos(l).get(INVENTARIO));
         igual("500", debitos(l).get(PROVEEDORES));

@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.services;
 
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
+import com.cloud_technological.aura_pos.services.nomina.contabilidad.AsientoNominaBuilder;
 
 public interface ContabilidadAutoService {
     /** Genera el asiento contable para una venta. Idempotente: no duplica si ya existe. */
@@ -52,6 +53,14 @@ public interface ContabilidadAutoService {
      * Idempotente.
      */
     AsientoContableTableDto generarDesdeNomina(Long nominaId, Integer empresaId, Integer usuarioId);
+
+    /**
+     * Las líneas que generaría el asiento de una nómina, sin guardar nada (pestaña
+     * Contabilidad de la prenómina/nómina), con los avisos de lo que no se pudo
+     * resolver (una afiliación que falta). Mismo armado que
+     * {@link #generarDesdeNomina}: la proyección y el asiento real no pueden diferir.
+     */
+    AsientoNominaBuilder.Resultado proyectarNomina(Long nominaId, Integer empresaId);
     AsientoContableTableDto generarDesdePagoNomina(Long nominaId, Integer empresaId, Integer usuarioId);
     AsientoContableTableDto generarDesdePagoPrestacion(Long prestacionId, Integer empresaId, Integer usuarioId);
 

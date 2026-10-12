@@ -20,6 +20,7 @@ import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraTableDto;
 import com.cloud_technological.aura_pos.dto.compras.CreateCompraDto;
+import com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto;
 import com.cloud_technological.aura_pos.services.CompraService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -78,6 +79,27 @@ public class CompraController {
             @PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();
         var result = compraService.itemsAcreditables(empresaId, id);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    /**
+     * Devoluciones en compras (notas crédito de compra). Una página vacía es
+     * 200 con lista vacía: la pantalla filtra y no debe mostrarlo como error.
+     */
+    @PostMapping("/devoluciones/page")
+    public ResponseEntity<ApiResponse<PageImpl<DevolucionCompraDto>>> devoluciones(
+            @RequestBody PageableDto<Object> pageable) {
+        var result = compraService.devoluciones(pageable, securityUtils.getEmpresaId());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                "Listado exitoso", false, result), HttpStatus.OK);
+    }
+
+    /** Devoluciones hechas sobre una compra, para su detalle. */
+    @GetMapping("/{id}/devoluciones")
+    public ResponseEntity<ApiResponse<java.util.List<DevolucionCompraDto>>> devolucionesDeCompra(
+            @PathVariable Long id) {
+        var result = compraService.devolucionesDeCompra(id, securityUtils.getEmpresaId());
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
                 "Listado exitoso", false, result), HttpStatus.OK);
     }

@@ -52,6 +52,7 @@ import com.cloud_technological.aura_pos.repositories.venta_detalle.VentaDetalleJ
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.DevolucionService;
+import com.cloud_technological.aura_pos.services.cartera.CastigoCarteraService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PresentacionConversion;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -523,6 +524,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             cuentaCobrarRepository
                 .findByVentaIdAndEmpresaId(devolucion.getVenta().getId(), empresaId)
                 .ifPresent(cxc -> {
+                    CastigoCarteraService.exigirNoCastigada(cxc);
                     BigDecimal montoCartera = devolucion.getMontoCarteraAfectado();
                     BigDecimal saldoRestaurado = (cxc.getSaldoPendiente() != null
                             ? cxc.getSaldoPendiente() : BigDecimal.ZERO)

@@ -17,6 +17,12 @@ public interface AsientoContableService {
     AsientoContableTableDto crear(Integer empresaId, Integer usuarioId, CreateAsientoDto dto);
     /** Crea un comprobante manual (CD/CE/RC) con cabecera de beneficiario y lo contabiliza. */
     AsientoContableTableDto crearComprobante(Integer empresaId, Integer usuarioId, CreateComprobanteDto dto);
+
+    /** Corrige un comprobante manual conservando su número. */
+    AsientoContableTableDto actualizarComprobante(Long id, Integer empresaId, Integer usuarioId, CreateComprobanteDto dto);
+
+    /** Comprobante manual cargado para editarlo. */
+    com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto obtenerComprobanteEdicion(Long id, Integer empresaId);
     /** Previsualiza el próximo consecutivo para un tipo de comprobante (CD/CE/RC). */
     String siguienteConsecutivo(Integer empresaId, String tipoComprobante);
     void anular(Long id, Integer empresaId);

@@ -40,6 +40,31 @@ public class DeclaracionesQueryRepository {
     }
 
     /** Movimientos de las cuentas que empiezan por alguno de los prefijos. */
+    /** ICA causado (créditos a la 2412) dentro del período, sin pagos de declaración. */
+    public BigDecimal icaCausado(Integer empresaId, LocalDate desde, LocalDate hasta) {
+        java.math.BigDecimal v = jdbc.queryForObject("""
+            SELECT COALESCE(SUM(ad.credito), 0)
+              FROM asiento_detalle ad
+              JOIN asiento_contable a ON a.id = ad.asiento_id
+              JOIN plan_cuenta pc ON pc.id = ad.cuenta_id
+             WHERE a.empresa_id = :empresaId AND a.estado = 'CONTABILIZADO'
+               AND a.fecha BETWEEN :desde AND :hasta AND pc.codigo LIKE '2412%'
+               AND COALESCE(a.tipo_origen, '') NOT IN ('DECLARACION_PAGO', 'ANULACION_DECLARACION_PAGO')
+            """, rango(empresaId, desde, hasta), java.math.BigDecimal.class);
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
+    /** La primera de las cuentas (por código, en ese orden) que exista y esté activa. */
+    public Long primeraCuenta(Integer empresaId, List<String> codigos) {
+        for (String c : codigos) {
+            List<Long> r = jdbc.queryForList(
+                    "SELECT id FROM plan_cuenta WHERE empresa_id = :e AND codigo = :c AND activa = TRUE LIMIT 1",
+                    new MapSqlParameterSource("e", empresaId).addValue("c", c), Long.class);
+            if (!r.isEmpty()) return r.get(0);
+        }
+        return null;
+    }
+
     public List<Movimiento> movimientos(Integer empresaId, LocalDate desde, LocalDate hasta,
             List<String> prefijos) {
         MapSqlParameterSource p = rango(empresaId, desde, hasta);
@@ -58,6 +83,9 @@ public class DeclaracionesQueryRepository {
             WHERE a.empresa_id = :empresaId
               AND a.estado = 'CONTABILIZADO'
               AND a.fecha BETWEEN :desde AND :hasta
+              -- El pago de la declaración (V204) cierra estas cuentas: no es
+              -- parte de lo que se declara.
+              AND COALESCE(a.tipo_origen, '') NOT IN ('DECLARACION_PAGO', 'ANULACION_DECLARACION_PAGO')
               AND (""" + filtro + """
             )
             GROUP BY pc.id, pc.codigo, pc.nombre, a.tipo_origen

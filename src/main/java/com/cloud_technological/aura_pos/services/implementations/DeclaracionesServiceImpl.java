@@ -25,6 +25,14 @@ import com.cloud_technological.aura_pos.services.DeclaracionesService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.RequiredArgsConstructor;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDetalleDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.CreateAsientoDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.ParametrosIcaDto;
+import com.cloud_technological.aura_pos.services.AsientoContableService;
+import java.math.RoundingMode;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Borradores de las declaraciones de IVA (300) y retención en la fuente (350),
@@ -45,6 +53,8 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
     private final DeclaracionesQueryRepository repo;
     private final ConfiguracionContableService config;
     private final EmpresaJPARepository empresaRepo;
+    private final DeclaracionPagoService pagos;
+    private final AsientoContableService asientos;
 
     // ── IVA (formulario 300) ────────────────────────────────────────────────
 
@@ -97,6 +107,8 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
         // Ingresos del período: van en la primera parte del formulario.
         Map<String, BigDecimal> ing = new LinkedHashMap<>();
         for (Movimiento m : repo.movimientos(empresaId, desde, hasta, List.of("41", "42"))) {
+            // El asiento de cierre deja las cuentas de ingreso en cero: no es un ingreso.
+            if ("CIERRE".equals(m.tipoOrigen())) continue;
             String concepto = m.codigo().startsWith("4175")
                     ? "Menos: devoluciones en ventas (4175)"
                     : m.codigo().startsWith("41") ? "Ingresos operacionales (41)"
@@ -135,6 +147,8 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
                     + "): puede haber ventas sin asiento o asientos en borrador");
         }
         advertenciasComunes(dto, empresaId, desde, hasta);
+        // A quién se le paga y cuánto, con el pago si ya se registró (V204).
+        dto.setPorPagar(pagos.porPagar("IVA", empresaId, desde, hasta, dto.getAdvertencias()));
         return dto;
     }
 
@@ -194,7 +208,137 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
                 + "concepto del formulario (honorarios, servicios, compras…): si usa una subcuenta de "
                 + "la 2365 por concepto, el detalle por cuenta ya viene separado");
         advertenciasComunes(dto, empresaId, desde, hasta);
+        // A quién se le paga y cuánto, con el pago si ya se registró (V204).
+        dto.setPorPagar(pagos.porPagar("RETENCION", empresaId, desde, hasta, dto.getAdvertencias()));
         return dto;
+    }
+
+    // ── Industria y comercio (municipal) ────────────────────────────────────
+
+    private static final BigDecimal MIL = BigDecimal.valueOf(1000);
+    private static final BigDecimal CIEN = BigDecimal.valueOf(100);
+    private static final DateTimeFormatter DMY =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    @Override
+    public BorradorDeclaracionDto ica(Integer empresaId, ParametrosIcaDto p) {
+        validar(p.getDesde(), p.getHasta());
+        BigDecimal tarifa = nz(p.getTarifaPorMil());
+        if (tarifa.signum() < 0 || tarifa.compareTo(BigDecimal.valueOf(50)) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La tarifa de ICA va por mil, entre 0 y 50.");
+        BigDecimal bomberil = nz(p.getBomberilPct());
+        if (bomberil.signum() < 0 || bomberil.compareTo(CIEN) > 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La sobretasa bomberil va en %, entre 0 y 100.");
+        LocalDate desde = p.getDesde();
+        LocalDate hasta = p.getHasta();
+        BorradorDeclaracionDto dto = base("ICA", empresaId, desde, hasta);
+
+        // Base gravable: ingresos brutos (41 y 42) menos devoluciones (4175) y
+        // menos lo exento, no sujeto o de otros municipios.
+        Map<String, BigDecimal> ing = new LinkedHashMap<>();
+        BigDecimal brutos = BigDecimal.ZERO;
+        BigDecimal devoluciones = BigDecimal.ZERO;
+        for (Movimiento m : repo.movimientos(empresaId, desde, hasta, List.of("41", "42"))) {
+            // El asiento de cierre deja las cuentas de ingreso en cero: no es un ingreso.
+            if ("CIERRE".equals(m.tipoOrigen())) continue;
+            detalle(dto, m);
+            BigDecimal neto = nz(m.credito()).subtract(nz(m.debito()));
+            if (m.codigo().startsWith("4175")) {
+                devoluciones = devoluciones.add(neto.negate());
+            } else {
+                brutos = brutos.add(neto);
+                ing.merge(m.codigo().startsWith("41") ? "Ingresos operacionales (41)"
+                        : "Ingresos no operacionales (42)", neto, BigDecimal::add);
+            }
+        }
+        BigDecimal deducciones = nz(p.getDeducciones());
+        if (devoluciones.signum() != 0)
+            ing.put("Menos: devoluciones, rebajas y descuentos (4175)", devoluciones.negate());
+        if (deducciones.signum() != 0)
+            ing.put("Menos: exentos, no sujetos y de otros municipios", deducciones.negate());
+        Seccion sBase = seccion("Base gravable", false, true, ing);
+        BigDecimal base = brutos.subtract(devoluciones).subtract(deducciones).max(BigDecimal.ZERO);
+        sBase.setTotal(base);
+
+        BigDecimal impuesto = base.multiply(tarifa).divide(MIL, 0, RoundingMode.HALF_UP);
+        BigDecimal avisos = Boolean.TRUE.equals(p.getAvisosTableros())
+                ? impuesto.multiply(new BigDecimal("0.15")).setScale(0, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal sobretasa = impuesto.multiply(bomberil).divide(CIEN, 0, RoundingMode.HALF_UP);
+        Map<String, BigDecimal> liq = new LinkedHashMap<>();
+        liq.put("Impuesto de industria y comercio (" + tarifa.stripTrailingZeros().toPlainString() + " por mil)", impuesto);
+        liq.put("Avisos y tableros (15 %)", avisos);
+        liq.put("Sobretasa bomberil (" + bomberil.stripTrailingZeros().toPlainString() + " %)", sobretasa);
+        Seccion sLiq = seccion("Impuesto a cargo", false, false, liq);
+
+        Map<String, BigDecimal> ret = new LinkedHashMap<>();
+        for (Movimiento m : repo.movimientos(empresaId, desde, hasta, List.of("135518"))) {
+            detalle(dto, m);
+            ret.merge(m.codigo().startsWith("13551808") ? "Autorretenciones de ICA"
+                    : "Retenciones de ICA que le practicaron", nz(m.debito()).subtract(nz(m.credito())),
+                    BigDecimal::add);
+        }
+        Seccion sRet = seccion("Menos: retenciones y autorretenciones", true, false, ret);
+
+        dto.getSecciones().add(sBase);
+        dto.getSecciones().add(sLiq);
+        dto.getSecciones().add(sRet);
+        BigDecimal resultado = sLiq.getTotal().subtract(sRet.getTotal());
+        dto.setResultado(resultado);
+        dto.setResultadoEtiqueta(resultado.signum() >= 0 ? "Saldo a pagar" : "Saldo a favor");
+
+        if (tarifa.signum() == 0)
+            dto.getAdvertencias().add("Escriba la tarifa por mil de la actividad: depende del municipio");
+        if (ret.isEmpty())
+            dto.getAdvertencias().add("No hay retenciones de ICA registradas en la 135518 para el período");
+        dto.getAdvertencias().add("Si la empresa tiene ingresos en varios municipios, cada uno se declara aparte: "
+                + "reste en 'exentos y otros municipios' lo que no corresponde a este");
+        BigDecimal causado = repo.icaCausado(empresaId, desde, hasta);
+        if (causado.signum() > 0)
+            dto.getAdvertencias().add("Ya hay ICA causado en la 2412 en el período por " + pesos(causado));
+        else
+            dto.getAdvertencias().add("El ICA del período aún no está causado: use 'Causar ICA' para "
+                    + "registrar el gasto (511505) y la cuenta por pagar (2412) antes de pagarlo");
+        advertenciasComunes(dto, empresaId, desde, hasta);
+        dto.setPorPagar(pagos.porPagarIca(empresaId, desde, hasta, p.getTerceroAcreedorId(), dto.getAdvertencias()));
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public String causarIca(Integer empresaId, Integer usuarioId, ParametrosIcaDto p) {
+        if (p.getTerceroAcreedorId() == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Elija la secretaría de hacienda del municipio: el ICA se causa a su nombre.");
+        BorradorDeclaracionDto b = ica(empresaId, p);
+        BigDecimal impuesto = b.getSecciones().get(1).getTotal();
+        if (impuesto.signum() <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "No hay impuesto a cargo que causar.");
+        if (repo.icaCausado(empresaId, p.getDesde(), p.getHasta()).signum() > 0)
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "El ICA del período ya está causado en la 2412. Anule esa nota si necesita rehacerlo.");
+        Long gasto = repo.primeraCuenta(empresaId, List.of("51150501", "511505"));
+        Long pasivo = repo.primeraCuenta(empresaId, List.of("24120501", "241205", "2412"));
+        if (gasto == null || pasivo == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Faltan las cuentas 511505 (gasto ICA) o 2412 (ICA por pagar) en el plan de cuentas.");
+
+        String desc = "Causación ICA " + p.getDesde().format(DMY) + " a " + p.getHasta().format(DMY);
+        var d1 = new CreateAsientoDetalleDto();
+        d1.setCuentaId(gasto);
+        d1.setDescripcion(desc);
+        d1.setDebito(impuesto);
+        d1.setTerceroId(p.getTerceroAcreedorId());
+        var d2 = new CreateAsientoDetalleDto();
+        d2.setCuentaId(pasivo);
+        d2.setDescripcion(desc);
+        d2.setCredito(impuesto);
+        d2.setTerceroId(p.getTerceroAcreedorId());
+        var a = new CreateAsientoDto();
+        a.setFecha(p.getHasta().isAfter(LocalDate.now()) ? LocalDate.now() : p.getHasta());
+        a.setDescripcion(desc);
+        a.setDetalles(List.of(d1, d2));
+        return asientos.crear(empresaId, usuarioId, a).getNumeroComprobante();
     }
 
     // ── Comunes ─────────────────────────────────────────────────────────────
@@ -309,7 +453,7 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
 
     private static String pesos(BigDecimal v) {
         java.text.NumberFormat f = java.text.NumberFormat.getCurrencyInstance(
-                java.util.Locale.forLanguageTag("es-CO"));
+                Locale.forLanguageTag("es-CO"));
         f.setMaximumFractionDigits(0);
         return f.format(v);
     }

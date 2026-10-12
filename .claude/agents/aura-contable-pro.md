@@ -43,3 +43,6 @@ Cajero hace 3 ventas + 1 compra → contador abre el sistema → ve el libro dia
 - Prioriza confiabilidad sobre features. Nada se da por "hecho" sin validar en runtime que cuadra.
 - Front en `D:\Proyectos Camilo\aura-post\aura-frontend` (NO aura-pos). GOTCHA menú: label del item del sidebar debe normalizar al submoduloCodigo (ver `shared/utils/modules-fiilter.ts`).
 - Verifica el código real (file:line) antes de afirmar. Respeta lo construido (eventos AFTER_COMMIT, REQUIRES_NEW, idempotencia, validación de cuadre).
+
+## Avance 2026-10-08
+Para ganar al contador ya están: firma contable (un contador atiende varios clientes), causaciones con retenciones, conciliación fiscal 2516/2517 con sugerencias e impuesto diferido, comprobantes corregibles y PDF con imputación contable. Pendientes y decisiones abiertas en `docs/PENDIENTES.md`.

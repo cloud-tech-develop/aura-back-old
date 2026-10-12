@@ -52,6 +52,7 @@ public class SerialStockService {
     public static final String ORIGEN_CONSUMO_INTERNO = "CONSUMO_INTERNO";
     public static final String ORIGEN_TRASLADO = "TRASLADO";
     public static final String ORIGEN_DEVOLUCION = "DEVOLUCION";
+    public static final String ORIGEN_SALDO_INICIAL = "SALDO_INICIAL";
 
     private final SerialProductoJPARepository serialRepository;
     private final DocumentoSerialJPARepository documentoSerialRepository;
@@ -67,6 +68,24 @@ public class SerialStockService {
     public List<SerialProductoEntity> entradaCompra(ProductoEntity producto, BodegaEntity bodega,
             Integer empresaId, Long compraDetalleId, List<String> seriales, BigDecimal cantidadBase,
             BigDecimal costoUnitario) {
+        return entrada(ORIGEN_COMPRA, compraDetalleId, compraDetalleId, producto, bodega, empresaId, seriales,
+                cantidadBase, costoUnitario);
+    }
+
+    /**
+     * Saldo inicial importado desde Excel (docs/PLAN_EXCEL_IMPORTADORES_MODULOS.md §2c):
+     * mismas reglas que la compra, con su propio origen; el documento es la fila de inventario.
+     */
+    public List<SerialProductoEntity> entradaSaldoInicial(ProductoEntity producto, BodegaEntity bodega,
+            Integer empresaId, Long inventarioId, List<String> seriales, BigDecimal cantidadBase,
+            BigDecimal costoUnitario) {
+        return entrada(ORIGEN_SALDO_INICIAL, inventarioId, null, producto, bodega, empresaId, seriales,
+                cantidadBase, costoUnitario);
+    }
+
+    private List<SerialProductoEntity> entrada(String origen, Long detalleId, Long compraDetalleId,
+            ProductoEntity producto, BodegaEntity bodega, Integer empresaId, List<String> seriales,
+            BigDecimal cantidadBase, BigDecimal costoUnitario) {
         List<String> lista = seriales != null ? seriales : List.of();
         if (!manejaSerial(producto)) {
             if (!lista.isEmpty())
@@ -108,7 +127,7 @@ public class SerialStockService {
             e.setFechaIngreso(LocalDateTime.now());
             e.setCompraDetalleId(compraDetalleId);
             e = serialRepository.save(e);
-            rastro(ORIGEN_COMPRA, compraDetalleId, e, null, null);
+            rastro(origen, detalleId, e, null, null);
             creados.add(e);
         }
         return creados;

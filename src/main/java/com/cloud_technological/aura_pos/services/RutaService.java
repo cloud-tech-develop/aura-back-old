@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -123,7 +124,7 @@ public class RutaService {
         List<RutaLocalEntity> locales = new ArrayList<>();
         int orden = 1;
         for (Long localId : dto.getLocalIds()) {
-            LocalEntity local = localRepository.findById(localId)
+            LocalEntity local = localRepository.findById(localId).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
             RutaLocalEntity rutaLocal = new RutaLocalEntity();
@@ -177,7 +178,7 @@ public class RutaService {
             List<RutaLocalEntity> locales = new ArrayList<>();
             int orden = 1;
             for (Long localId : dto.getLocalIds()) {
-                LocalEntity local = localRepository.findById(localId)
+                LocalEntity local = localRepository.findById(localId).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                         .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
                 RutaLocalEntity rutaLocal = new RutaLocalEntity();

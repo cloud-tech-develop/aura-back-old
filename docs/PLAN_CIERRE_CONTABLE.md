@@ -103,7 +103,7 @@ convivencia de varios meses abiertos, fecha del asiento de cierre, reapertura (m
 obligatorio, bloqueo por cierre fiscal, anulación del asiento de cierre, traza y contador) y
 rechazo de fechas lejanas. **No probado en navegador.**
 
-**Pendiente**: correr V171 en producción, y las fases 2 a 5.
+**Pendiente**: correr V171 en producción. Fases 2 a 5: ver sección 5.
 
 ## 4. Estilos de las tres pantallas (2026-09-17)
 
@@ -124,3 +124,44 @@ volvieron un solo bloque: "N meses abiertos · sigue cerrar <mes>", con un chip 
 muestra sus comprobantes y sus borradores, y el botón de cerrar el más antiguo.
 
 Verificado en el navegador, en tema claro y oscuro, en las tres pantallas.
+
+
+## 5. Fases 2 a 5 — cómo quedó (2026-10-10, local, sin commit)
+
+**V206** (`V206__cierre_mes_chequeo.sql` + Laravel `000206`, corrida solo en local):
+`periodo_contable.chequeo_cierre` (JSON con la lista de chequeo al cerrar, para el acta).
+
+**Backend** — `CierreMesService` + `CierreMesQueryRepository` (todo leído del mayor):
+
+- `GET /api/periodos-contables/{id}/chequeo`: semáforos por grupo.
+  - Requisitos (bloquean, igual que antes en el cierre): meses anteriores abiertos,
+    borradores, descuadres, extractos sin conciliar.
+  - Ajustes del mes (advertencia + acción): bancos con movimiento sin extracto
+    conciliado, activos sin depreciar, diferidos sin cuota, nómina sin contabilizar
+    (si hay empleados), deterioro de cartera pendiente.
+  - Calidad: movimientos sin tercero en 13/22/23/28 (menos 1399), cuentas con saldo
+    contrario a su naturaleza.
+  - Cruces auxiliar contra mayor **a hoy** (el auxiliar no tiene foto por fecha):
+    cartera vs clientes, CxP vs proveedores, inventario valorizado vs 14 (sin 1499),
+    fichas de activos vs sus cuentas, depreciación acumulada, cada banco (tesorería vs
+    mayor), caja sin saldo negativo. Tolerancia $1.
+- `POST /{id}/ajustes/{depreciacion|diferidos|deterioro}`: corre el proceso existente
+  (depreciación contabilizada y reversible desde Activos; diferidos solo de la empresa
+  — `DiferidoService.amortizar(empresaId, fecha)`; deterioro en borrador).
+- `GET /{id}/acta`: datos del acta (foto guardada al cerrar o chequeo del momento,
+  balance de comprobación del mes, asiento de cierre, resultado).
+- `GET /{id}/comparativo`: resultados por grupo (41, 51, 61…) contra el mes anterior y el
+  mismo mes del año anterior, sin el asiento de cierre.
+- El cierre guarda la foto en su propia transacción (`REQUIRES_NEW` + try/catch): si
+  falla, el cierre sigue y el acta usa el chequeo del momento.
+- De paso: `DiferidoService` ya no amortiza gastos diferidos **anulados**.
+
+**Front** — Períodos contables → pestaña "Cierre del mes" (`cierre-mes-panel`): selector
+de mes, resumen de bloqueos/advertencias, filas con semáforo, cruces con módulo/mayor/
+diferencia, casos de ejemplo, botones de ajuste o de ir a la pantalla, botón "Cerrar" (abre
+el diálogo de siempre), "Acta de cierre" en PDF (`acta-cierre-pdf.service.ts`, estilo de
+documentos) y la tabla de comparativos.
+
+**Validado**: todas las consultas corridas contra la base local (empresa 4). Los cruces
+mostraron diferencias reales en esa empresa (inventario, caja negativa), que es justo lo
+que deben señalar. **No probado en navegador ni por endpoints con sesión.**

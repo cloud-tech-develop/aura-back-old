@@ -40,6 +40,7 @@ public class DashboardRrhhQueryRepository {
             WHERE n.empresa_id = :empresaId
               AND p.fecha_fin BETWEEN :desde AND :hasta
               AND n.estado <> 'ANULADO'
+              AND n.es_prenomina = FALSE
               AND p.estado <> 'ANULADO'
             GROUP BY 1, 2
             """;
@@ -106,6 +107,7 @@ public class DashboardRrhhQueryRepository {
             WHERE n.empresa_id = :empresaId
               AND p.fecha_fin BETWEEN :desde AND :hasta
               AND p.estado <> 'ANULADO'
+              AND n.es_prenomina = FALSE
               AND n.estado = :estado
             """, rango(empresaId, desde, hasta).addValue("estado", estado));
     }

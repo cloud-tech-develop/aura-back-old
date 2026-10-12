@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.cloud_technological.aura_pos.services.nomina.contabilidad.AsientoNominaBuilder;
 import com.cloud_technological.aura_pos.utils.Documentos;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoContableTableDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.AsientoDetalleDto;
@@ -88,11 +89,13 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     @Autowired private com.cloud_technological.aura_pos.repositories.conceptos_caja.ConceptoCajaJPARepository conceptoCajaRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.comprobante_caja.ComprobanteCajaJPARepository comprobanteCajaRepo;
     @Autowired private ConfiguracionContableService config;
+    @Autowired private AsientoNominaBuilder asientoNomina;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago resolucionCuentaPago;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.port.ConfigContabilizacion configContabilizacion;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaProducto resolucionCuentaProducto;
     @Autowired private com.cloud_technological.aura_pos.repositories.detalle_compras.CompraDetalleJPARepository compraDetalleRepo;
     @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionImpuesto resolucionImpuesto;
+    @Autowired private com.cloud_technological.aura_pos.repositories.retenciones.TarifaRetencionQueryRepository tarifaRetencionQueryRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.merma_detalle.MermaDetalleJPARepository mermaDetalleRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.inventario_consumo.InventarioConsumoComponenteJPARepository consumoComponenteRepo;
     @Autowired private com.cloud_technological.aura_pos.repositories.asistencia.AsistenciaNovedadNominaJPARepository novedadNominaRepo;
@@ -231,7 +234,22 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
     public record DatosCompraAsiento(BigDecimal subtotal, BigDecimal descuento, BigDecimal fletes,
             BigDecimal impuestos, BigDecimal netaAPagar, Long proveedorId, boolean esNotaCredito,
             Long cuentaContableId, List<LineaCompraAsiento> lineas, BigDecimal retefuente,
-            BigDecimal reteiva, BigDecimal reteica, List<PagoCompraAsiento> pagos) {
+            BigDecimal reteiva, BigDecimal reteica, List<PagoCompraAsiento> pagos,
+            Long retefuenteTarifaId, Long reteivaTarifaId, Long reteicaTarifaId) {
+    }
+
+    /**
+     * Cuenta de la retención: la de su tarifa (honorarios → 236515, servicios →
+     * 236525…) o, si la tarifa no tiene cuenta, la del concepto por defecto.
+     */
+    private Long cuentaRetencion(Integer empresaId, Long tarifaId, ConceptoContable porDefecto) {
+        if (tarifaId != null) {
+            Long cuenta = tarifaRetencionQueryRepo.tipoYCuenta(tarifaId, empresaId)
+                    .map(com.cloud_technological.aura_pos.repositories.retenciones.TarifaRetencionQueryRepository.TipoYCuenta::cuentaContableId)
+                    .orElse(null);
+            if (cuenta != null) return cuenta;
+        }
+        return config.resolverCuenta(empresaId, porDefecto).getId();
     }
 
     /**
@@ -347,18 +365,18 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         // ── CRÉDITO · retenciones practicadas al proveedor ────────────────────
         BigDecimal retefuente = d.retefuente();
         if (retefuente.signum() != 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEFUENTE_PRACTICADA);
-            detalles.add(lineaFirmada(c.getId(), "Retención en la fuente", retefuente, false, proveedorId));
+            Long c = cuentaRetencion(empresaId, d.retefuenteTarifaId(), ConceptoContable.RETEFUENTE_PRACTICADA);
+            detalles.add(lineaFirmada(c, "Retención en la fuente", retefuente, false, proveedorId));
         }
         BigDecimal reteiva = d.reteiva();
         if (reteiva.signum() != 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEIVA_PRACTICADA);
-            detalles.add(lineaFirmada(c.getId(), "ReteIVA", reteiva, false, proveedorId));
+            Long c = cuentaRetencion(empresaId, d.reteivaTarifaId(), ConceptoContable.RETEIVA_PRACTICADA);
+            detalles.add(lineaFirmada(c, "ReteIVA", reteiva, false, proveedorId));
         }
         BigDecimal reteica = d.reteica();
         if (reteica.signum() != 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEICA_PRACTICADA);
-            detalles.add(lineaFirmada(c.getId(), "ReteICA", reteica, false, proveedorId));
+            Long c = cuentaRetencion(empresaId, d.reteicaTarifaId(), ConceptoContable.RETEICA_PRACTICADA);
+            detalles.add(lineaFirmada(c, "ReteICA", reteica, false, proveedorId));
         }
 
         // ── CRÉDITO · pago de contado (caja/bancos) ───────────────────────────
@@ -426,7 +444,8 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 compra.getProveedor() != null ? compra.getProveedor().getId() : null,
                 esNotaCredito, compra.getCuentaContableId(), lineasCompra,
                 nz(compra.getRetefuenteValor()), nz(compra.getReteivaValor()), nz(compra.getReteicaValor()),
-                pagosCompra));
+                pagosCompra, compra.getRetefuenteTarifaId(), compra.getReteivaTarifaId(),
+                compra.getReteicaTarifaId()));
 
         if (detalles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -794,13 +813,14 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
             detalles.add(linea(ivaCta.getId(), "IVA descontable gasto", iva, BigDecimal.ZERO));
         }
         // CR · retenciones practicadas
+        // La cuenta sale del concepto elegido (honorarios → 236515…), como en compras.
         if (retefuente.signum() > 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEFUENTE_PRACTICADA);
-            detalles.add(linea(c.getId(), "Retefuente gasto", BigDecimal.ZERO, retefuente, terceroId));
+            Long c = cuentaRetencion(empresaId, gasto.getRetefuenteTarifaId(), ConceptoContable.RETEFUENTE_PRACTICADA);
+            detalles.add(linea(c, "Retefuente gasto", BigDecimal.ZERO, retefuente, terceroId));
         }
         if (reteica.signum() > 0) {
-            PlanCuentaEntity c = config.resolverCuenta(empresaId, ConceptoContable.RETEICA_PRACTICADA);
-            detalles.add(linea(c.getId(), "ReteICA gasto", BigDecimal.ZERO, reteica, terceroId));
+            Long c = cuentaRetencion(empresaId, gasto.getReteicaTarifaId(), ConceptoContable.RETEICA_PRACTICADA);
+            detalles.add(linea(c, "ReteICA gasto", BigDecimal.ZERO, reteica, terceroId));
         }
         // CR · de dónde salió la plata (V142).
         //
@@ -906,6 +926,39 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
         NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
 
+        List<AsientoDetalleEntity> detalles = asientoNomina.construir(n, empresaId)
+                .map(AsientoNominaBuilder.Resultado::lineas)
+                .orElseGet(() -> lineasNomina(n, empresaId));
+
+        if (detalles.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La nómina #" + nominaId + " no produjo movimientos contables.");
+        }
+
+        // R4c — la fecha del documento de nómina (o el fin del período), no la de creación.
+        java.time.LocalDate fecha = asientoNomina.fecha(n);
+        return persistir(empresaId, usuarioId, fecha, PREFIX_NOMINA,
+                "Nómina #" + nominaId
+                        + (n.getEmpleado() != null && n.getEmpleado().getId() != null
+                                ? " — empleado " + n.getEmpleado().getId() : ""),
+                "NOMINA", nominaId, periodoResolver.resolverId(empresaId, fecha), detalles);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AsientoNominaBuilder.Resultado proyectarNomina(Long nominaId, Integer empresaId) {
+        NominaEntity n = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
+        return asientoNomina.construir(n, empresaId)
+                .orElseGet(() -> new AsientoNominaBuilder.Resultado(lineasNomina(n, empresaId), List.of()));
+    }
+
+    /**
+     * Asiento por totales de la fila (débitos de gasto por auxiliar, repartidos por
+     * proyecto/frente, y créditos de pasivos por pagar sin tercero). Solo para nóminas
+     * viejas sin detalle por concepto; las demás usan {@link AsientoNominaBuilder}.
+     */
+    private List<AsientoDetalleEntity> lineasNomina(NominaEntity n, Integer empresaId) {
         List<AsientoDetalleEntity> detalles = new ArrayList<>();
 
         // ── DÉBITOS · gasto de personal desglosado por auxiliar (5105xx) ──────
@@ -955,19 +1008,7 @@ public class ContabilidadAutoServiceImpl implements ContabilidadAutoService {
                 "Prima de servicios por pagar", nz(n.getProvisionPrima()));
         addCreditoNomina(detalles, empresaId, ConceptoContable.VACACIONES_POR_PAGAR,
                 "Vacaciones por pagar", nz(n.getProvisionVacaciones()));
-
-        if (detalles.size() < 2) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "La nómina #" + nominaId + " no produjo movimientos contables.");
-        }
-
-        java.time.LocalDate fecha = n.getCreatedAt() != null
-                ? n.getCreatedAt().toLocalDate() : java.time.LocalDate.now();
-        return persistir(empresaId, usuarioId, fecha, PREFIX_NOMINA,
-                "Nómina #" + nominaId
-                        + (n.getEmpleado() != null && n.getEmpleado().getId() != null
-                                ? " — empleado " + n.getEmpleado().getId() : ""),
-                "NOMINA", nominaId, periodoResolver.resolverId(empresaId, fecha), detalles);
+        return detalles;
     }
 
     /**

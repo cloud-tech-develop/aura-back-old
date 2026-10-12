@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.repositories.terceros;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -105,6 +106,11 @@ public class TerceroQueryRepository {
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
 
+        // Los buscadores (autocomplete y búsqueda avanzada) piden solo activos con
+        // params.soloActivos = true; la pantalla de Terceros los ve todos para poder
+        // reactivarlos.
+        if (soloActivos(pageable.getParams())) sql.append(" AND t.activo = true ");
+
         if (!search.isEmpty()) {
             sql.append("""
                 AND (LOWER(t.numero_documento) LIKE :search
@@ -126,6 +132,11 @@ public class TerceroQueryRepository {
 
         long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
         return new PageImpl<>(list, PageRequest.of(page, size), total);
+    }
+
+    /** ¿El pedido trae params.soloActivos = true? (params llega como mapa desde el JSON). */
+    private static boolean soloActivos(Object params) {
+        return params instanceof Map<?, ?> m && Boolean.TRUE.equals(m.get("soloActivos"));
     }
 
     public boolean existeDocumento(String numeroDocumento, Integer empresaId) {

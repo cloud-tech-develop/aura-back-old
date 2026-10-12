@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.compras.GastoTableDto;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.services.permisos.AlcanceSede;
+import java.math.BigDecimal;
+import java.util.Optional;
 
 @Repository
 public class GastoQueryRepository {
@@ -21,7 +24,7 @@ public class GastoQueryRepository {
 
     /** Solo sus sedes, si el perfil no tiene todas (PLAN_PERMISOS P9). */
     @Autowired
-    private com.cloud_technological.aura_pos.services.permisos.AlcanceSede alcanceSede;
+    private AlcanceSede alcanceSede;
 
     /**
      * La cuenta por pagar de un gasto a crédito, viva. No hay columna que las
@@ -43,6 +46,22 @@ public class GastoQueryRepository {
     }
 
     /** true si el gasto sacó efectivo de una caja (dejó egreso en movimiento_caja). */
+    /**
+     * Lo que salió de verdad cuando se registró el gasto, según su comprobante
+     * de egreso. Hasta 2026-10-09 la caja y el banco movían el valor sin IVA ni
+     * retenciones; al anular un gasto de antes hay que devolver eso, no el neto.
+     */
+    public Optional<BigDecimal> montoEgresoRegistrado(Integer empresaId, Long gastoId) {
+        List<java.math.BigDecimal> r = jdbcTemplate.queryForList("""
+            SELECT monto FROM comprobante_caja
+            WHERE empresa_id = :empresaId AND origen = 'GASTO' AND origen_id = :id AND tipo = 'EGRESO'
+            ORDER BY id DESC
+            LIMIT 1
+            """, new org.springframework.jdbc.core.namedparam.MapSqlParameterSource("empresaId", empresaId)
+                .addValue("id", gastoId), BigDecimal.class);
+        return r.stream().findFirst();
+    }
+
     public boolean tuvoEgresoDeCaja(String origenTipo, Long gastoId) {
         Long n = jdbcTemplate.queryForObject("""
             SELECT COUNT(*) FROM movimiento_caja

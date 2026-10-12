@@ -3,8 +3,6 @@ package com.cloud_technological.aura_pos.contabilidad.web;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -15,15 +13,12 @@ import org.springframework.web.bind.annotation.*;
 
 import com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.ExogenaExcelExporter;
 import com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.ExogenaService;
-import com.cloud_technological.aura_pos.dto.contabilidad.TerceroExogenaDto;
+import com.cloud_technological.aura_pos.entity.ExogenaColumnaEntity;
 import com.cloud_technological.aura_pos.entity.ExogenaConceptoEntity;
 import com.cloud_technological.aura_pos.entity.ExogenaErrorEntity;
 import com.cloud_technological.aura_pos.entity.ExogenaFormatoEntity;
-import com.cloud_technological.aura_pos.entity.ExogenaLineaEntity;
 import com.cloud_technological.aura_pos.entity.ExogenaLoteEntity;
 import com.cloud_technological.aura_pos.entity.ExogenaMapeoCuentaEntity;
-import com.cloud_technological.aura_pos.repositories.contabilidad.ExogenaLineaJPARepository;
-import com.cloud_technological.aura_pos.repositories.contabilidad.ExogenaQueryRepository;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
@@ -42,20 +37,37 @@ public class ExogenaController {
     @Autowired
     private ExogenaExcelExporter exporter;
 
-    @Autowired
-    private ExogenaLineaJPARepository lineaRepo;
 
-    @Autowired
-    private ExogenaQueryRepository queryRepo;
 
     @Autowired
     private SecurityUtils securityUtils;
 
     // ── Catálogo ─────────────────────────────────────────────────────────
 
+    /** Formatos que reporta la empresa según su tipo de persona (natural: sin el 1010). */
     @GetMapping("/formatos")
     public ResponseEntity<ApiResponse<List<ExogenaFormatoEntity>>> formatos() {
-        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, service.formatos()));
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                service.formatos(securityUtils.getEmpresaId())));
+    }
+
+    /** Columnas de valor del formato, en el orden del prevalidador. */
+    @GetMapping("/formatos/{id}/columnas")
+    public ResponseEntity<ApiResponse<List<ExogenaColumnaEntity>>> columnas(@PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, service.columnas(id)));
+    }
+
+    /** Tipo de persona del informante: NATURAL | JURIDICA. */
+    @GetMapping("/config")
+    public ResponseEntity<ApiResponse<Map<String, String>>> config() {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                Map.of("tipoPersona", service.tipoPersona(securityUtils.getEmpresaId()))));
+    }
+
+    @PutMapping("/config")
+    public ResponseEntity<ApiResponse<Map<String, String>>> cambiarConfig(@RequestBody Map<String, String> body) {
+        String tp = service.cambiarTipoPersona(securityUtils.getEmpresaId(), body.get("tipoPersona"));
+        return ResponseEntity.ok(new ApiResponse<>(200, "Tipo de persona guardado", false, Map.of("tipoPersona", tp)));
     }
 
     @GetMapping("/formatos/{id}/conceptos")
@@ -78,7 +90,7 @@ public class ExogenaController {
             @RequestBody MapeoRequest body) {
         Integer empresaId = securityUtils.getEmpresaId();
         ExogenaMapeoCuentaEntity m = service.crearMapeo(empresaId, body.conceptoId(),
-                body.cuentaDesde(), body.cuentaHasta(), body.tipoValor());
+                body.cuentaDesde(), body.cuentaHasta(), body.tipoValor(), body.columna());
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(),
                 "Mapeo creado", false, m), HttpStatus.CREATED);
     }
@@ -90,7 +102,7 @@ public class ExogenaController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Mapeo eliminado", false, null));
     }
 
-    /** Restaura los mapeos default sobre el PUC seed (solo si no hay ninguno). */
+    /** Agrega los mapeos default que falten (no toca ni borra los de la empresa). */
     @PostMapping("/mapeos/seed")
     public ResponseEntity<ApiResponse<Void>> seedMapeos() {
         Integer empresaId = securityUtils.getEmpresaId();
@@ -118,6 +130,14 @@ public class ExogenaController {
                 body.formatoId(), body.anio(), body.cuantiaMenorUmbral());
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(),
                 "Lote generado", false, lote), HttpStatus.CREATED);
+    }
+
+    /** Genera de una vez los lotes del año de todos los formatos que reporta la empresa. */
+    @PostMapping("/lotes/todos")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> generarTodos(@RequestBody GenerarRequest body) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        return ResponseEntity.ok(new ApiResponse<>(200, "Lotes generados", false,
+                service.generarTodos(empresaId, securityUtils.getUsuarioId(), body.anio())));
     }
 
     @GetMapping("/lotes")
@@ -150,36 +170,33 @@ public class ExogenaController {
                 service.aprobar(empresaId, usuarioId, id)));
     }
 
-    /** Excel con las columnas del prevalidador DIAN. */
+    /** Excel del lote con las columnas del prevalidador DIAN. */
     @GetMapping("/lotes/{id}/export")
     public ResponseEntity<byte[]> exportar(@PathVariable Long id) {
-        Integer empresaId = securityUtils.getEmpresaId();
-        ExogenaLoteEntity lote = service.lote(empresaId, id);
-        ExogenaFormatoEntity formato = service.formatos().stream()
-                .filter(f -> f.getId().equals(lote.getFormatoId()))
-                .findFirst().orElseThrow();
-        List<ExogenaLineaEntity> lineas = lineaRepo.findByLoteIdOrderByConceptoIdAscValorDesc(id);
-        Map<Long, ExogenaConceptoEntity> conceptos = service.conceptos(lote.getFormatoId()).stream()
-                .collect(Collectors.toMap(ExogenaConceptoEntity::getId, Function.identity()));
-        Map<Long, TerceroExogenaDto> terceros = queryRepo.terceros(empresaId,
-                        lineas.stream().map(ExogenaLineaEntity::getTerceroId)
-                                .filter(java.util.Objects::nonNull).collect(Collectors.toSet()))
-                .stream().collect(Collectors.toMap(TerceroExogenaDto::id, Function.identity()));
+        ExogenaExcelExporter.Hoja hoja = service.hoja(securityUtils.getEmpresaId(), id);
+        return excel(exporter.exportar(hoja), "exogena-" + hoja.formato().getCodigo() + "-"
+                + hoja.lote().getAnio() + "-v" + hoja.lote().getVersion() + ".xlsx");
+    }
 
-        byte[] excel = exporter.exportar(formato, lote, lineas, conceptos, terceros);
-        String nombre = "exogena-" + formato.getCodigo() + "-" + lote.getAnio()
-                + "-v" + lote.getVersion() + ".xlsx";
+    /** Excel del año: una hoja por formato con la última versión de su lote. */
+    @GetMapping("/anio/{anio}/export")
+    public ResponseEntity<byte[]> exportarAnio(@PathVariable int anio) {
+        return excel(exporter.exportar(service.hojasDelAnio(securityUtils.getEmpresaId(), anio)),
+                "exogena-" + anio + ".xlsx");
+    }
+
+    private static ResponseEntity<byte[]> excel(byte[] contenido, String nombre) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nombre + "\"")
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(excel);
+                .body(contenido);
     }
 
     // ── Cuerpos de petición ──────────────────────────────────────────────
 
     public record MapeoRequest(Long conceptoId, String cuentaDesde, String cuentaHasta,
-            String tipoValor) {
+            String tipoValor, String columna) {
     }
 
     public record GenerarRequest(Long formatoId, int anio, BigDecimal cuantiaMenorUmbral) {

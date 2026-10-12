@@ -125,6 +125,14 @@ public enum ConceptoContable {
     GASTOS_BANCARIOS("530515", "Comisiones y gastos bancarios", "53"),
     GMF("530595", "Gravamen a los movimientos financieros (4x1000)", "53"),
     INGRESOS_FINANCIEROS("421005", "Ingresos financieros (intereses bancarios)", "42"),
+    /** Intereses de mora facturados a clientes (cartera C5, V205). */
+    INTERESES_MORA_CLIENTES("421005", "Intereses de mora cobrados a clientes", "42"),
+    /** Pago de declaraciones (V207): intereses de mora y sanciones que se le pagan a la DIAN o al municipio. */
+    INTERESES_MORA_FISCAL("530520", "Intereses de mora en impuestos", "53"),
+    SANCIONES_FISCALES("539520", "Multas y sanciones tributarias", "53"),
+    /** Diferencia por redondear la declaración al múltiplo de mil (art. 577 E.T.). */
+    AJUSTE_PESO_GASTO("539540", "Ajuste al peso (gasto)", "53"),
+    AJUSTE_PESO_INGRESO("4295", "Ajuste al peso (ingreso)", "42"),
 
     // ── Cierre anual fiscal (E8) ──────────────────────────────────────────
     GASTO_IMPUESTO_RENTA("5405", "Gasto impuesto de renta y complementarios", "54"),

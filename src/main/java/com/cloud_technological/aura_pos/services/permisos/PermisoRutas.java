@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.cloud_technological.aura_pos.services.nomina.catalogos.TipoCatalogoNomina;
+
 /**
  * Qué submódulo protege cada ruta del API (fase P3 de docs/PLAN_PERMISOS.md).
  *
@@ -24,7 +26,9 @@ public final class PermisoRutas {
     /** Rutas que no se revisan: autenticación, públicas o del propio usuario. */
     static final List<String> LIBRES = List.of(
             "/api/auth", "/api/public", "/api/platform", "/api/permisos/mios", "/api/municipios",
-            "/api/notificaciones", "/api/storage", "/api/documentos");
+            "/api/notificaciones", "/api/storage", "/api/documentos",
+            // La revisa EmpresaController con la acción especial caja.usuarios:EDITAR_EMPRESA.
+            "/api/empresa/datos");
 
     /**
      * Maestros que cualquier usuario de la empresa puede LEER: los usan el punto de
@@ -38,7 +42,10 @@ public final class PermisoRutas {
             "/api/contabilidad/formas-pago", "/api/contabilidad/impuestos", "/api/contabilidad/plan-cuentas",
             "/api/cajas", "/api/turnos", "/api/lotes", "/api/seriales", "/api/inventario", "/api/centros-costos",
             "/api/conceptos-caja", "/api/motivos-merma", "/api/tipos-empleado", "/api/locales",
-            "/api/tarifas-retencion", "/api/empresa", "/api/comisiones/tecnicos", "/api/comisiones/vendedores");
+            "/api/tarifas-retencion", "/api/empresa", "/api/comisiones/tecnicos", "/api/comisiones/vendedores",
+            // Catálogos de nómina: los usan la vinculación y otros formularios de RR. HH.
+            "/api/nomina/catalogos", "/api/nomina/cargos", "/api/nomina/tipos-vinculacion",
+            "/api/nomina/tipos-comprobante");
 
     /** Prefijo → claves aceptadas (basta una). */
     static final Map<String, List<String>> CLAVES = construir();
@@ -61,6 +68,16 @@ public final class PermisoRutas {
         m.put("/api/productos/precios", List.of("precios.precio-productos"));
         m.put("/api/categorias", List.of("catalogo.categorias"));
         m.put("/api/marcas", List.of("catalogo.marcas"));
+        // Importar desde Excel: el permiso de la pantalla de cada catálogo.
+        m.put("/api/importacion-catalogo/categorias", List.of("catalogo.categorias"));
+        m.put("/api/importacion-catalogo/marcas", List.of("catalogo.marcas"));
+        m.put("/api/importacion-catalogo/productos", List.of("catalogo.productos"));
+        m.put("/api/importacion-catalogo/precios", List.of("precios.precio-productos"));
+        m.put("/api/importacion-catalogo/presentaciones", List.of("catalogo.presentaciones"));
+        m.put("/api/importacion-catalogo/recetas", List.of("catalogo.composiciones"));
+        m.put("/api/importacion-inventario/bodegas", List.of("inventario.bodegas"));
+        m.put("/api/importacion-inventario/saldos", List.of("inventario.stock"));
+        m.put("/api/importacion-inventario/conteo", List.of("inventario.reconteos"));
         m.put("/api/unidades-medida", List.of("catalogo.unidades"));
         m.put("/api/listas-precios", List.of("precios.listas-de-precio"));
         m.put("/api/descuentos", List.of("precios.descuentos"));
@@ -82,6 +99,8 @@ public final class PermisoRutas {
         m.put("/api/traslados", List.of("inventario.traslados"));
         // Compras
         m.put("/api/compras", List.of("compras.compras"));
+        // Causación de gastos y servicios: el permiso de Compras (PLAN_EXCEL §4).
+        m.put("/api/causaciones-gasto", List.of("compras.compras"));
         m.put("/api/ordenes-compra", List.of("compras.ordenes-de-compra"));
         m.put("/api/documentos-soporte", List.of("compras.documentos-soporte"));
         // Ventas (el POS vende, cotiza y factura aunque el perfil no tenga la pantalla)
@@ -91,7 +110,7 @@ public final class PermisoRutas {
         m.put("/api/cotizaciones", List.of("ventas.cotizaciones", POS));
         m.put("/api/devoluciones", List.of("ventas.devoluciones"));
         m.put("/api/nota-electronica", List.of("ventas.notas-credito/debito"));
-        m.put("/api/terceros", List.of("terceros-y-sucursales.terceros", POS)); // crear cliente desde el POS
+        m.put("/api/terceros", List.of("terceros-y-sucursales.terceros", POS, "recursos-humanos.empleados")); // crear cliente desde el POS y empleado desde RR. HH.
         // Cuentas, cartera, tesorería
         m.put("/api/cuentas-cobrar", List.of("cuentas.cuentas-por-cobrar"));
         m.put("/api/cuentas-pagar", List.of("cuentas.cuentas-por-pagar"));
@@ -129,6 +148,8 @@ public final class PermisoRutas {
         m.put("/api/contabilidad/formas-pago", List.of("contabilidad.parametrizacion-contable"));
         m.put("/api/contabilidad/impuestos", List.of("contabilidad.parametrizacion-contable"));
         m.put("/api/contabilidad/declaraciones", List.of("contabilidad.declaraciones"));
+        // Conciliación fiscal 2516/2517: el permiso de Declaraciones (PLAN_EXCEL §5).
+        m.put("/api/conciliacion-fiscal", List.of("contabilidad.declaraciones"));
         m.put("/api/contabilidad/herramientas", List.of("contabilidad.herramientas-del-contador"));
         m.put("/api/reportes-contables", List.of("contabilidad.balance-de-prueba"));
         m.put("/api/activos-fijos", List.of("contabilidad.activos-fijos"));
@@ -142,10 +163,10 @@ public final class PermisoRutas {
         // Recursos humanos
         m.put("/api/recursos-humanos", List.of("recursos-humanos.*"));
         m.put("/api/empleados", List.of("recursos-humanos.empleados"));
-        m.put("/api/contrato", List.of("recursos-humanos.empleados"));
-        m.put("/api/afiliacion", List.of("recursos-humanos.empleados"));
-        m.put("/api/embargo", List.of("recursos-humanos.empleados"));
-        m.put("/api/retefuente", List.of("recursos-humanos.empleados"));
+        m.put("/api/contrato", List.of("recursos-humanos.empleados", "recursos-humanos.vinculaciones"));
+        m.put("/api/afiliacion", List.of("recursos-humanos.empleados", "recursos-humanos.vinculaciones"));
+        m.put("/api/embargo", List.of("recursos-humanos.empleados", "recursos-humanos.vinculaciones"));
+        m.put("/api/retefuente", List.of("recursos-humanos.empleados", "recursos-humanos.vinculaciones"));
         m.put("/api/tipos-empleado", List.of("recursos-humanos.empleados"));
         m.put("/api/certificado", List.of("recursos-humanos.empleados", "recursos-humanos.liquidacion-nomina"));
         m.put("/api/proyectos", List.of("recursos-humanos.proyectos-y-frentes"));
@@ -153,11 +174,25 @@ public final class PermisoRutas {
         m.put("/api/concepto", List.of("recursos-humanos.conceptos"));
         m.put("/api/periodos-nomina", List.of("recursos-humanos.periodos"));
         m.put("/api/nomina", List.of("recursos-humanos.liquidacion-nomina"));
-        m.put("/api/proceso", List.of("recursos-humanos.liquidacion-nomina"));
+        m.put("/api/proceso", List.of("recursos-humanos.liquidacion-nomina", "recursos-humanos.prenomina",
+                "recursos-humanos.nomina-documento"));
         m.put("/api/nomina/autorizaciones", List.of("recursos-humanos.liquidacion-nomina"));
         m.put("/api/nomina/auditoria", List.of("recursos-humanos.preliquidacion-auditoria"));
         m.put("/api/nomina/config", List.of("recursos-humanos.config-nomina"));
         m.put("/api/nomina-electronica", List.of("recursos-humanos.nomina-electronica"));
+        // Catálogos de nómina (R1): cada uno es su propio submódulo.
+        for (TipoCatalogoNomina t : TipoCatalogoNomina.values()) {
+            m.put("/api/nomina/catalogos/" + t.getRuta(), List.of("recursos-humanos." + t.getRuta()));
+        }
+        m.put("/api/nomina/cargos", List.of("recursos-humanos.cargos"));
+        m.put("/api/nomina/tipos-vinculacion", List.of("recursos-humanos.tipos-vinculacion"));
+        m.put("/api/nomina/tipos-comprobante", List.of("recursos-humanos.tipos-comprobante-nomina"));
+        m.put("/api/nomina/conceptos-contables", List.of("recursos-humanos.cuentas-nomina"));
+        m.put("/api/nomina/retiros", List.of("recursos-humanos.retiros"));
+        m.put("/api/nomina/vacaciones", List.of("recursos-humanos.vacaciones"));
+        m.put("/api/nomina/incrementos", List.of("recursos-humanos.incrementos"));
+        m.put("/api/nomina/documentos", List.of("recursos-humanos.prenomina", "recursos-humanos.nomina-documento"));
+        m.put("/api/nomina/vinculaciones", List.of("recursos-humanos.vinculaciones"));
         m.put("/api/pila", List.of("recursos-humanos.pila"));
         m.put("/api/prestaciones", List.of("recursos-humanos.prestaciones"));
         m.put("/api/comisiones", List.of("recursos-humanos.comisiones"));
@@ -191,6 +226,8 @@ public final class PermisoRutas {
         // Terceros y sucursales
         m.put("/api/sucursales", List.of("terceros-y-sucursales.sucursales"));
         m.put("/api/empresa", List.of("terceros-y-sucursales.sucursales"));
+        // Firma contable: qué clientes atiende cada usuario (firma) y quién tiene acceso (cliente).
+        m.put("/api/firma", List.of("caja.usuarios"));
         return m;
     }
 

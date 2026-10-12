@@ -26,4 +26,10 @@ public class CreateTarifaRetencionDto {
     private BigDecimal baseMinima = BigDecimal.ZERO;
 
     private Boolean activo = true;
+
+    /** Cuenta auxiliar 236x donde va la retención de este concepto (opcional). */
+    private Long cuentaContableId;
+
+    /** A quién se le paga: DIAN (retefuente, reteIVA) o hacienda municipal (reteICA). */
+    private Long terceroAcreedorId;
 }

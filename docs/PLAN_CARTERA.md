@@ -110,7 +110,8 @@ Es lo que más se nota en el día a día.
 | C7 Control de crédito | **Hecho (local)** — V169, `/cartera/reglas`, pestaña "Autorizaciones" |
 | C4 Acuerdos de pago | **Hecho (local)** — V170, `ACP-######`, pestaña "Acuerdos de pago" |
 | C8 Alertas de vencimiento | **Hecho (local)** — en la campana, sin migración. Reemplaza los recordatorios al cliente |
-| C5, C9 | Diseñado, sin implementar |
+| C5 Intereses de mora | **Hecho (local)** — V205, `IM-######`, pestaña "Intereses de mora" |
+| C9 Deterioro y castigo | **Hecho (local)** — V205, `CAS-######`, pestaña "Deterioro y castigo" |
 
 ### C1 + C2 — cómo quedó (2026-09-16)
 
@@ -290,3 +291,45 @@ vencimientos restaurados y cumplimiento. **No probado en navegador.**
 - Si una cuenta del acuerdo se anula (venta anulada), su saldo cuenta como pagado.
 - El badge de la campana suma cantidades: con muchas facturas vencidas marca 99+.
 - Los días de aviso (3) son constantes, no configurables por empresa.
+
+### C5 + C9 — cómo quedó (2026-10-09)
+
+**Backend**
+- V205 (`V205__cartera_intereses_mora_castigo.sql` + Laravel `000205`, corrida solo en local):
+  `cartera_politica` (una fila por empresa), `interes_mora` + `interes_mora_detalle`,
+  `cartera_castigo` (un castigo vivo por cuenta) y `cuentas_cobrar.valor_castigado`.
+- `CarteraMoraCastigoController` (`/api/cartera/politica|intereses|deterioro|castigos`),
+  `InteresMoraService`, `CastigoCarteraService`, generadores `InteresMoraGenerador`
+  (DB 1305 · CR 4210) y `CastigoCarteraGenerador` (DB 1399 hasta la provisión · DB 5199
+  el resto · CR 1305). El deterioro reutiliza `DeterioroService.proponerMonto` (borrador).
+- Interés: opcional; tasa pactada con tope en la usura registrada; si la usura venció, avisa
+  y no deja facturar. Se causa solo al facturar (CxC aparte); cada factura guarda hasta qué
+  día quedó cobrada. Anular un cobro sin abonos anula la CxC y reversa el asiento.
+- Castigo: la cuenta pasa a `castigada`, saldo 0, `valor_castigado` = lo dado de baja; el
+  historial de abonos queda. Anular el castigo devuelve saldo y estado anterior.
+- Cuenta castigada congelada (`CastigoCarteraService.exigirNoCastigada`): no se le abona,
+  ni cruza anticipo, ni se le anulan abonos/recibos/cruces/devoluciones hasta anular el castigo
+  (CuentaCobrar, ReciboCaja, TurnoCaja, Anticipo, Devolución).
+- Consultas: `castigada` sale de cartera abierta, edades, agenda y recibos; el tablero
+  reconstruye la foto mensual con el castigo como movimiento que no es recaudo.
+  `SolicitudCreditoService` sí la cuenta como mora a propósito (el cliente quedó debiendo).
+
+**Frontend** (`features/cartera/mora/`)
+- Pestañas "Intereses de mora" (causado por cliente con detalle por factura, facturar,
+  cobros facturados con anular) y "Deterioro y castigo" (deterioro vs. provisión 1399 y
+  proponer, candidatas con selección múltiple y castigar con motivo, historial con anular).
+- La pestaña "Intereses de mora" solo aparece si la empresa activó los intereses (muchos
+  clientes no los cobran; vienen apagados y sin política no se calcula nada).
+- `politica-cartera-dialog` (botón Política): primero deterioro y castigo, al final el interés
+  como opcional: interés sí/no (select), tasa, usura y vigencia, días de gracia,
+  tramos de deterioro y días para sugerir castigo.
+- Ficha del cliente: aviso con intereses causados y facturados pendientes.
+- Cuentas por cobrar: estado y filtro "Castigada". Manual /ayuda actualizado.
+
+**No probado** ni por endpoints ni en navegador.
+
+**Pendiente / limitaciones**
+- Recuperación de cartera castigada (el cliente paga después): hoy se anula el castigo y se
+  registra el pago; no hay asiento de recuperación (4250) para castigos de años cerrados.
+- El interés no genera factura electrónica ni nota débito: es una CxC interna.
+- El deterioro es global (un monto); no guarda el detalle por factura en el asiento.

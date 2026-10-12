@@ -30,9 +30,14 @@ public enum LineaUso {
             List.of("ventas.facturas")),
 
     CONTABILIDAD("Contabilidad",
-            "El contador lleva la contabilidad directamente en Aura.",
-            List.of("contabilidad.*", "tesoreria.*", "cartera.*", "cuentas.*", "compras.documentos-soporte",
-                    "caja.comprobantes", "reportes.estado-de-cuenta-reporte", "reportes.gastos-reporte"),
+            "Lleva la contabilidad en Aura y factura servicios, sin punto de venta ni inventario.",
+            // Factura y compra (docs/PLAN_LINEA_CONTABILIDAD.md): un servicio es un producto
+            // tipo SERVICIO, por eso entran productos, categorías y unidades.
+            List.of("contabilidad.*", "tesoreria.*", "cartera.*", "cuentas.*", "compras.compras",
+                    "compras.documentos-soporte", "ventas.facturas", "ventas.notas-credito/debito",
+                    "ventas.cotizaciones", "catalogo.productos", "catalogo.categorias", "catalogo.unidades",
+                    "caja.comprobantes", "reportes.estado-de-cuenta-reporte", "reportes.gastos-reporte",
+                    "reportes.facturacion-electronica"),
             List.of("contabilidad.plan-de-cuentas", "contabilidad.notas-contables")),
 
     NOMINA("Nómina",
@@ -72,7 +77,8 @@ public enum LineaUso {
      * Nómina usa los conceptos globales: no siembra nada propio.
      */
     public List<PasoArranque> getPasos() {
-        return List.of(PasoArranque.CONTABLE);
+        // Bancos y seguridad social los usan todas (tesorería, nómina, PILA).
+        return List.of(PasoArranque.CONTABLE, PasoArranque.TERCEROS);
     }
 
     public static Optional<LineaUso> de(String codigo) {

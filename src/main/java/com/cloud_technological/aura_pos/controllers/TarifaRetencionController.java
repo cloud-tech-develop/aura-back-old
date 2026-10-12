@@ -25,6 +25,7 @@ import com.cloud_technological.aura_pos.services.implementations.TarifaRetencion
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
+import lombok.Data;
 
 @RestController
 @RequestMapping("/api/tarifas-retencion")
@@ -46,6 +47,24 @@ public class TarifaRetencionController {
         Integer empresaId = securityUtils.getEmpresaId();
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "OK",
                 false, tarifaService.listarTodas(empresaId)));
+    }
+
+    /** Municipio nuevo de reteICA: cuenta 236805xx + tarifas a nombre de su secretaría de hacienda. */
+    @PostMapping("/reteica-municipio")
+    public ResponseEntity<ApiResponse<List<TarifaRetencionDto>>> agregarMunicipioReteica(
+            @RequestBody MunicipioReteicaDto dto) {
+        var r = tarifaService.agregarMunicipioReteica(securityUtils.getEmpresaId(), dto.getTerceroAcreedorId(),
+                dto.getMunicipio(), dto.getTarifas());
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(HttpStatus.CREATED.value(),
+                r.size() + " tarifa(s) de reteICA creadas para " + dto.getMunicipio(), false, r));
+    }
+
+    @Data
+    public static class MunicipioReteicaDto {
+        private Long terceroAcreedorId;
+        private String municipio;
+        /** Opcional: si viene vacío se copian las tarifas de reteICA sin municipio. */
+        private List<CreateTarifaRetencionDto> tarifas;
     }
 
     @PostMapping

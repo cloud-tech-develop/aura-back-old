@@ -47,7 +47,8 @@ public class PostingLogAdapter implements PostingLog {
                         + " #" + ctx.origenId(),
                 causa.getClass().getSimpleName() + ": " + causa.getMessage(),
                 "sistema",
-                "-");
+                "-",
+                ctx.empresaId());
     }
 
     private void registrar(ContextoContabilizacion ctx, Long asientoId, String estado, String error) {

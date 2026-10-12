@@ -23,6 +23,8 @@ import com.cloud_technological.aura_pos.entity.PeriodoContableEntity;
 import com.cloud_technological.aura_pos.services.PeriodoContableService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
+import com.cloud_technological.aura_pos.dto.contabilidad.cierre.CierreMesDtos;
+import com.cloud_technological.aura_pos.services.contabilidad.CierreMesService;
 
 @RestController
 @RequestMapping("/api/periodos-contables")
@@ -67,6 +69,39 @@ public class PeriodoContableController {
         Long usuarioId = securityUtils.getUsuarioId();
         return ResponseEntity.ok(new ApiResponse<>(200, "Período reabierto", false,
                 service.reabrirPeriodo(id, dto, empresaId, usuarioId)));
+    }
+
+    // ── Cierre de mes: chequeo, ajustes, acta y comparativos ─────────────────
+
+    @Autowired private CierreMesService cierreMes;
+
+    @GetMapping("/{id}/chequeo")
+    public ResponseEntity<ApiResponse<CierreMesDtos.ChequeoCierre>> chequeo(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "Lista de chequeo", false,
+                cierreMes.chequear(securityUtils.getEmpresaId(), id)));
+    }
+
+    /** tipo = depreciacion | diferidos | deterioro. */
+    @PostMapping("/{id}/ajustes/{tipo}")
+    public ResponseEntity<ApiResponse<CierreMesDtos.ResultadoAjuste>> ajustar(
+            @PathVariable Long id, @PathVariable String tipo) {
+        var r = cierreMes.ajustar(securityUtils.getEmpresaId(), securityUtils.getUsuarioId(), id, tipo);
+        return ResponseEntity.ok(new ApiResponse<>(200, r.getMensaje(), false, r));
+    }
+
+    @GetMapping("/{id}/acta")
+    public ResponseEntity<ApiResponse<CierreMesDtos.ActaCierre>> acta(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "Acta de cierre", false,
+                cierreMes.acta(securityUtils.getEmpresaId(), id)));
+    }
+
+    @GetMapping("/{id}/comparativo")
+    public ResponseEntity<ApiResponse<CierreMesDtos.Comparativo>> comparativo(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "Comparativo", false,
+                cierreMes.comparativo(securityUtils.getEmpresaId(), id)));
     }
 
     @PutMapping("/{id}/cerrar")

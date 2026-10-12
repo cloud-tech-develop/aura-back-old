@@ -47,7 +47,8 @@ public class EmpleadoQueryRepository {
                 e.tipo_documento,
                 e.numero_documento,
                 COALESCE(ct.cargo, e.cargo) AS cargo,
-                e.fecha_ingreso,
+                -- El ingreso es el inicio de la vinculación (contrato) vigente.
+                COALESCE(ct.fecha_inicio, e.fecha_ingreso) AS fecha_ingreso,
                 COALESCE(ct.salario_base, e.salario_base) AS salario_base,
                 COALESCE(ct.tipo_contrato, e.tipo_contrato) AS tipo_contrato,
                 e.activo,
@@ -57,7 +58,7 @@ public class EmpleadoQueryRepository {
             FROM empleados e
             LEFT JOIN usuario u ON u.empleado_id = e.id
             LEFT JOIN LATERAL (
-                SELECT c.cargo, c.salario_base, c.tipo_contrato
+                SELECT c.cargo, c.salario_base, c.tipo_contrato, c.fecha_inicio
                 FROM contrato_laboral c
                 WHERE c.empleado_id = e.id
                   AND c.deleted_at IS NULL
@@ -66,6 +67,7 @@ public class EmpleadoQueryRepository {
                 LIMIT 1
             ) ct ON true
             WHERE e.empresa_id = :empresaId
+              AND e.activo = TRUE
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);

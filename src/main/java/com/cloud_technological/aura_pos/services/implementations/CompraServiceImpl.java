@@ -128,6 +128,53 @@ public class CompraServiceImpl implements CompraService {
     @Autowired
     private com.cloud_technological.aura_pos.repositories.producto_presentacion.ProductoPresentacionJPARepository presentacionJPARepository;
 
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.retenciones.TarifaRetencionQueryRepository tarifaRetencionQueryRepository;
+
+    // ── Retenciones por concepto (V203) ──────────────────────────
+    //
+    // La compra guarda la tarifa (concepto) de cada retención y el asiento usa
+    // su cuenta: sin ella, una retefuente por honorarios caía en la cuenta de
+    // retención por compras y se declaraba como tal en el 350.
+
+    /**
+     * Valida y guarda la tarifa de cada retención con porcentaje. La nota
+     * crédito sin tarifa hereda la de la factura que corrige.
+     */
+    private void aplicarTarifasRetencion(CompraEntity compra, CreateCompraDto dto, Integer empresaId) {
+        CompraEntity origen = compra.getCompraOrigenId() != null
+                ? compraJPARepository.findByIdAndEmpresaId(compra.getCompraOrigenId(), empresaId).orElse(null)
+                : null;
+        compra.setRetefuenteTarifaId(tarifaRetencion("RETEFUENTE", "la retención en la fuente",
+                compra.getRetefuentePct(), dto.getRetefuenteTarifaId(),
+                origen != null ? origen.getRetefuenteTarifaId() : null, empresaId));
+        compra.setReteivaTarifaId(tarifaRetencion("RETEIVA", "el reteIVA",
+                compra.getReteivaPct(), dto.getReteivaTarifaId(),
+                origen != null ? origen.getReteivaTarifaId() : null, empresaId));
+        compra.setReteicaTarifaId(tarifaRetencion("RETEICA", "el reteICA",
+                compra.getReteicaPct(), dto.getReteicaTarifaId(),
+                origen != null ? origen.getReteicaTarifaId() : null, empresaId));
+    }
+
+    private Long tarifaRetencion(String tipo, String nombre, BigDecimal pct, Long tarifaId,
+            Long tarifaOrigen, Integer empresaId) {
+        if (nz(pct).signum() == 0) return null;
+        Long id = tarifaId != null ? tarifaId : tarifaOrigen;
+        if (id == null) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Elija el concepto de " + nombre + " (honorarios, servicios, compras…): "
+                            + "de él depende la cuenta contable y cómo se declara.");
+        }
+        var tarifa = tarifaRetencionQueryRepository.tipoYCuenta(id, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
+                        "El concepto elegido para " + nombre + " no existe."));
+        if (!tipo.equals(tarifa.tipo())) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El concepto elegido para " + nombre + " es de " + tarifa.tipo() + ".");
+        }
+        return id;
+    }
+
     // ── Nota crédito de compra ───────────────────────────────────
     //
     // Una nota crédito NO es una compra: anula mercancía que no llegó (o que se
@@ -437,6 +484,20 @@ public class CompraServiceImpl implements CompraService {
     }
 
     @Override
+    public PageImpl<com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto>
+            devoluciones(PageableDto<Object> pageable, Integer empresaId) {
+        return compraRepository.devoluciones(pageable, empresaId);
+    }
+
+    @Override
+    public List<com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto>
+            devolucionesDeCompra(Long compraId, Integer empresaId) {
+        compraJPARepository.findByIdAndEmpresaId(compraId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Compra no encontrada"));
+        return compraRepository.devolucionesDeCompra(compraId, empresaId);
+    }
+
+    @Override
     public CompraDto obtenerPorId(Long id, Integer empresaId) {
         CompraEntity entity = compraJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Compra no encontrada"));
@@ -501,9 +562,15 @@ public class CompraServiceImpl implements CompraService {
         CompraEntity compra = compraMapper.toEntity(dto);
         compra.setEmpresa(empresa);
         compra.setSucursal(sucursal);
-        // Bodega que recibe la mercancia. Sin ella, la principal.
+        // Bodega que recibe la mercancia. Sin ella, la principal. Una nota
+        // crédito sin bodega saca la mercancía de donde entró la compra: si la
+        // compra fue a otra bodega, sacarla de la principal la dejaría negativa.
+        Long bodegaId = dto.getBodegaId();
+        if (bodegaId == null && esNC && compraOrigen.getBodega() != null) {
+            bodegaId = compraOrigen.getBodega().getId();
+        }
         com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
-                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+                bodegaService.resolver(bodegaId, sucursal.getId(), empresaId);
         compra.setBodega(bodega);
         compra.setProveedor(proveedor);
         compra.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDateTime.now());
@@ -696,6 +763,7 @@ public class CompraServiceImpl implements CompraService {
         compra.setReteicaValor(reteicaValor);
         compra.setTotalRetenciones(totalRetenciones);
         compra.setNetaAPagar(totalBruto.subtract(totalRetenciones));
+        aplicarTarifasRetencion(compra, dto, empresaId);
         compraJPARepository.save(compra);
 
         // 4. Procesar pagos y generar notas contables (HU-008).
@@ -1417,9 +1485,17 @@ public class CompraServiceImpl implements CompraService {
         // 3. Actualizar cabecera
         compra.setProveedor(proveedor);
         compra.setSucursal(sucursal);
-        // Bodega que recibe la mercancia. Sin ella, la principal.
+        // Bodega que recibe la mercancia. Si el formulario no la manda, se
+        // queda la que ya tenía (en la misma sede): editar no mueve mercancía
+        // de bodega. Sin ninguna, la principal.
+        Long bodegaId = dto.getBodegaId();
+        if (bodegaId == null && compra.getBodega() != null
+                && compra.getBodega().getSucursal() != null
+                && compra.getBodega().getSucursal().getId().equals(sucursal.getId())) {
+            bodegaId = compra.getBodega().getId();
+        }
         com.cloud_technological.aura_pos.entity.BodegaEntity bodega =
-                bodegaService.resolver(dto.getBodegaId(), sucursal.getId(), empresaId);
+                bodegaService.resolver(bodegaId, sucursal.getId(), empresaId);
         compra.setBodega(bodega);
         compra.setNumeroCompra(dto.getNumeroCompra());
         if (dto.getFecha() != null) compra.setFecha(dto.getFecha());
@@ -1533,6 +1609,7 @@ public class CompraServiceImpl implements CompraService {
         compra.setReteicaValor(reteicaValor);
         compra.setTotalRetenciones(totalRetenciones);
         compra.setNetaAPagar(totalFinal.subtract(totalRetenciones));
+        aplicarTarifasRetencion(compra, dto, empresaId);
         if (dto.getFormaPago() != null) compra.setFormaPago(dto.getFormaPago());
         compraJPARepository.save(compra);
 

@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.dto.terceros;
 
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -78,4 +79,21 @@ public class TerceroDto {
 
     /** Código oficial UGPP si es EPS/AFP/CCF/ARL (V120). */
     private String codigoSeguridadSocial;
+
+    // ── Persona natural ampliada (V211) ─────────────────────────────
+    private String rut;
+    private String codigoPaisExpedicion;
+    private String estadoCivil;
+    private String rh;
+    private String codigoPaisNacimiento;
+    private Long municipioNacimientoId;
+    private String zona;
+    private String comuna;
+    private String barrio;
+    private String contactoNombre;
+    private String fotoOficialUrl;
+    private String fotoPerfilUrl;
+    private String firmaUrl;
+    private List<TerceroTelefonoDto> telefonos;
+    private List<TerceroCorreoDto> correos;
 }

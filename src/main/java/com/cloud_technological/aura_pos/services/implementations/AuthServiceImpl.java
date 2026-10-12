@@ -52,6 +52,13 @@ public class AuthServiceImpl implements AuthService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
 
+    /** Firma contable: clientes del usuario y su acceso (docs/PLAN_FIRMA_CONTABLE.md). */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository firmaQuery;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.permisos.BitacoraService bitacora;
+
     /** Líneas de uso y tablero de inicio (docs/PLAN_PERFIL_EMPRESA.md). */
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService configuracionEmpresa;
@@ -184,11 +191,47 @@ public class AuthServiceImpl implements AuthService {
             // 2. Obtener Entidad Usuario (JPA) para datos críticos
             UsuarioEntity usuario = usuarioJPARepository.findByUsername(loginDto.getUsername())
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-            EmpresaEntity empresa = usuario.getEmpresa();
             if (Boolean.FALSE.equals(usuario.getActivo())) {
                 throw new GlobalException(HttpStatus.UNAUTHORIZED, "El usuario está inactivo");
             }
             sesiones.registrarExito(usuario);
+
+            // 2.1 Firma contable con clientes asignados: primero elige dónde trabajar
+            //     (docs/PLAN_FIRMA_CONTABLE.md). El token de paso solo sirve para eso.
+            List<LoginResponseDto.EmpresaOpcionDto> opciones = empresasDe(usuario);
+            if (opciones.size() > 1) {
+                return LoginResponseDto.builder()
+                        .token(jwtTokenProvider.generateTokenSeleccion(usuario.getUsername(),
+                                Long.valueOf(usuario.getId()), usuario.getTokenVersion()))
+                        .tipoToken("Bearer")
+                        .usuarioId(usuario.getId())
+                        .username(usuario.getUsername())
+                        .nombreCompleto(nombreDe(usuario))
+                        .requiereEmpresa(true)
+                        .empresas(opciones)
+                        .build();
+            }
+            return respuestaPropia(usuario, false);
+
+        } catch (BadCredentialsException e) {
+            if (candidato != null && sesiones.registrarFallo(candidato)) {
+                throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas. Por seguridad el usuario quedó"
+                        + " bloqueado " + com.cloud_technological.aura_pos.security.SesionService.MINUTOS_BLOQUEO + " minutos");
+            }
+            throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
+        } catch (Exception e) {
+            // Loguear error real en consola
+            e.printStackTrace();
+            if (e instanceof GlobalException) {
+                throw e;
+            }
+            throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Error en el proceso de login");
+        }
+    }
+
+    /** Login en su propia empresa (lo de siempre). */
+    private LoginResponseDto respuestaPropia(UsuarioEntity usuario, boolean puedeCambiar) {
+            EmpresaEntity empresa = usuario.getEmpresa();
 
             // 3. Obtener Sucursales Permitidas (JDBC - Query optimizada)
             List<SucursalSimpleDto> sucursales = authQueryRepository.findSucursalesByUsuario(usuario.getId());
@@ -211,7 +254,7 @@ public class AuthServiceImpl implements AuthService {
             Integer empresaId = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
             // 5. Generar Token (Incluyendo ID de Empresa y Sucursal Actual)
             String token = jwtTokenProvider.generateToken(
-                    authentication.getName(),
+                    usuario.getUsername(),
                     empresaId,
                     sucursalActualId,
                     usuario.getRol(),
@@ -239,22 +282,116 @@ public class AuthServiceImpl implements AuthService {
                     .sucursales(sucursales) // El front usará esto para pintar el selector de sedes
                     .lineas(empresa != null ? lineasDe(empresa) : null)
                     .inicio(empresa != null ? configuracionEmpresa.inicio(empresa).name() : null)
+                    .empresaId(empresaId)
+                    .empresaNombre(empresa != null ? empresa.getRazonSocial() : null)
+                    .empresaNit(empresa != null ? empresa.getNit() : null)
+                    .puedeCambiarEmpresa(puedeCambiar)
+                    .esFirmaContable(empresa != null && Boolean.TRUE.equals(empresa.getEsFirmaContable()))
                     .build();
+    }
 
-        } catch (BadCredentialsException e) {
-            if (candidato != null && sesiones.registrarFallo(candidato)) {
-                throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas. Por seguridad el usuario quedó"
-                        + " bloqueado " + com.cloud_technological.aura_pos.security.SesionService.MINUTOS_BLOQUEO + " minutos");
-            }
-            throw new GlobalException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
-        } catch (Exception e) {
-            // Loguear error real en consola
-            e.printStackTrace();
-            if (e instanceof GlobalException) {
-                throw e;
-            }
-            throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Error en el proceso de login");
+    // ── Firma contable (docs/PLAN_FIRMA_CONTABLE.md, F3) ─────────────────────
+
+    /** Su empresa y, si es una firma contable, los clientes que tiene asignados. */
+    private List<LoginResponseDto.EmpresaOpcionDto> empresasDe(UsuarioEntity usuario) {
+        List<LoginResponseDto.EmpresaOpcionDto> out = new java.util.ArrayList<>();
+        EmpresaEntity propia = usuario.getEmpresa();
+        if (propia == null) return out;
+        out.add(LoginResponseDto.EmpresaOpcionDto.builder()
+                .id(propia.getId()).razonSocial(propia.getRazonSocial()).nombreComercial(propia.getNombreComercial())
+                .nit(propia.getNit()).dv(propia.getDv()).logoUrl(propia.getLogoUrl()).propia(true).build());
+        if (!Boolean.TRUE.equals(propia.getEsFirmaContable())) return out;
+        for (var c : firmaQuery.clientesDelUsuario(usuario.getId())) {
+            out.add(LoginResponseDto.EmpresaOpcionDto.builder()
+                    .id(c.id()).razonSocial(c.razonSocial()).nombreComercial(c.nombreComercial())
+                    .nit(c.nit()).dv(c.dv()).logoUrl(c.logoUrl()).propia(false).build());
         }
+        return out;
+    }
+
+    @Override
+    public List<LoginResponseDto.EmpresaOpcionDto> empresasDisponibles() {
+        return empresasDe(usuarioDeLaSesion());
+    }
+
+    /**
+     * Elige la empresa en la que va a trabajar: tras el login (token de paso) o desde
+     * "Cambiar empresa". Su propia empresa = login normal; un cliente = solo con el
+     * acceso vigente de su firma, rol CONTADOR_EXTERNO y queda en la bitácora del cliente.
+     */
+    @Override
+    public LoginResponseDto seleccionarEmpresa(Integer empresaId) {
+        if (empresaId == null) throw new GlobalException(HttpStatus.BAD_REQUEST, "Elija la empresa");
+        UsuarioEntity usuario = usuarioDeLaSesion();
+        boolean varias = empresasDe(usuario).size() > 1;
+        if (usuario.getEmpresa() != null && empresaId.equals(usuario.getEmpresa().getId())) {
+            return respuestaPropia(usuario, varias);
+        }
+        var acceso = firmaQuery.acceso(usuario.getId(), empresaId);
+        if (acceso == null) throw new GlobalException(HttpStatus.FORBIDDEN, "No tiene acceso a esa empresa");
+        LoginResponseDto r = respuestaCliente(usuario, acceso, null);
+        bitacora.registrarEnEmpresa(empresaId, "caja.usuarios", "INGRESO_FIRMA", "usuario", usuario.getId(),
+                "Ingresó " + r.getNombreCompleto() + " (" + r.getFirmaNombre() + ")", null, null);
+        return r;
+    }
+
+    /** Token y datos de un usuario de la firma trabajando en el cliente; {@code sedeId} null = la principal. */
+    private LoginResponseDto respuestaCliente(UsuarioEntity usuario,
+            com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.AccesoCliente acceso,
+            Long sedeId) {
+        EmpresaEntity cliente = empresaRepository.findById(acceso.clienteEmpresaId())
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
+        List<SucursalSimpleDto> sedes = authQueryRepository.sucursalesDeEmpresa(cliente.getId());
+        if (sedes.isEmpty())
+            throw new GlobalException(HttpStatus.CONFLICT, cliente.getRazonSocial() + " no tiene sedes activas");
+        Long sede = sedeId;
+        if (sede == null) {
+            sede = sedes.stream().filter(x -> Boolean.TRUE.equals(x.getEsDefault()))
+                    .map(x -> Long.valueOf(x.getId())).findFirst().orElse(Long.valueOf(sedes.get(0).getId()));
+        }
+        final Long elegida = sede;
+        sedes.forEach(x -> x.setEsDefault(elegida.equals(Long.valueOf(x.getId()))));
+
+        // En un cliente gestionado (V200) el administrador de la firma entra como ADMIN.
+        String rol = acceso.administraElCliente() ? "ADMIN"
+                : com.cloud_technological.aura_pos.services.permisos.PerfilesSistema.CONTADOR_EXTERNO;
+        String token = jwtTokenProvider.generateTokenCliente(usuario.getUsername(), cliente.getId(), sede, rol,
+                Long.valueOf(usuario.getId()), usuario.getTokenVersion(), acceso.vinculoId(), acceso.firmaEmpresaId());
+        EmpresaEntity firma = usuario.getEmpresa();
+        return LoginResponseDto.builder()
+                .token(token)
+                .tipoToken("Bearer")
+                .usuarioId(usuario.getId())
+                .username(usuario.getUsername())
+                .nombreCompleto(nombreDe(usuario))
+                .logo_url(cliente.getLogoUrl())
+                .rol(rol)
+                .facturaElectronica(cliente.isFacturaElectronica())
+                .sucursales(sedes)
+                .lineas(lineasDe(cliente))
+                .inicio(configuracionEmpresa.inicio(cliente).name())
+                .empresaId(cliente.getId())
+                .empresaNombre(cliente.getRazonSocial())
+                .empresaNit(cliente.getNit())
+                .firmaNombre(firma != null ? firma.getRazonSocial() : null)
+                .puedeCambiarEmpresa(true)
+                .build();
+    }
+
+    private UsuarioEntity usuarioDeLaSesion() {
+        Long usuarioId = securityUtils.getUsuarioId();
+        if (usuarioId == null) throw new GlobalException(HttpStatus.UNAUTHORIZED, "Inicie sesión");
+        UsuarioEntity u = usuarioJPARepository.findById(usuarioId.intValue())
+                .orElseThrow(() -> new GlobalException(HttpStatus.UNAUTHORIZED, "Usuario no encontrado"));
+        if (Boolean.FALSE.equals(u.getActivo()))
+            throw new GlobalException(HttpStatus.UNAUTHORIZED, "El usuario está inactivo");
+        return u;
+    }
+
+    private static String nombreDe(UsuarioEntity usuario) {
+        return usuario.getTercero() != null
+                ? usuario.getTercero().getNombres() + " " + usuario.getTercero().getApellidos()
+                : usuario.getUsername();
     }
 
     /**
@@ -270,12 +407,28 @@ public class AuthServiceImpl implements AuthService {
         }
         UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
                 .orElseThrow(() -> new GlobalException(HttpStatus.UNAUTHORIZED, "Usuario no encontrado"));
-        Integer empresaId = usuario.getEmpresa() != null ? usuario.getEmpresa().getId() : null;
+        // Usuario de una firma en un cliente: cualquier sede del cliente, con el acceso vigente.
+        if (securityUtils.getVinculoId() != null) {
+            var acceso = firmaQuery.acceso(usuario.getId(), securityUtils.getEmpresaId());
+            if (acceso == null) throw new GlobalException(HttpStatus.FORBIDDEN, "No tiene acceso a esa empresa");
+            if (!authQueryRepository.sucursalDeEmpresa(sucursalId, acceso.clienteEmpresaId()))
+                throw new GlobalException(HttpStatus.FORBIDDEN, "Esa sede no es de la empresa");
+            return respuestaCliente(usuario, acceso, sucursalId);
+        }
+        // La empresa es la de la sesión, no la del usuario: un usuario de una
+        // firma contable trabaja en empresas cliente (docs/PLAN_FIRMA_CONTABLE.md).
+        Integer empresaId = securityUtils.getEmpresaId();
+        EmpresaEntity empresa = empresaId == null ? null
+                : usuario.getEmpresa() != null && empresaId.equals(usuario.getEmpresa().getId())
+                        ? usuario.getEmpresa()
+                        : empresaRepository.findById(empresaId).orElse(null);
         List<SucursalSimpleDto> sucursales = authQueryRepository.findSucursalesByUsuario(usuario.getId());
+        // La sede siempre tiene que ser de la empresa de la sesión: una sede
+        // asignada de otra empresa dejaría un token mezclado.
+        boolean deLaEmpresa = empresaId != null && authQueryRepository.sucursalDeEmpresa(sucursalId, empresaId);
         boolean asignada = sucursales.stream().anyMatch(s -> sucursalId.equals(Long.valueOf(s.getId())));
-        boolean todas = empresaId != null && permisos.efectivos(usuario.getId()).isTodasLasSedes()
-                && authQueryRepository.sucursalDeEmpresa(sucursalId, empresaId);
-        if (!asignada && !todas) {
+        boolean todas = permisos.efectivos(usuario.getId()).isTodasLasSedes();
+        if (!deLaEmpresa || (!asignada && !todas)) {
             throw new GlobalException(HttpStatus.FORBIDDEN, "Esa sede no está asignada a su usuario");
         }
         String token = jwtTokenProvider.generateToken(usuario.getUsername(), empresaId, sucursalId, usuario.getRol(),
@@ -287,8 +440,8 @@ public class AuthServiceImpl implements AuthService {
                 .username(usuario.getUsername())
                 .rol(usuario.getRol())
                 .sucursales(sucursales)
-                .lineas(usuario.getEmpresa() != null ? lineasDe(usuario.getEmpresa()) : null)
-                .inicio(usuario.getEmpresa() != null ? configuracionEmpresa.inicio(usuario.getEmpresa()).name() : null)
+                .lineas(empresa != null ? lineasDe(empresa) : null)
+                .inicio(empresa != null ? configuracionEmpresa.inicio(empresa).name() : null)
                 .build();
     }
 

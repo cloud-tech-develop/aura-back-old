@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -130,7 +131,7 @@ public class ComisionServiceImpl implements ComisionService {
         }
 
         if (dto.getTecnicoId() != null) {
-            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
+            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
             entity.setTecnico(tecnico);
         }
@@ -178,7 +179,7 @@ public class ComisionServiceImpl implements ComisionService {
         }
 
         entity.setTecnico(dto.getTecnicoId() != null
-                ? usuarioRepo.findById(dto.getTecnicoId())
+                ? usuarioRepo.findById(dto.getTecnicoId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                         .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Usuario no encontrado"))
                 : null);
 
@@ -249,7 +250,7 @@ public class ComisionServiceImpl implements ComisionService {
             if (dto.getTecnicoId() == null)
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "El tecnicoId es requerido para liquidaciones de tipo TECNICO");
 
-            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId())
+            UsuarioEntity tecnico = usuarioRepo.findById(dto.getTecnicoId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Técnico no encontrado"));
 
             if (!tecnico.getEmpresa().getId().equals(empresaId))

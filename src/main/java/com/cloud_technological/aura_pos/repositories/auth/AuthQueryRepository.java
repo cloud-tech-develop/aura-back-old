@@ -80,4 +80,18 @@ public class AuthQueryRepository {
                 Integer.class);
         return n != null && n > 0;
     }
+
+    /**
+     * Sedes activas de la empresa, la principal (la más antigua) marcada por defecto.
+     * Para el usuario de una firma en un cliente: no tiene sedes asignadas allá.
+     */
+    public List<SucursalSimpleDto> sucursalesDeEmpresa(Integer empresaId) {
+        List<Map<String, Object>> filas = namedParameterJdbcTemplate.queryForList("""
+            SELECT s.id, s.nombre, (ROW_NUMBER() OVER (ORDER BY s.id) = 1) AS es_default
+            FROM sucursal s
+            WHERE s.empresa_id = :empresaId AND s.activa = true
+            ORDER BY s.id
+            """, new MapSqlParameterSource("empresaId", empresaId));
+        return MapperRepository.mapListToDtoList(filas, SucursalSimpleDto.class);
+    }
 }

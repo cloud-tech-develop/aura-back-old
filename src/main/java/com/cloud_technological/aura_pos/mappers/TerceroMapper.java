@@ -35,6 +35,10 @@ public interface TerceroMapper {
         // `roles` no vive en la entidad: se llena aparte desde tercero_rol.
         // Ver TerceroServiceImpl.obtenerPorId().
         @Mapping(target = "roles", ignore = true),
+        // Teléfonos y correos viven en tablas hijas (V211): los pone
+        // TerceroDatosPersonalesService.
+        @Mapping(target = "telefonos", ignore = true),
+        @Mapping(target = "correos", ignore = true),
     })
     TerceroDto toDto(TerceroEntity entity);
 

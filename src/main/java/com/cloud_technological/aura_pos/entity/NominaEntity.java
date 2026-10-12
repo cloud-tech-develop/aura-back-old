@@ -56,6 +56,29 @@ public class NominaEntity {
     @JoinColumn(name = "contrato_id")
     private ContratoLaboralEntity contrato;
 
+    /**
+     * Documento (prenómina o nómina) al que pertenece la fila (V215). {@code null}
+     * = nómina del flujo viejo por período.
+     */
+    @Column(name = "documento_id")
+    private Long documentoId;
+
+    /**
+     * La fila es de una prenómina (V215): nunca cuenta como nómina real. Toda
+     * consulta que agregue nóminas (PILA, provisiones, promedios, certificados,
+     * dashboard) la excluye.
+     */
+    @Column(name = "es_prenomina", nullable = false)
+    private Boolean esPrenomina = Boolean.FALSE;
+
+    /** Última liquidación exitosa de la fila (V216); null = no liquidada. */
+    @Column(name = "liquidada_at")
+    private LocalDateTime liquidadaAt;
+
+    /** Causa del último intento fallido de liquidar la fila (V216). */
+    @Column(name = "error_liquidacion", length = 500)
+    private String errorLiquidacion;
+
     @Column(name = "salario_base", nullable = false, precision = 15, scale = 2)
     private BigDecimal salarioBase;
 

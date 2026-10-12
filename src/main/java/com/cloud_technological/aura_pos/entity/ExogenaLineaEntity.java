@@ -2,6 +2,9 @@ package com.cloud_technological.aura_pos.entity;
 
 import java.math.BigDecimal;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,4 +36,9 @@ public class ExogenaLineaEntity {
     @Column(name = "cuantia_menor", nullable = false)
     @Builder.Default
     private Boolean cuantiaMenor = false;
+
+    /** Todos los valores de la línea: {codigoColumna: valor}. {@code valor} es el de la principal. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String valores;
 }

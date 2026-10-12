@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -127,7 +128,7 @@ public class VisitaService {
 
     @Transactional
     public VisitaDto create(CreateVisitaDto dto, Integer empresaId) {
-        LocalEntity local = localRepository.findById(dto.getLocalId())
+        LocalEntity local = localRepository.findById(dto.getLocalId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
         LocalDateTime fechaProgramada;
@@ -203,7 +204,7 @@ public class VisitaService {
 
     @Transactional
     public VisitaDto createConfirmada(CreateVisitaConfirmadaDto dto, Integer empresaId) {
-        LocalEntity local = localRepository.findById(dto.getLocalId())
+        LocalEntity local = localRepository.findById(dto.getLocalId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Local no encontrado"));
 
         if (local.getVendedorActual() == null && dto.getVendedorId() == null) {
@@ -239,7 +240,7 @@ public class VisitaService {
             visita.setObservaciones(dto.getObservaciones());
         }
         if (dto.getVendedorId() != null) {
-            visita.setVendedor(empleadoRepository.findById(dto.getVendedorId())
+            visita.setVendedor(empleadoRepository.findById(dto.getVendedorId()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Vendedor no encontrado")));
         }
 

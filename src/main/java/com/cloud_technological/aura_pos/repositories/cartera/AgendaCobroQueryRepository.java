@@ -32,7 +32,7 @@ public class AgendaCobroQueryRepository {
                (CURRENT_DATE - g.fecha_promesa_pago) AS dias,
                (SELECT COALESCE(SUM(c2.saldo_pendiente), 0) FROM cuentas_cobrar c2
                  WHERE c2.empresa_id = g.empresa_id AND c2.tercero_id = g.tercero_id
-                   AND c2.deleted_at IS NULL AND c2.estado NOT IN ('pagada','anulada')) AS saldo_cliente
+                   AND c2.deleted_at IS NULL AND c2.estado NOT IN ('pagada','anulada','castigada')) AS saldo_cliente
         FROM gestion_cobro g
         JOIN tercero t ON t.id = g.tercero_id
         LEFT JOIN cuentas_cobrar cc ON cc.id = g.cuenta_cobrar_id
@@ -80,7 +80,7 @@ public class AgendaCobroQueryRepository {
             FROM cuentas_cobrar cc
             JOIN tercero t ON t.id = cc.tercero_id
             WHERE cc.empresa_id = :empresaId AND cc.deleted_at IS NULL
-              AND cc.estado NOT IN ('pagada','anulada') AND cc.saldo_pendiente > 0
+              AND cc.estado NOT IN ('pagada','anulada','castigada') AND cc.saldo_pendiente > 0
               AND cc.fecha_vencimiento::date BETWEEN CURRENT_DATE AND CURRENT_DATE + :dias
             ORDER BY cc.fecha_vencimiento, cc.saldo_pendiente DESC
             LIMIT 100
@@ -105,7 +105,7 @@ public class AgendaCobroQueryRepository {
                 ORDER BY g.created_at DESC LIMIT 1
             ) ug ON true
             WHERE cc.empresa_id = :empresaId AND cc.deleted_at IS NULL
-              AND cc.estado NOT IN ('pagada','anulada') AND cc.saldo_pendiente > 0
+              AND cc.estado NOT IN ('pagada','anulada','castigada') AND cc.saldo_pendiente > 0
               AND cc.fecha_vencimiento::date < CURRENT_DATE
               AND NOT EXISTS (
                   SELECT 1 FROM gestion_cobro g
@@ -134,7 +134,7 @@ public class AgendaCobroQueryRepository {
                 (COUNT(*) FILTER (WHERE cc.fecha_vencimiento::date = CURRENT_DATE))::INT AS vencen_hoy
             FROM cuentas_cobrar cc
             WHERE cc.empresa_id = :empresaId AND cc.deleted_at IS NULL
-              AND cc.estado NOT IN ('pagada','anulada') AND cc.saldo_pendiente > 0
+              AND cc.estado NOT IN ('pagada','anulada','castigada') AND cc.saldo_pendiente > 0
               AND cc.fecha_vencimiento IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM acuerdo_pago_cuenta apc
                               WHERE apc.cuenta_cobrar_id = cc.id AND apc.activo)

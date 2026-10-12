@@ -22,6 +22,14 @@ public interface CompraService {
     /** Lo que queda por acreditar de cada producto de una factura de compra. */
     java.util.List<com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto>
             itemsAcreditables(Integer empresaId, Long compraId);
+    /** Devoluciones en compras: las notas crédito de compra (docs/PLAN_EXCEL_IMPORTADORES_MODULOS.md §3). */
+    PageImpl<com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto>
+            devoluciones(PageableDto<Object> pageable, Integer empresaId);
+
+    /** Devoluciones hechas sobre una compra. */
+    java.util.List<com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto>
+            devolucionesDeCompra(Long compraId, Integer empresaId);
+
     CompraDto crear(CreateCompraDto dto, Integer empresaId, Long usuarioId);
     void anular(Long id, Integer empresaId);
     CompraDto actualizar(Long id, CreateCompraDto dto, Integer empresaId, Long usuarioId);

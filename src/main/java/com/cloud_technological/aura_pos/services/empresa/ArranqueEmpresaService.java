@@ -36,12 +36,14 @@ public class ArranqueEmpresaService {
     private static final ZoneId BOGOTA = ZoneId.of("America/Bogota");
 
     private final PlanCuentasService planCuentasService;
+    private final TercerosNacionalesService tercerosNacionales;
     private final EmpresaJPARepository empresaRepo;
     private final TransactionTemplate nueva;
 
-    public ArranqueEmpresaService(PlanCuentasService planCuentasService, EmpresaJPARepository empresaRepo,
-            PlatformTransactionManager txManager) {
+    public ArranqueEmpresaService(PlanCuentasService planCuentasService, TercerosNacionalesService tercerosNacionales,
+            EmpresaJPARepository empresaRepo, PlatformTransactionManager txManager) {
         this.planCuentasService = planCuentasService;
+        this.tercerosNacionales = tercerosNacionales;
         this.empresaRepo = empresaRepo;
         this.nueva = new TransactionTemplate(txManager);
         this.nueva.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -98,6 +100,12 @@ public class ArranqueEmpresaService {
                 yield nuevas > 0
                         ? "Plan de cuentas cargado (" + nuevas + " cuentas nuevas) y configuración contable por defecto"
                         : "El plan de cuentas ya estaba; se completó la configuración contable por defecto";
+            }
+            case TERCEROS -> {
+                int nuevos = tercerosNacionales.sembrar(empresaId);
+                yield nuevos > 0
+                        ? nuevos + " terceros creados: bancos, EPS, pensión, cesantías, ARL y cajas de compensación"
+                        : "Los bancos y las entidades de seguridad social ya estaban";
             }
         };
     }

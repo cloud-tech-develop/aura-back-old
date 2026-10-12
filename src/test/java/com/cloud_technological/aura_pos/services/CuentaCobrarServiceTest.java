@@ -93,6 +93,7 @@ class CuentaCobrarServiceTest {
         empresaMock.setNit("12345678");
 
         clienteMock = new TerceroEntity();
+        clienteMock.setEmpresa(empresaMock); // los terceros que llegan por ID se validan contra la empresa
         clienteMock.setId(1L);
         clienteMock.setNombres("Juan");
         clienteMock.setApellidos("Pérez");
@@ -187,6 +188,7 @@ class CuentaCobrarServiceTest {
     void shouldLanzarExcepcionWhenTerceroNoEsCliente() {
         // Arrange
         TerceroEntity terceroNoCliente = new TerceroEntity();
+        terceroNoCliente.setEmpresa(empresaMock);
         terceroNoCliente.setId(1L);
         terceroNoCliente.setEsProveedor(true);
         terceroNoCliente.setEsCliente(false);

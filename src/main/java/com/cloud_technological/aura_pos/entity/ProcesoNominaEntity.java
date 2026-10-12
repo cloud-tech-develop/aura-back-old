@@ -113,6 +113,8 @@ public class ProcesoNominaEntity {
         public static final String PILA_GENERACION            = "PILA_GENERACION";
         public static final String CONTABILIZACION            = "CONTABILIZACION";
         public static final String IMPORTACION                = "IMPORTACION";
+        /** Liquidación de las filas de una prenómina (V216); referencia = documento. */
+        public static final String LIQUIDACION_DOCUMENTO      = "LIQUIDACION_DOCUMENTO";
         private Tipo() {}
     }
 

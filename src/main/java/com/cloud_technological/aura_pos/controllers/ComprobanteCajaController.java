@@ -30,6 +30,14 @@ public class ComprobanteCajaController {
         return ResponseEntity.ok(new ApiResponse<>(200, "Comprobantes obtenidos", false, data));
     }
 
+    /** Cuentas contables del comprobante, para imprimirlo (null si su documento no tiene asiento). */
+    @GetMapping("/{id}/contable")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.comprobante.ComprobanteContableDto>>
+            contable(@PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                service.contable(id, securityUtils.getEmpresaId())));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ComprobanteCajaDto>> obtener(@PathVariable Long id) {
         Integer empresaId = securityUtils.getEmpresaId();

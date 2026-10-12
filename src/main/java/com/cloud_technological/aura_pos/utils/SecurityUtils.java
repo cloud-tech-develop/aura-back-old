@@ -35,6 +35,20 @@ public class SecurityUtils {
         return token != null ? extractRol(token) : null;
     }
 
+    /** Vínculo firma→cliente del token; null si trabaja en su propia empresa (PLAN_FIRMA_CONTABLE). */
+    public Long getVinculoId() {
+        String token = getTokenFromSecurityContext();
+        return token != null ? toLong(extractAllClaims(token).get("vinculoId")) : null;
+    }
+
+    /** Firma contable de origen; null si trabaja en su propia empresa. */
+    public Integer getFirmaId() {
+        String token = getTokenFromSecurityContext();
+        if (token == null) return null;
+        Object v = extractAllClaims(token).get("firmaId");
+        return v == null ? null : Integer.valueOf(v.toString());
+    }
+
     private String getTokenFromSecurityContext() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         // Sin sesión (login, rutas públicas) Spring deja un usuario anónimo con

@@ -37,6 +37,9 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
     @Autowired
     private com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.ExogenaService exogenaService;
 
+    @Autowired
+    private TarifaRetencionServiceImpl tarifaRetencionService;
+
     @Override
     public List<PlanCuentaDto> listar(Integer empresaId) {
         return repo.findByEmpresaIdOrderByCodigoAsc(empresaId)
@@ -123,6 +126,7 @@ public class PlanCuentasServiceImpl implements PlanCuentasService {
         categoriaContableProductoService.seedDefaults(empresaId);
         impuestoService.seedDefaults(empresaId);
         exogenaService.seedDefaults(empresaId);
+        tarifaRetencionService.seedDefaults(empresaId);
         return nuevas;
     }
 

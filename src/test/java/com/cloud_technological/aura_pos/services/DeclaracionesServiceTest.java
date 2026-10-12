@@ -26,6 +26,7 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQ
 import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository.Movimiento;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository.PorTarifa;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
+import com.cloud_technological.aura_pos.services.implementations.DeclaracionPagoService;
 import com.cloud_technological.aura_pos.services.implementations.DeclaracionesServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,11 +42,13 @@ class DeclaracionesServiceTest {
     @Mock private DeclaracionesQueryRepository repo;
     @Mock private ConfiguracionContableService config;
     @Mock private EmpresaJPARepository empresaRepo;
+    @Mock private DeclaracionPagoService pagos;
+    @Mock private com.cloud_technological.aura_pos.services.AsientoContableService asientos;
     private DeclaracionesServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new DeclaracionesServiceImpl(repo, config, empresaRepo);
+        service = new DeclaracionesServiceImpl(repo, config, empresaRepo, pagos, asientos);
         lenient().when(empresaRepo.findById(EMP)).thenReturn(Optional.empty());
         lenient().when(config.resolverCuenta(eq(EMP), any(ConceptoContable.class))).thenAnswer(inv -> {
             PlanCuentaEntity c = new PlanCuentaEntity();

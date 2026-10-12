@@ -20,6 +20,11 @@ public final class PerfilesSistema {
     public static final String SUPERVISOR = "SUPERVISOR";
     /** Roles que no son uno de los fijos (cargo del empleado guardado como rol). */
     public static final String BASICO = "BASICO";
+    /**
+     * Con el que entran los usuarios de una firma contable al cliente (V199). No está
+     * en {@link #TODOS}: solo se crea en las empresas que tienen firma.
+     */
+    public static final String CONTADOR_EXTERNO = "CONTADOR_EXTERNO";
 
     public record Definicion(String codigo, String nombre, String descripcion, boolean accesoTotal,
             List<String> claves) {
@@ -38,6 +43,17 @@ public final class PerfilesSistema {
                     List.of("principal.punto-de-venta", "caja.turnos")),
             new Definicion(BASICO, "Básico", "Punto de venta y turnos (roles que no son uno de los fijos)", false,
                     List.of("principal.punto-de-venta", "caja.turnos")));
+
+    /**
+     * Contabilidad, compras (facturas de compra, gastos, documento soporte), cartera,
+     * CxC/CxP, tesorería, terceros y reportes. Sin ventas, POS ni caja: las facturas de
+     * venta las activa el administrador del cliente editando este perfil.
+     * {@code modulo.*} = el módulo entero.
+     */
+    public static final Definicion CONTADOR = new Definicion(CONTADOR_EXTERNO, "Contador externo",
+            "Firma contable: contabilidad, compras, cartera, tesorería y reportes. Sin ventas, POS ni caja", false,
+            List.of("principal.dashboard", "contabilidad.*", "compras.*", "cuentas.*", "cartera.*", "tesoreria.*",
+                    "reportes.*", "terceros-y-sucursales.terceros"));
 
     private PerfilesSistema() {
     }

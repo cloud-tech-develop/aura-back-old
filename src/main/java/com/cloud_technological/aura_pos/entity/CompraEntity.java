@@ -81,6 +81,16 @@ public class CompraEntity {
     @Column(name = "reteica_valor")
     private BigDecimal reteicaValor;
 
+    /** Tarifa (concepto) de cada retención: de ella sale la cuenta del asiento (V203). */
+    @Column(name = "retefuente_tarifa_id")
+    private Long retefuenteTarifaId;
+
+    @Column(name = "reteiva_tarifa_id")
+    private Long reteivaTarifaId;
+
+    @Column(name = "reteica_tarifa_id")
+    private Long reteicaTarifaId;
+
     @Column(name = "total_retenciones")
     private BigDecimal totalRetenciones;
 

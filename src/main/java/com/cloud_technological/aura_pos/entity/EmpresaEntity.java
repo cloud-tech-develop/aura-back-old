@@ -50,6 +50,13 @@ public class EmpresaEntity {
     @Column(name = "municipio_id")
     private Integer municipioId;
 
+    /**
+     * NATURAL | JURIDICA. Lo usa la exógena: el formato 1010 (socios) solo aplica a
+     * sociedades (V225).
+     */
+    @Column(name = "tipo_persona", nullable = false, length = 10)
+    private String tipoPersona = "JURIDICA";
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Object configuracion;
@@ -67,6 +74,16 @@ public class EmpresaEntity {
 
     @Column(name = "factura_electronica", nullable = false)
     private boolean facturaElectronica = false;
+
+    /** Firma contable (V199): empresa gratis que atiende la contabilidad de empresas cliente. */
+    @Column(name = "es_firma_contable", nullable = false)
+    @lombok.Builder.Default
+    private Boolean esFirmaContable = Boolean.FALSE;
+
+    /** Clientes gestionados que la firma puede crear (V200); la plataforma lo sube. */
+    @Column(name = "cupo_gestionados", nullable = false)
+    @lombok.Builder.Default
+    private Integer cupoGestionados = 10;
 
     // ── Control de documentos con fecha retroactiva (V149) ──────────────────
     // Solo afecta a la vía CAJA: las demás no descuadran el arqueo de nadie.

@@ -691,4 +691,55 @@ public class AsientoContableQueryRepository {
             return dto;
         });
     }
+
+    // ── Edición de comprobantes manuales ─────────────────────────────────
+
+    /**
+     * Lo que un comprobante abonó a cartera: los abonos vivos que llevan su
+     * referencia ("Comprobante RC-000012"), con el saldo que tendría la cuenta
+     * si ese abono no existiera (lo que se puede volver a aplicar al editar).
+     */
+    public List<com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto.Aplicacion>
+            aplicacionesDeComprobante(Integer empresaId, String referencia) {
+        String sql = """
+            SELECT 'CXC' AS tipo, cc.id AS cuenta_id, SUM(a.monto) AS monto, cc.numero_cuenta,
+                   COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos)) AS nombre,
+                   t.id AS tercero_id, cc.saldo_pendiente + SUM(a.monto) AS saldo_disponible
+            FROM abonos_cobrar a
+            JOIN cuentas_cobrar cc ON cc.id = a.cuenta_cobrar_id
+            LEFT JOIN tercero t ON t.id = cc.tercero_id
+            WHERE cc.empresa_id = :empresaId AND a.referencia = :referencia AND a.deleted_at IS NULL
+            GROUP BY cc.id, cc.numero_cuenta, t.razon_social, t.nombres, t.apellidos, t.id, cc.saldo_pendiente
+            UNION ALL
+            SELECT 'CXP', cp.id, SUM(a.monto), cp.numero_cuenta,
+                   COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos)),
+                   t.id, cp.saldo_pendiente + SUM(a.monto)
+            FROM abonos_pagar a
+            JOIN cuentas_pagar cp ON cp.id = a.cuenta_pagar_id
+            LEFT JOIN tercero t ON t.id = cp.tercero_id
+            WHERE cp.empresa_id = :empresaId AND a.referencia = :referencia AND a.deleted_at IS NULL
+            GROUP BY cp.id, cp.numero_cuenta, t.razon_social, t.nombres, t.apellidos, t.id, cp.saldo_pendiente
+            """;
+        return jdbc.query(sql, new MapSqlParameterSource("empresaId", empresaId).addValue("referencia", referencia),
+                new org.springframework.jdbc.core.BeanPropertyRowMapper<>(
+                        com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto.Aplicacion.class));
+    }
+
+    /** Sede de la caja del turno (para volver a mostrar el origen CAJA al editar). */
+    public Integer sucursalDeTurno(Long turnoCajaId) {
+        List<Integer> r = jdbc.queryForList("""
+            SELECT c.sucursal_id FROM turno_caja tc JOIN caja c ON c.id = tc.caja_id WHERE tc.id = :id
+            """, new MapSqlParameterSource("id", turnoCajaId), Integer.class);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** La primera cuenta "de medio de pago" entre las líneas: el origen CUENTA del comprobante. */
+    public Long cuentaMedioPagoDeAsiento(Long asientoId) {
+        List<Long> r = jdbc.queryForList("""
+            SELECT ad.cuenta_id FROM asiento_detalle ad JOIN plan_cuenta pc ON pc.id = ad.cuenta_id
+            WHERE ad.asiento_id = :id AND (pc.es_medio_pago OR pc.codigo LIKE '11%')
+            ORDER BY ad.id LIMIT 1
+            """, new MapSqlParameterSource("id", asientoId), Long.class);
+        return r.isEmpty() ? null : r.get(0);
+    }
 }

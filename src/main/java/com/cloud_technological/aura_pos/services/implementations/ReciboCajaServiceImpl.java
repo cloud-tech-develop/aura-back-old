@@ -37,10 +37,15 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.services.ReciboCajaService;
+import com.cloud_technological.aura_pos.services.cartera.CastigoCarteraService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.MediosPago;
 
 import lombok.RequiredArgsConstructor;
+import com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto;
+import com.cloud_technological.aura_pos.event.CreditoMovimientoEvent;
+import java.math.RoundingMode;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Recibo de caja de cartera: un pago del cliente aplicado a varias facturas.
@@ -55,10 +60,10 @@ import lombok.RequiredArgsConstructor;
 public class ReciboCajaServiceImpl implements ReciboCajaService {
 
     /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+    @Autowired
+    private PeriodoContableResolver periodoGuard;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     private RetencionRecaudoService retencionRecaudo;
 
     private static final String PREFIJO = "RCB";
@@ -100,7 +105,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
 
         Set<Long> vistas = new HashSet<>();
         List<CuentaCobrarEntity> cuentas = new ArrayList<>();
-        List<List<com.cloud_technological.aura_pos.dto.cartera.RetencionRecaudoDto>> retencionesPorFactura =
+        List<List<RetencionRecaudoDto>> retencionesPorFactura =
                 new ArrayList<>();
         BigDecimal aplicado = BigDecimal.ZERO;
         for (CreateReciboCajaDto.Aplicacion a : pedidas) {
@@ -114,6 +119,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
             CuentaCobrarEntity cuenta = cuentaRepo.bloquear(a.getCuentaCobrarId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND,
                             "Cuenta por cobrar #" + a.getCuentaCobrarId() + " no encontrada"));
+            CastigoCarteraService.exigirNoCastigada(cuenta);
             if (cuenta.getDeletedAt() != null || "anulada".equals(cuenta.getEstado())
                     || "pagada".equals(cuenta.getEstado()) || cuenta.getSaldoPendiente().signum() <= 0)
                 throw new GlobalException(HttpStatus.BAD_REQUEST,
@@ -257,7 +263,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
         promesaPagoService.evaluar(empresaId, dto.getTerceroId());
         acuerdoPagoService.evaluar(empresaId, dto.getTerceroId(), null);
         if (!abonosCreados.isEmpty())
-            eventPublisher.publishEvent(new com.cloud_technological.aura_pos.event.CreditoMovimientoEvent(
+            eventPublisher.publishEvent(new CreditoMovimientoEvent(
                     dto.getTerceroId(), empresaId, "AL_PAGAR"));
         return queryRepo.obtener(recibo.getId(), empresaId);
     }
@@ -315,6 +321,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
 
             CuentaCobrarEntity cuenta = cuentaRepo.bloquear(ap.getCuentaCobrarId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.CONFLICT, "Cuenta por cobrar no encontrada"));
+            CastigoCarteraService.exigirNoCastigada(cuenta);
             // El pago y sus retenciones vuelven juntos al saldo: el asiento del
             // abono principal incluía las dos cosas.
             BigDecimal devuelto = abono.getMonto().add(retencionRecaudo.eliminarDe(abono.getId()));
@@ -364,7 +371,7 @@ public class ReciboCajaServiceImpl implements ReciboCajaService {
     }
 
     private static BigDecimal escala(BigDecimal v) {
-        return v == null ? BigDecimal.ZERO : v.setScale(2, java.math.RoundingMode.HALF_UP);
+        return v == null ? BigDecimal.ZERO : v.setScale(2, RoundingMode.HALF_UP);
     }
 
     private static String recortar(String s, int max) {

@@ -68,6 +68,9 @@ public class CreateGastoDto {
     private BigDecimal baseReteica    = BigDecimal.ZERO;
     private BigDecimal tarifaReteica  = BigDecimal.ZERO;
     private BigDecimal valorReteica   = BigDecimal.ZERO;
+    /** Concepto de retención elegido (tarifa de retención); opcional. */
+    private Long retefuenteTarifaId;
+    private Long reteicaTarifaId;
     private String tipoDocSoporte;
     private String numeroDocSoporte;
 

@@ -12,6 +12,7 @@ import com.cloud_technological.aura_pos.repositories.nomina.EmpleadoJPARepositor
 import com.cloud_technological.aura_pos.repositories.nomina.LiquidacionPrestacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaConfigJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina_vacaciones.NominaVacacionQueryRepository;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import org.springframework.http.HttpStatus;
@@ -21,7 +22,8 @@ import org.springframework.http.HttpStatus;
  *
  * <p>No hay una tabla de saldo que mantener sincronizada: se calcula al vuelo con
  * la antigüedad (15 días hábiles/año = 15/360 por día trabajado), el saldo inicial
- * traído de otro sistema y los días ya tomados (novedades VACACIONES).
+ * traído de otro sistema y los días ya tomados (novedades VACACIONES, lotes del
+ * módulo de Prestaciones y vacaciones registradas en el módulo de vacaciones, R7).
  */
 @Service
 public class VacacionesService {
@@ -35,26 +37,38 @@ public class VacacionesService {
     private final NominaConfigJPARepository configRepo;
     private final LiquidacionPrestacionJPARepository prestacionRepo;
     private final CalculadoraPrestaciones calculadora;
+    private final NominaVacacionQueryRepository vacacionRepo;
 
     public VacacionesService(EmpleadoJPARepository empleadoRepo,
                              NominaJPARepository nominaRepo,
                              NominaConfigJPARepository configRepo,
                              LiquidacionPrestacionJPARepository prestacionRepo,
-                             CalculadoraPrestaciones calculadora) {
+                             CalculadoraPrestaciones calculadora,
+                             NominaVacacionQueryRepository vacacionRepo) {
         this.empleadoRepo = empleadoRepo;
         this.nominaRepo = nominaRepo;
         this.configRepo = configRepo;
         this.prestacionRepo = prestacionRepo;
         this.calculadora = calculadora;
+        this.vacacionRepo = vacacionRepo;
     }
 
+    /** Saldo de hoy. */
     public VacacionesSaldoDto saldo(Long empleadoId, Integer empresaId) {
+        return saldoAl(empleadoId, empresaId, LocalDate.now());
+    }
+
+    /**
+     * Saldo a una fecha: lo causado hasta ese día (p. ej. la fecha de retiro en la
+     * liquidación definitiva) menos todo lo tomado.
+     */
+    public VacacionesSaldoDto saldoAl(Long empleadoId, Integer empresaId, LocalDate fecha) {
         EmpleadoEntity emp = empleadoRepo.findByIdAndEmpresaId(empleadoId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empleado no encontrado"));
 
         LocalDate ingreso = emp.getFechaIngreso();
         int antiguedad = ingreso != null
-                ? Math.max(0, calculadora.diasComerciales(ingreso, LocalDate.now()))
+                ? Math.max(0, calculadora.diasComerciales(ingreso, fecha))
                 : 0;
 
         BigDecimal causados = BigDecimal.valueOf(antiguedad)
@@ -66,11 +80,12 @@ public class VacacionesService {
 
         Long tomadosNomina = nominaRepo.sumDiasVacacionesTomados(empresaId, empleadoId);
         Long tomadosPrestacion = prestacionRepo.sumDiasVacacionesPrestacion(empresaId, empleadoId);
-        int tomados = (tomadosNomina != null ? tomadosNomina.intValue() : 0)
-                + (tomadosPrestacion != null ? tomadosPrestacion.intValue() : 0);
+        BigDecimal tomados = BigDecimal.valueOf((tomadosNomina != null ? tomadosNomina : 0L)
+                + (tomadosPrestacion != null ? tomadosPrestacion : 0L))
+                .add(vacacionRepo.diasTomados(empleadoId));
 
         BigDecimal disponibles = saldoInicial.add(causados)
-                .subtract(BigDecimal.valueOf(tomados))
+                .subtract(tomados)
                 .setScale(2, RoundingMode.HALF_UP);
 
         boolean anticipadas = configRepo.findByEmpresaId(empresaId)

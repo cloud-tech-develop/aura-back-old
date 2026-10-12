@@ -41,6 +41,44 @@ public class BorradorDeclaracionDto {
 
     private List<String> advertencias = new ArrayList<>();
 
+    /**
+     * A quién se le paga y cuánto (V204): la DIAN por el IVA o por la
+     * retención; cada municipio por su reteICA. Con el pago, si ya se registró.
+     */
+    private List<PorPagar> porPagar = new ArrayList<>();
+
+    @Data
+    @NoArgsConstructor
+    public static class PorPagar {
+        /** IVA | RETENCION | RETEICA */
+        private String tipo;
+        /** null: las cuentas no tienen entidad asignada (no se puede pagar aún). */
+        private Long terceroId;
+        private String terceroNombre;
+        private String terceroDocumento;
+        /** Positivo = a pagar; negativo = saldo a favor. */
+        private BigDecimal valor = BigDecimal.ZERO;
+        private List<CuentaPorPagar> cuentas = new ArrayList<>();
+        private Long pagoId;
+        private String pagoNumero;
+        private LocalDate pagoFecha;
+        private BigDecimal pagoValor;
+        private String pagoFormulario;
+        /** Comprobante del asiento del pago; null si aún no se generó. */
+        private String pagoAsiento;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CuentaPorPagar {
+        private Long cuentaId;
+        private String codigo;
+        private String nombre;
+        /** Lo que el pago cierra: positivo se debita, negativo se acredita. */
+        private BigDecimal valor;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

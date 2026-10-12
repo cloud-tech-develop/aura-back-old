@@ -5,8 +5,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import com.cloud_technological.aura_pos.entity.ConceptoNominaEntity;
@@ -17,8 +19,14 @@ import com.cloud_technological.aura_pos.entity.FondoSolidaridadRangoEntity;
 import com.cloud_technological.aura_pos.entity.NominaConfigEntity;
 import com.cloud_technological.aura_pos.entity.NominaEntity;
 import com.cloud_technological.aura_pos.entity.NominaNovedadEntity;
+import com.cloud_technological.aura_pos.repositories.nomina.AcumuladoMesQueryRepository;
 import com.cloud_technological.aura_pos.repositories.nomina.FondoSolidaridadRangoJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.VinculacionReglasQueryRepository;
+import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.VinculacionReglasQueryRepository.ConceptoPropio;
 import com.cloud_technological.aura_pos.services.implementations.ConceptoNominaService;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasAprendiz;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasNovedadesPermitidas;
+import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,31 +65,25 @@ public class MotorLiquidacion {
     /** Conceptos que la exoneración Ley 1607 apaga. NO incluye CCF ni pensión. */
     private static final Set<String> EXONERABLES_1607 = Set.of("APO_SALUD", "APO_SENA", "APO_ICBF");
 
-    /**
-     * B-10 — conceptos que NO aplican al aprendiz SENA. El aprendiz cotiza solo
-     * salud (fase lectiva) y salud + ARL (fase práctica); no tiene pensión,
-     * parafiscales, provisiones prestacionales ni fondo de solidaridad. Su base es
-     * el apoyo de sostenimiento, no un salario.
-     */
-    private static final Set<String> NO_APLICAN_APRENDIZ = Set.of(
-            "DED_PENSION", "APO_PENSION",
-            "APO_CCF", "APO_ICBF", "APO_SENA",
-            "PRO_PRIMA", "PRO_CESANTIAS", "PRO_INT_CES", "PRO_VACAC",
-            "DED_FONDO_SOLIDARIDAD");
-
     private final ConceptoNominaService conceptoService;
     private final FondoSolidaridadRangoJPARepository fondoRepo;
     private final CalculadoraRetefuente calculadoraRetefuente;
     private final DistribuidorCostoLaboral distribuidor;
+    private final VinculacionReglasQueryRepository reglasVinculacion;
+    private final AcumuladoMesQueryRepository acumuladoRepo;
 
     public MotorLiquidacion(ConceptoNominaService conceptoService,
                             FondoSolidaridadRangoJPARepository fondoRepo,
                             CalculadoraRetefuente calculadoraRetefuente,
-                            DistribuidorCostoLaboral distribuidor) {
+                            DistribuidorCostoLaboral distribuidor,
+                            VinculacionReglasQueryRepository reglasVinculacion,
+                            AcumuladoMesQueryRepository acumuladoRepo) {
         this.conceptoService = conceptoService;
         this.fondoRepo = fondoRepo;
         this.calculadoraRetefuente = calculadoraRetefuente;
         this.distribuidor = distribuidor;
+        this.reglasVinculacion = reglasVinculacion;
+        this.acumuladoRepo = acumuladoRepo;
     }
 
     /**
@@ -95,10 +97,24 @@ public class MotorLiquidacion {
                                          NominaConfigEntity config,
                                          LocalDate fechaLiquidacion) {
 
-        BasesLiquidacion bases = calcularBases(nomina, contrato, config);
+        // R3.2d — las novedades del período deben respetar los topes de la vinculación.
+        validarNovedadesPermitidas(nomina, contrato);
+
+        // R3.2d — conceptos propios de la vinculación. Se calculan sobre el salario
+        // proporcional (primera pasada) y los devengados salariales entran al IBC.
+        // Quincenas: lo ya liquidado en el mes, para las reglas mensuales (tope de IBC,
+        // Ley 1393, exoneración, fondo de solidaridad y retención).
+        AcumuladoMes acumulado = acumuladoDelMes(nomina, contrato);
+        BasesLiquidacion preliminar = calcularBases(nomina, contrato, config, BigDecimal.ZERO, BigDecimal.ZERO,
+                acumulado);
+        List<LineaLiquidacion> propias = lineasConceptosPropios(nomina, contrato, config, fechaLiquidacion,
+                preliminar.getSalarioProporcional());
+        BasesLiquidacion bases = calcularBases(nomina, contrato, config,
+                devengadoPropio(propias, true), devengadoPropio(propias, false), acumulado);
         boolean modoCompleto = "COMPLETO".equals(config.getModoNomina());
-        // B-10 — el aprendiz SENA no lleva pensión, parafiscales, provisiones ni FSP.
-        boolean esAprendiz = "APRENDIZAJE".equals(contrato.getTipoContrato());
+        // Aprendiz SENA (Ley 2466/2025): sin parafiscales ni FSP; en lectiva tampoco
+        // descuentos, pensión ni prestaciones. Ver ReglasAprendiz.
+        boolean esAprendiz = ReglasAprendiz.esAprendiz(contrato);
 
         List<LineaLiquidacion> lineas = new ArrayList<>();
 
@@ -112,12 +128,22 @@ public class MotorLiquidacion {
         // El salario y el auxilio siempre se emiten, aun en SIMPLIFICADO.
         lineas.addAll(lineasBase(config, bases, fechaLiquidacion, modoCompleto));
 
+        // R3.2d — lo que pagan las novedades (horas extra, incapacidad, bono…) y los
+        // conceptos propios. Ya están en las bases; aquí se vuelven líneas para que
+        // lleguen al devengado y al neto.
+        lineas.addAll(lineasDevengadosNovedades(nomina, config, fechaLiquidacion));
+        lineas.addAll(propias);
+
         for (ConceptoNominaEntity c : conceptos) {
             if (esConceptoBase(c.getCodigo())) continue;   // ya emitido arriba
-            if (esAprendiz && NO_APLICAN_APRENDIZ.contains(c.getCodigo())) continue;  // B-10
-            // B-10 — el aprendiz solo cotiza ARL en la fase de práctica.
-            if (esAprendiz && "APO_ARL".equals(c.getCodigo())
-                    && !"PRACTICA".equals(contrato.getFase())) continue;
+            if (Base.NOVEDAD.equals(c.getBase())) continue;  // lo emiten las novedades y los conceptos propios
+            if (ReglasAprendiz.conceptoNoAplica(contrato, c.getCodigo())) continue;
+            // En lectiva la empresa paga toda la salud: 12,5 % sobre un SMMLV.
+            if (ReglasAprendiz.enLectiva(contrato) && "APO_SALUD".equals(c.getCodigo())) {
+                LineaLiquidacion salud = saludLectivaAprendiz(c, nomina, config);
+                if (salud != null) lineas.add(salud);
+                continue;
+            }
             // B-10 — el aprendiz NO va por la exoneración Ley 1607: su salud la paga
             // el patrocinador (régimen propio), así que APO_SALUD siempre se liquida.
             if (!esAprendiz && aplicaExoneracion(c, config, bases)) {
@@ -223,10 +249,20 @@ public class MotorLiquidacion {
                 .add(valorDe(yaCalculadas, "DED_PENSION"))
                 .add(valorDe(yaCalculadas, "DED_FONDO_SOLIDARIDAD"));
 
+        // Mensual: la tabla del art. 383 es del mes. Se depura con el ingreso y los
+        // aportes de todo el mes y se resta lo ya retenido en las quincenas previas.
+        AcumuladoMes previo = bases.getAcumuladoMes();
         CalculadoraRetefuente.Resultado r = calculadoraRetefuente.calcular(
-                contrato, bases.getTotalDevengado(), aportesObligatorios, fecha);
+                contrato, bases.getTotalDevengado().add(previo.devengado()),
+                aportesObligatorios.add(previo.aportes()), fecha);
 
         if (!r.hayRetencion()) return null;
+        BigDecimal valor = ReglasMensuales.pendiente(r.valor(), previo.retencion());
+        if (valor.signum() == 0) return null;
+        Traza traza = r.traza();
+        if (previo.hayPrevias())
+            traza.paso("Retención del mes", r.valor()).paso("Menos lo retenido en el mes", previo.retencion())
+                    .paso("Valor", valor);
 
         String codigo = "2".equals(r.procedimiento()) ? "RETEFUENTE_P2" : "RETEFUENTE_P1";
         ConceptoNominaEntity concepto = buscarOpcional(config, codigo, fecha);
@@ -236,14 +272,34 @@ public class MotorLiquidacion {
             return null;
         }
 
-        return new LineaLiquidacion(concepto, bases.getTotalDevengado(), null, r.valor(), r.traza());
+        return new LineaLiquidacion(concepto, bases.getTotalDevengado().add(previo.devengado()), null, valor, traza);
+    }
+
+    /**
+     * Lo ya liquidado al contrato en el mes (nóminas confirmadas previas). Sin
+     * período o sin contrato no hay con qué cruzar: VACIO.
+     */
+    private AcumuladoMes acumuladoDelMes(NominaEntity nomina, ContratoLaboralEntity contrato) {
+        if (nomina.getPeriodo() == null || nomina.getPeriodo().getFechaFin() == null || contrato == null
+                || contrato.getId() == null)
+            return AcumuladoMes.VACIO;
+        return acumuladoRepo.previoDelMes(nomina.getId(), contrato.getId(), nomina.getDocumentoId(),
+                nomina.getPeriodo().getFechaFin());
     }
 
     // ── Bases ───────────────────────────────────────────────────────────────
 
+    /**
+     * @param propioIbc   devengado de conceptos propios que constituye IBC
+     * @param propioNoIbc devengado de conceptos propios que no constituye IBC
+     * @param acumulado   lo ya liquidado en el mes (quincenas previas)
+     */
     private BasesLiquidacion calcularBases(NominaEntity nomina,
                                            ContratoLaboralEntity contrato,
-                                           NominaConfigEntity config) {
+                                           NominaConfigEntity config,
+                                           BigDecimal propioIbc,
+                                           BigDecimal propioNoIbc,
+                                           AcumuladoMes acumulado) {
         int diasBase = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
 
         // F0 — conciliación de días. Las novedades de ausencia (incapacidad,
@@ -258,15 +314,7 @@ public class MotorLiquidacion {
         int diasAusenciaIbc = diasAusenciaQueReducenIbc(nomina);
         int diasIbc = Math.max(0, diasBase - diasAusenciaIbc);
 
-        BigDecimal salario = contrato.getSalarioBase();
-
-        // B-10 — el aprendiz no gana salario sino apoyo de sostenimiento: 50% SMMLV
-        // en lectiva, 75% en práctica (parametrizable). Si el contrato ya trae un
-        // valor explícito se respeta (puede pagarse más que el mínimo legal).
-        if ("APRENDIZAJE".equals(contrato.getTipoContrato())
-                && (salario == null || salario.signum() == 0)) {
-            salario = apoyoAprendiz(config, contrato.getFase());
-        }
+        BigDecimal salario = salarioMensual(contrato, config);
 
         BigDecimal salarioProporcional = salario
                 .multiply(BigDecimal.valueOf(dias))
@@ -282,8 +330,8 @@ public class MotorLiquidacion {
 
         // Separar novedades por si constituyen IBC. Esta es la corrección B2:
         // antes todas las no-deducción entraban a la base por igual.
-        BigDecimal novIbc = BigDecimal.ZERO;
-        BigDecimal novNoIbc = BigDecimal.ZERO;
+        BigDecimal novIbc = nz(propioIbc);
+        BigDecimal novNoIbc = nz(propioNoIbc);
         BigDecimal novDed = BigDecimal.ZERO;
 
         for (NominaNovedadEntity nov : nomina.getNovedades()) {
@@ -308,6 +356,7 @@ public class MotorLiquidacion {
                 .topeIbcSmmlv(config.getTopeIbcSmmlv())
                 .factorIntegral(config.getFactorSalarioIntegral())
                 .salarioIntegral(Boolean.TRUE.equals(contrato.getEsSalarioIntegral()))
+                .acumuladoMes(acumulado)
                 .build();
     }
 
@@ -360,6 +409,21 @@ public class MotorLiquidacion {
     }
 
     /**
+     * Salario mensual con el que se liquida el contrato. Para el aprendiz SENA es el
+     * apoyo de sostenimiento: 75 % SMMLV en lectiva y 100 % en práctica (Ley
+     * 2466/2025, parametrizable). El valor del contrato se respeta si es mayor; si es
+     * menor (p. ej. quedó con el % de la ley anterior) manda el mínimo de la fase.
+     */
+    public BigDecimal salarioMensual(ContratoLaboralEntity contrato, NominaConfigEntity config) {
+        BigDecimal salario = contrato.getSalarioBase();
+        if (ReglasAprendiz.esAprendiz(contrato)) {
+            BigDecimal minimo = apoyoAprendiz(config, contrato.getFase());
+            if (salario == null || salario.compareTo(minimo) < 0) salario = minimo;
+        }
+        return salario;
+    }
+
+    /**
      * B-10 — apoyo de sostenimiento del aprendiz = SMMLV × % de la fase.
      * Lectiva por defecto (la fase sin definir se trata como la más conservadora).
      */
@@ -368,6 +432,24 @@ public class MotorLiquidacion {
                 ? nz(config.getAprendizPctPractica())
                 : nz(config.getAprendizPctLectiva());
         return config.getSmmlv().multiply(pct).divide(CIEN, ESCALA, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Salud del aprendiz en etapa lectiva: la paga toda la empresa, al 12,5 % sobre
+     * un SMMLV proporcional a los días cotizados (no sobre el apoyo).
+     */
+    private LineaLiquidacion saludLectivaAprendiz(ConceptoNominaEntity c, NominaEntity nomina,
+                                                  NominaConfigEntity config) {
+        int diasBase = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
+        int diasIbc = Math.max(0, diasBase - diasAusenciaQueReducenIbc(nomina));
+        BigDecimal base = config.getSmmlv()
+                .multiply(BigDecimal.valueOf(diasIbc))
+                .divide(TREINTA, ESCALA, RoundingMode.HALF_UP);
+        BigDecimal pct = new BigDecimal(ReglasAprendiz.PCT_SALUD_LECTIVA);
+        BigDecimal valor = porcentaje(base, pct);
+        if (valor.signum() == 0) return null;
+        return new LineaLiquidacion(c, base, pct, valor,
+                Traza.calculo("SMMLV proporcional (aprendiz lectiva)", base, pct, valor));
     }
 
     // ── Conceptos ───────────────────────────────────────────────────────────
@@ -520,7 +602,8 @@ public class MotorLiquidacion {
         // umbral de 10 SMMLV de la exoneración.
         // Pendiente contador: el borde exacto (< vs <=) y la mensualización cuando
         // el mes es parcial (hoy compara el IBC proporcional contra 10 SMMLV plenos).
-        return bases.getBaseIbcSinTope().compareTo(umbral) < 0;
+        // Quincenas: el umbral es mensual, se suma el IBC ya cotizado en el mes.
+        return bases.getBaseIbcSinTope().add(bases.getAcumuladoMes().ibc()).compareTo(umbral) < 0;
     }
 
     // ── Fondo de solidaridad pensional ──────────────────────────────────────
@@ -537,7 +620,11 @@ public class MotorLiquidacion {
         BigDecimal tarifa = rango.pctTotal();
         if (tarifa.signum() == 0) return null;
 
-        BigDecimal valor = porcentaje(bases.getBaseIbc(), tarifa);
+        // Mensual: tarifa sobre el IBC del mes menos lo ya descontado en las quincenas
+        // previas. En una nómina mensual el acumulado es cero y queda igual que antes.
+        AcumuladoMes previo = bases.getAcumuladoMes();
+        BigDecimal valor = ReglasMensuales.pendiente(porcentaje(bases.ibcMes(), tarifa), previo.fsp());
+        if (valor.signum() == 0) return null;
         ConceptoNominaEntity concepto = buscarOpcional(config, "DED_FONDO_SOLIDARIDAD", fecha);
         if (concepto == null) {
             log.warn("Fondo de solidaridad aplica (IBC = {} SMMLV) pero no existe el concepto "
@@ -545,9 +632,119 @@ public class MotorLiquidacion {
             return null;
         }
 
-        return new LineaLiquidacion(concepto, bases.getBaseIbc(), tarifa, valor,
-                Traza.calculo("IBC × tarifa fondo solidaridad (" + ibcEnSmmlv.setScale(2, RoundingMode.HALF_UP)
-                        + " SMMLV)", bases.getBaseIbc(), tarifa, valor));
+        String smmlv = ibcEnSmmlv.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        Traza traza = Traza.calculo(previo.hayPrevias()
+                ? "IBC del mes × tarifa fondo solidaridad (" + smmlv + " SMMLV)"
+                : "IBC × tarifa fondo solidaridad (" + smmlv + " SMMLV)", bases.ibcMes(), tarifa,
+                porcentaje(bases.ibcMes(), tarifa));
+        if (previo.hayPrevias()) traza.paso("Menos lo descontado en el mes", previo.fsp()).paso("Valor", valor);
+        return new LineaLiquidacion(concepto, bases.ibcMes(), tarifa, valor, traza);
+    }
+
+    // ── Novedades y conceptos propios (R3.2d) ───────────────────────────────
+
+    /** 400 con la causa si las novedades incumplen las permitidas de la vinculación. */
+    private void validarNovedadesPermitidas(NominaEntity nomina, ContratoLaboralEntity contrato) {
+        if (nomina.getNovedades() == null || nomina.getNovedades().isEmpty()) return;
+        List<ReglasNovedadesPermitidas.Novedad> novedades = nomina.getNovedades().stream()
+                .map(n -> new ReglasNovedadesPermitidas.Novedad(n.getTipo(), n.getCantidad(), n.getValorTotal(),
+                        Boolean.TRUE.equals(n.getEsDeduccion())))
+                .toList();
+        Optional<String> error = ReglasNovedadesPermitidas.validar(
+                reglasVinculacion.novedadesPermitidas(contrato.getId()), novedades);
+        if (error.isPresent()) throw new GlobalException(HttpStatus.BAD_REQUEST, error.get());
+    }
+
+    /**
+     * Una línea de devengado por cada novedad que paga, con el concepto de su tipo
+     * (V217). Si el tipo no tiene concepto, cae en OTRO_DEVENGO.
+     */
+    private List<LineaLiquidacion> lineasDevengadosNovedades(NominaEntity nomina,
+                                                             NominaConfigEntity config,
+                                                             LocalDate fecha) {
+        List<LineaLiquidacion> out = new ArrayList<>();
+        if (nomina.getNovedades() == null) return out;
+        for (NominaNovedadEntity nov : nomina.getNovedades()) {
+            if (Boolean.TRUE.equals(nov.getEsDeduccion())) continue;
+            BigDecimal v = nz(nov.getValorTotal());
+            if (v.signum() == 0) continue;
+            ConceptoNominaEntity c = buscarOpcional(config, nov.getTipo(), fecha);
+            if (c == null) c = buscarOpcional(config, "OTRO_DEVENGO", fecha);
+            if (c == null) continue;
+            Traza t = new Traza()
+                    .paso(nov.getTipo() + (nov.getDescripcion() != null ? " — " + nov.getDescripcion() : ""), "")
+                    .paso("Cantidad", nz(nov.getCantidad()))
+                    .paso("Valor unitario", nz(nov.getValorUnitario()))
+                    .paso("Total", v);
+            LineaLiquidacion l = LineaLiquidacion.devengado(c, v, t);
+            l.setCantidad(nov.getCantidad());
+            l.setNovedad(nov);
+            out.add(l);
+        }
+        return out;
+    }
+
+    /**
+     * Conceptos propios de la vinculación vigentes en el período. Valor: porcentaje
+     * del salario proporcional, cantidad × valor, o el valor tal cual. Solo
+     * devengados y deducciones; un aporte o provisión propio no aplica.
+     */
+    private List<LineaLiquidacion> lineasConceptosPropios(NominaEntity nomina, ContratoLaboralEntity contrato,
+                                                          NominaConfigEntity config, LocalDate fecha,
+                                                          BigDecimal salarioProporcional) {
+        List<LineaLiquidacion> out = new ArrayList<>();
+        if (contrato.getId() == null || nomina.getPeriodo() == null) return out;
+        // Sin días de salario (retroactivo, definitiva con el salario ya pagado) los
+        // conceptos propios ya se pagaron en la nómina del período: no se repiten.
+        if (nomina.getDiasTrabajados() != null && nomina.getDiasTrabajados() == 0) return out;
+        for (ConceptoPropio p : reglasVinculacion.conceptosVigentes(contrato.getId(),
+                nomina.getPeriodo().getFechaInicio(), nomina.getPeriodo().getFechaFin())) {
+            ConceptoNominaEntity c = buscarOpcional(config, p.codigo(), fecha);
+            if (c == null || !(Clase.DEVENGADO.equals(c.getClase()) || Clase.DEDUCCION.equals(c.getClase()))) {
+                log.warn("Concepto propio '{}' del contrato {} no aplica (no existe o no es devengado/deducción)",
+                        p.codigo(), contrato.getId());
+                continue;
+            }
+            LineaLiquidacion l = lineaPropia(c, p, salarioProporcional);
+            if (l != null) out.add(l);
+        }
+        return out;
+    }
+
+    /** Línea de un concepto propio, o null si no tiene valor. */
+    private static LineaLiquidacion lineaPropia(ConceptoNominaEntity c, ConceptoPropio p,
+                                                BigDecimal salarioProporcional) {
+        String origen = "Concepto propio de la vinculación" + (p.observacion() != null ? " — " + p.observacion() : "");
+        if (p.porcentaje() != null && p.porcentaje().signum() != 0) {
+            BigDecimal valor = porcentaje(salarioProporcional, p.porcentaje());
+            if (valor.signum() == 0) return null;
+            Traza t = new Traza().paso(origen, "")
+                    .paso("Salario proporcional", salarioProporcional)
+                    .paso("Porcentaje", p.porcentaje() + " %")
+                    .paso("Resultado", valor);
+            return new LineaLiquidacion(c, salarioProporcional, p.porcentaje(), valor, t);
+        }
+        BigDecimal unitario = nz(p.valor());
+        BigDecimal valor = p.cantidad() != null && p.cantidad().signum() != 0
+                ? p.cantidad().multiply(unitario).setScale(ESCALA, RoundingMode.HALF_UP)
+                : unitario;
+        if (valor.signum() == 0) return null;
+        Traza t = new Traza().paso(origen, "");
+        if (p.cantidad() != null && p.cantidad().signum() != 0)
+            t.paso("Cantidad", p.cantidad()).paso("Valor unitario", unitario);
+        t.paso("Total", valor);
+        LineaLiquidacion l = new LineaLiquidacion(c, BigDecimal.ZERO, null, valor, t);
+        l.setCantidad(p.cantidad());
+        return l;
+    }
+
+    /** Devengado de las líneas propias que constituye (o no) IBC. */
+    private static BigDecimal devengadoPropio(List<LineaLiquidacion> propias, boolean constituyeIbc) {
+        return propias.stream()
+                .filter(l -> Clase.DEVENGADO.equals(l.getConcepto().getClase()))
+                .filter(l -> constituyeIbc == Boolean.TRUE.equals(l.getConcepto().getConstituyeIbc()))
+                .map(LineaLiquidacion::getValor)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // ── Deducciones de novedades ────────────────────────────────────────────
