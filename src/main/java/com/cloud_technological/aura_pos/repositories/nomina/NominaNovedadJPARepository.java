@@ -39,6 +39,7 @@ public interface NominaNovedadJPARepository extends JpaRepository<NominaNovedadE
              WHERE nv.nomina.empresa.id = :empresaId
                AND nv.nomina.empleado.id = :empleadoId
                AND nv.nomina.estado <> 'ANULADO'
+               AND nv.nomina.esPrenomina = false
                AND nv.esDeduccion = false
                AND nv.constituyeIbc = true
                AND nv.nomina.periodo.fechaInicio <= :hasta

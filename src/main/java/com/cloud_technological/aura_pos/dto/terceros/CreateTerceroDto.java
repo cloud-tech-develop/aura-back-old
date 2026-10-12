@@ -1,5 +1,9 @@
 package com.cloud_technological.aura_pos.dto.terceros;
 
+import java.util.List;
+import javax.validation.Valid;
+import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 import javax.validation.constraints.NotBlank;
 
 import lombok.Getter;
@@ -78,4 +82,31 @@ public class CreateTerceroDto {
     private Long bancoTerceroId;         // FK a un tercero con rol BANCO
     private String tipoCuenta;
     private String numeroCuenta;
+
+    // ── Persona natural ampliada (V211) ─────────────────────────────
+    @Size(max = 20, message = "El RUT admite hasta 20 caracteres")
+    private String rut;
+    @Size(max = 3)
+    private String codigoPaisExpedicion;
+    @Pattern(regexp = "SOLTERO|CASADO|UNION_LIBRE|SEPARADO|DIVORCIADO|VIUDO", message = "Estado civil no válido")
+    private String estadoCivil;
+    @Pattern(regexp = "(O|A|B|AB)[+-]", message = "RH no válido")
+    private String rh;
+    @Size(max = 3)
+    private String codigoPaisNacimiento;
+    private Long municipioNacimientoId;
+    @Pattern(regexp = "URBANA|RURAL", message = "Zona no válida")
+    private String zona;
+    @Size(max = 80, message = "La comuna admite hasta 80 caracteres")
+    private String comuna;
+    @Size(max = 80, message = "El barrio admite hasta 80 caracteres")
+    private String barrio;
+    @Size(max = 150, message = "El nombre del contacto admite hasta 150 caracteres")
+    private String contactoNombre;
+    /** Teléfonos (propios y del contacto). null = no se tocan los guardados. */
+    @Valid
+    private List<TerceroTelefonoDto> telefonos;
+    /** Correos (propios y del contacto). null = no se tocan los guardados. */
+    @Valid
+    private List<TerceroCorreoDto> correos;
 }

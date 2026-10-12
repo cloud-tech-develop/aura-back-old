@@ -15,6 +15,7 @@ import com.cloud_technological.aura_pos.dto.compras.CompraAcreditableItemDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraDetalleDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraDetalleLoteDto;
 import com.cloud_technological.aura_pos.dto.compras.CompraTableDto;
+import com.cloud_technological.aura_pos.dto.compras.DevolucionCompraDto;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
 @Repository
@@ -91,6 +92,91 @@ public class CompraQueryRepository {
         return new PageImpl<>(list, PageRequest.of(page, size), total);
     }
 
+    // ── Devoluciones en compras (docs/PLAN_EXCEL_IMPORTADORES_MODULOS.md §3) ──
+
+    private static final String DEVOLUCION_SELECT = """
+            SELECT
+                c.id,
+                c.numero_compra,
+                c.fecha,
+                COALESCE(NULLIF(t.razon_social, ''), CONCAT(t.nombres, ' ', t.apellidos)) AS proveedor_nombre,
+                s.nombre AS sucursal_nombre,
+                b.nombre AS bodega_nombre,
+                c.compra_origen_id,
+                COALESCE(NULLIF(o.numero_compra, ''), '#' || o.id) AS compra_origen_numero,
+                c.destino_nota_credito,
+                c.observaciones,
+                c.estado,
+                COALESCE((SELECT SUM(ABS(cd.cantidad)) FROM compra_detalle cd WHERE cd.compra_id = c.id), 0) AS unidades,
+                ABS(COALESCE(c.total, 0)) AS total,
+                COUNT(*) OVER() AS total_rows
+            FROM compra c
+            INNER JOIN tercero t ON t.id = c.proveedor_id
+            INNER JOIN sucursal s ON s.id = c.sucursal_id
+            LEFT JOIN bodega b ON b.id = c.bodega_id
+            LEFT JOIN compra o ON o.id = c.compra_origen_id
+            WHERE c.empresa_id = :empresaId
+              AND c.tipo_documento = 'NOTA_CREDITO'
+            """;
+
+    /**
+     * Listado de devoluciones. Filtros opcionales en {@code params}: estado
+     * (VIGENTE | ANULADA), desde y hasta (yyyy-MM-dd).
+     */
+    public PageImpl<DevolucionCompraDto> devoluciones(PageableDto<Object> pageable, Integer empresaId) {
+        int page = pageable.getPage() != null ? pageable.getPage().intValue() : 0;
+        int size = pageable.getRows() != null ? pageable.getRows().intValue() : 10;
+        String search = pageable.getSearch() != null ? pageable.getSearch().trim().toLowerCase() : "";
+
+        StringBuilder sql = new StringBuilder(DEVOLUCION_SELECT);
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        sql.append(alcanceSede.filtro("c.sucursal_id", params));
+
+        if (pageable.getParams() instanceof java.util.Map<?, ?> filtros) {
+            Object estado = filtros.get("estado");
+            if ("ANULADA".equals(estado)) sql.append(" AND c.estado = 'ANULADA' ");
+            else if ("VIGENTE".equals(estado)) sql.append(" AND c.estado <> 'ANULADA' ");
+            Object desde = filtros.get("desde");
+            if (desde != null && !desde.toString().isBlank()) {
+                sql.append(" AND c.fecha >= CAST(:desde AS DATE) ");
+                params.addValue("desde", desde.toString().substring(0, 10));
+            }
+            Object hasta = filtros.get("hasta");
+            if (hasta != null && !hasta.toString().isBlank()) {
+                sql.append(" AND c.fecha < CAST(:hasta AS DATE) + 1 ");
+                params.addValue("hasta", hasta.toString().substring(0, 10));
+            }
+        }
+        if (!search.isEmpty()) {
+            sql.append("""
+                AND (LOWER(COALESCE(c.numero_compra, '')) LIKE :search
+                     OR LOWER(COALESCE(o.numero_compra, '')) LIKE :search
+                     OR CAST(c.compra_origen_id AS TEXT) LIKE :search
+                     OR LOWER(COALESCE(t.razon_social, '')) LIKE :search
+                     OR LOWER(COALESCE(t.nombres, '')) LIKE :search
+                     OR LOWER(COALESCE(c.observaciones, '')) LIKE :search)
+            """);
+            params.addValue("search", "%" + search + "%");
+        }
+
+        sql.append(" ORDER BY c.fecha DESC, c.id DESC OFFSET :offset LIMIT :limit ");
+        params.addValue("offset", (long) page * size);
+        params.addValue("limit", size);
+
+        List<DevolucionCompraDto> list = jdbcTemplate.query(sql.toString(), params,
+                new BeanPropertyRowMapper<>(DevolucionCompraDto.class));
+        long total = list.isEmpty() ? 0 : list.get(0).getTotalRows();
+        return new PageImpl<>(list, PageRequest.of(page, size), total);
+    }
+
+    /** Devoluciones (vigentes y anuladas) hechas sobre una compra. */
+    public List<DevolucionCompraDto> devolucionesDeCompra(Long compraId, Integer empresaId) {
+        String sql = DEVOLUCION_SELECT + " AND c.compra_origen_id = :compraId ORDER BY c.fecha, c.id ";
+        return jdbcTemplate.query(sql,
+                new MapSqlParameterSource("empresaId", empresaId).addValue("compraId", compraId),
+                new BeanPropertyRowMapper<>(DevolucionCompraDto.class));
+    }
+
     /**
      * Las facturas de compra de un proveedor sobre las que todavía se puede
      * emitir una nota crédito.
@@ -115,7 +201,12 @@ public class CompraQueryRepository {
 
         Long proveedorId = null;
         Integer sucursalId = null;
+        Long compraId = null;
         if (pageable.getParams() instanceof java.util.Map<?, ?> paramMap) {
+            // Una factura concreta: "Devolver mercancía" desde el detalle de la compra.
+            if (paramMap.get("compraId") instanceof Number n) {
+                compraId = n.longValue();
+            }
             Object prov = paramMap.get("proveedorId");
             if (prov instanceof Number n) {
                 proveedorId = n.longValue();
@@ -165,6 +256,10 @@ public class CompraQueryRepository {
                 .addValue("empresaId", empresaId)
                 .addValue("proveedorId", proveedorId)
                 .addValue("sucursalId", sucursalId);
+        if (compraId != null) {
+            sql.append(" AND c.id = :compraId ");
+            params.addValue("compraId", compraId);
+        }
 
         if (!search.isEmpty()) {
             // Se busca por el número del proveedor y por el consecutivo interno:

@@ -67,3 +67,10 @@ Frontend Angular en repo separado: `D:\Proyectos Camilo\aura-post\aura-frontend`
 3. Cada cambio contable debe dejar asientos que cuadren; valida con un caso de contado y uno de crédito.
 4. Reporta con rutas `file:line`. No declares algo "hecho y verificado" sin haberlo comprobado (compilar/probar el flujo).
 5. Si una decisión de mapeo de cuentas o de alcance no está resuelta, plantéala antes de codificar en vez de asumir.
+
+## Actualización 2026-10-08
+- **Causación de gastos** (V201): `CausacionGastoService` + `CalculadoraCausacion`, asiento `CausacionGastoGenerador` (origen CAUSACION_GASTO, prefijo CG) por evento AFTER_COMMIT; anular = `ContabilidadReversaEvent`. Una CxP por el neto.
+- **Conciliación fiscal 2516/2517** (V202): `AnalizadorConciliacion` (cuadre, sugerencias, impuesto diferido, renta líquida); no genera asientos. Balance del sistema excluye CIERRE_ANUAL.
+- **Comprobantes manuales editables**: `AsientoContableServiceImpl.actualizarComprobante` conserva el número, `deshacerEfectos` (cruces + movimiento de caja) y `motivoNoEditable` compartidos con anular (mes cerrado / turno cerrado bloquean).
+- `GET /api/comprobantes-caja/{id}/contable`: asiento del documento que movió la plata (COMPROBANTE→id, ABONO_CXC→ABONO_COBRAR, ABONO_CXP→ABONO_PAGAR, MANUAL→MOVIMIENTO_CAJA, resto igual).
+- Abierto: gasto a crédito crea la CxP por el bruto y el asiento por el neto.

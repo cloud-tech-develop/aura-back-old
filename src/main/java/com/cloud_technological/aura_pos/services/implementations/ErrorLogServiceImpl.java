@@ -48,19 +48,29 @@ public class ErrorLogServiceImpl implements ErrorLogService {
     public void registrarAsync(String metodo, String endpoint, int statusCode,
                                String mensaje, String detalle,
                                String username, String ipOrigen) {
+        registrarAsync(metodo, endpoint, statusCode, mensaje, detalle, username, ipOrigen, null);
+    }
+
+    @Override
+    @Async("errorLogExecutor")
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrarAsync(String metodo, String endpoint, int statusCode,
+                               String mensaje, String detalle,
+                               String username, String ipOrigen, Integer empresaToken) {
         try {
             String normalizedPath = normalizarPath(endpoint);
             String categoria     = resolverCategoria(statusCode);
             String grupoHash     = computarHash(metodo, normalizedPath, statusCode);
 
-            Integer empresaId    = null;
+            Integer empresaId    = empresaToken;
             String  usuarioNombre = username;
 
             if (username != null && !username.isBlank()) {
                 var usuarioOpt = usuarioRepository.findByUsername(username);
                 if (usuarioOpt.isPresent()) {
                     var usuario = usuarioOpt.get();
-                    if (usuario.getEmpresa() != null) {
+                    // Solo si no llegó la empresa: fuera de una petición (eventos viejos).
+                    if (empresaId == null && usuario.getEmpresa() != null) {
                         empresaId = usuario.getEmpresa().getId();
                     }
                     if (usuario.getTercero() != null) {

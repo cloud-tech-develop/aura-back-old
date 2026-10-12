@@ -23,6 +23,10 @@ public class NominaElectronicaEstadoDto {
     private String prefijo;
     private Long consecutivo;
     private Boolean esAjuste;
+    /** Número ante Factus/DIAN (prefijo + consecutivo); con él se descargan el XML y el PDF. */
+    private String numero;
+    /** En una nota de ajuste: la nómina electrónica que elimina. */
+    private Long nominaAjustadaId;
     private LocalDateTime fechaEnvio;
     private Boolean tieneXml;
 }

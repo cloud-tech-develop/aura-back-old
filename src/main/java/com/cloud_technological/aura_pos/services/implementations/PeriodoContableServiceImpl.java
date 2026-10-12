@@ -17,20 +17,35 @@ import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoCon
 import com.cloud_technological.aura_pos.repositories.periodo_contable.PeriodoContableQueryRepository;
 import com.cloud_technological.aura_pos.services.PeriodoContableService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.entity.ExtractoBancarioEntity;
+import com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository;
+import com.cloud_technological.aura_pos.repositories.contabilidad.CierreAnualJPARepository;
+import com.cloud_technological.aura_pos.repositories.contabilidad.ExtractoBancarioJPARepository;
+import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
+import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
+import com.cloud_technological.aura_pos.services.contabilidad.CierreMesService;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 @Service
 public class PeriodoContableServiceImpl implements PeriodoContableService {
 
     @Autowired private PeriodoContableJPARepository jpaRepo;
     @Autowired private PeriodoContableQueryRepository queryRepo;
-    @Autowired private com.cloud_technological.aura_pos.services.ContabilidadAutoService autoService;
-    @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
-    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.AsientoContableJPARepository asientoRepo;
-    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.ExtractoBancarioJPARepository extractoRepo;
-    @Autowired private com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository cuentaBancariaRepo;
-    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.CierreAnualJPARepository cierreAnualRepo;
+    @Autowired private ContabilidadAutoService autoService;
+    @Autowired private ApplicationEventPublisher eventPublisher;
+    @Autowired private AsientoContableJPARepository asientoRepo;
+    @Autowired private ExtractoBancarioJPARepository extractoRepo;
+    @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
+    @Autowired private CierreAnualJPARepository cierreAnualRepo;
     @Autowired private PeriodoContableResolver periodoResolver;
-    @Autowired private org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
+    @Autowired @Lazy
+    private CierreMesService cierreMes;
+    @Autowired private NamedParameterJdbcTemplate jdbc;
 
     @Override
     public List<PeriodoContableTableDto> listar(Integer empresaId) {
@@ -46,8 +61,8 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         // Desde V171 pueden convivir varios períodos abiertos: se registra febrero
         // mientras el contador todavía cierra enero. Lo único que no se admite es
         // abrir un mes muy adelante, que siempre es un error de digitación.
-        java.time.YearMonth pedido = java.time.YearMonth.of(anio, mes);
-        java.time.YearMonth tope = java.time.YearMonth.now().plusMonths(1);
+        YearMonth pedido = YearMonth.of(anio, mes);
+        YearMonth tope = YearMonth.now().plusMonths(1);
         if (pedido.isAfter(tope)) {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                 "No se puede abrir " + mes + "/" + anio + " todavía: como máximo se abre hasta "
@@ -104,8 +119,8 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         }
 
         // Un mes que todavía no ha terminado no se cierra: entrarían documentos después.
-        java.time.YearMonth suyo = java.time.YearMonth.of(periodo.getAnio(), periodo.getMes());
-        if (suyo.isAfter(java.time.YearMonth.now())) {
+        YearMonth suyo = YearMonth.of(periodo.getAnio(), periodo.getMes());
+        if (suyo.isAfter(YearMonth.now())) {
             throw new GlobalException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "El período " + nombre(periodo) + " todavía no ha empezado.");
         }
@@ -124,9 +139,9 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         // saldo del banco en libros aún no está certificado y podrían faltar
         // ajustes (comisiones, GMF, intereses) que pertenecen a este período.
         String periodoExtracto = String.format("%04d-%02d", periodo.getAnio(), periodo.getMes());
-        List<com.cloud_technological.aura_pos.entity.ExtractoBancarioEntity> extractosAbiertos =
+        List<ExtractoBancarioEntity> extractosAbiertos =
                 extractoRepo.findByEmpresaIdAndPeriodoAndEstado(empresaId, periodoExtracto,
-                        com.cloud_technological.aura_pos.entity.ExtractoBancarioEntity.ESTADO_ABIERTO);
+                        ExtractoBancarioEntity.ESTADO_ABIERTO);
         if (!extractosAbiertos.isEmpty()) {
             List<String> cuentas = extractosAbiertos.stream()
                     .map(e -> cuentaBancariaRepo.findById(e.getCuentaBancariaId())
@@ -145,6 +160,14 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
             throw new GlobalException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "No se puede cerrar el período. Los siguientes comprobantes no cuadran (débito ≠ crédito): "
                 + String.join(", ", sinCuadre));
+        }
+
+        // Foto de la lista de chequeo para el acta: después, los meses siguientes
+        // mueven cartera, inventario y bancos y el chequeo ya no daría lo mismo.
+        try {
+            cierreMes.guardarFoto(empresaId, id);
+        } catch (RuntimeException e) {
+            // Sin foto el acta usa el chequeo del momento; el cierre sigue.
         }
 
         // Asiento de cierre: cancela ingresos/costos/gastos contra la utilidad del
@@ -216,7 +239,7 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         periodo.setEstado("ABIERTO");
         periodo.setFechaCierre(null);
         periodo.setUsuarioCierreId(null);
-        periodo.setFechaReapertura(java.time.LocalDateTime.now());
+        periodo.setFechaReapertura(LocalDateTime.now());
         periodo.setUsuarioReaperturaId(usuarioId);
         periodo.setMotivoReapertura(motivo.length() > 300 ? motivo.substring(0, 300) : motivo);
         periodo.setReaperturas((periodo.getReaperturas() != null ? periodo.getReaperturas() : 0) + 1);
@@ -248,7 +271,7 @@ public class PeriodoContableServiceImpl implements PeriodoContableService {
         jdbc.update("""
             INSERT INTO periodo_contable_evento (periodo_contable_id, empresa_id, tipo, motivo, usuario_id)
             VALUES (:periodoId, :empresaId, :tipo, :motivo, :usuarioId)
-            """, new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+            """, new MapSqlParameterSource()
                 .addValue("periodoId", periodo.getId())
                 .addValue("empresaId", periodo.getEmpresaId())
                 .addValue("tipo", tipo)

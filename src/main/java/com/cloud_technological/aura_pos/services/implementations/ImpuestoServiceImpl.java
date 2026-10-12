@@ -26,6 +26,7 @@ public class ImpuestoServiceImpl implements ImpuestoService {
     private final ImpuestoJPARepository repo;
     private final PlanCuentaJPARepository planRepo;
     private final CuentaPorDefectoResolver porDefecto;
+    private final AcreedorImpuestoService acreedores;
 
     @Override
     public List<ImpuestoDto> listar(Integer empresaId) {
@@ -49,6 +50,7 @@ public class ImpuestoServiceImpl implements ImpuestoService {
                 .vigenteDesde(dto.getVigenteDesde())
                 .vigenteHasta(dto.getVigenteHasta())
                 .activo(dto.getActivo() == null || dto.getActivo())
+                .terceroAcreedorId(acreedores.validar(empresaId, dto.getTerceroAcreedorId()))
                 .build();
         aplicarCuentas(empresaId, e, dto);
         return toDto(empresaId, repo.save(e));
@@ -70,6 +72,7 @@ public class ImpuestoServiceImpl implements ImpuestoService {
         if (dto.getActivo() != null) {
             e.setActivo(dto.getActivo());
         }
+        e.setTerceroAcreedorId(acreedores.validar(empresaId, dto.getTerceroAcreedorId()));
         aplicarCuentas(empresaId, e, dto);
         return toDto(empresaId, repo.save(e));
     }
@@ -84,6 +87,8 @@ public class ImpuestoServiceImpl implements ImpuestoService {
         seedUno(empresaId, "INC 8%", "INC", new BigDecimal("8"), generado, descontable);
         seedUno(empresaId, "Excluido", "EXCLUIDO", BigDecimal.ZERO, null, null);
         seedUno(empresaId, "Exento", "EXENTO", BigDecimal.ZERO, null, null);
+        // IVA e INC se le pagan a la DIAN.
+        acreedores.asegurarDian(empresaId);
     }
 
     private void seedUno(Integer empresaId, String nombre, String tipo, BigDecimal pct,
@@ -157,6 +162,8 @@ public class ImpuestoServiceImpl implements ImpuestoService {
                 .porcentaje(e.getPorcentaje())
                 .cuentaGeneradoId(e.getCuentaGeneradoId())
                 .cuentaGenerado(etiqueta(empresaId, e.getCuentaGeneradoId()))
+                .terceroAcreedorId(e.getTerceroAcreedorId())
+                .terceroAcreedor(acreedores.etiqueta(empresaId, e.getTerceroAcreedorId()))
                 .cuentaDescontableId(e.getCuentaDescontableId())
                 .cuentaDescontable(etiqueta(empresaId, e.getCuentaDescontableId()))
                 .vigenteDesde(e.getVigenteDesde())

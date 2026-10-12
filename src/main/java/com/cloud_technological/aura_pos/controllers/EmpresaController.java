@@ -14,8 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.cloud_technological.aura_pos.dto.empresas.ConfiguracionEmpresaDtos.ConfiguracionEmpresaDto;
 import com.cloud_technological.aura_pos.dto.empresas.EmpresaDto;
 import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaContactoDto;
+import com.cloud_technological.aura_pos.dto.empresas.UpdateEmpresaDatosDto;
 import com.cloud_technological.aura_pos.services.IEmpresaService;
 import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
+import com.cloud_technological.aura_pos.services.permisos.PermisoUsuarioService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -33,12 +35,19 @@ public class EmpresaController {
     @Autowired
     private ConfiguracionEmpresaService configuracionService;
 
+    @Autowired
+    private PermisoUsuarioService permisoUsuarioService;
+
+    /** Acción especial para editar los datos de la empresa (V198). */
+    private static final String EDITAR_EMPRESA = "caja.usuarios:EDITAR_EMPRESA";
+
     @GetMapping
     public ResponseEntity<ApiResponse<EmpresaDto>> obtenerEmpresaActual() {
         Integer empresaId = securityUtils.getEmpresaId();
         Long sucursalId = securityUtils.getSucursalId();
         Long usuarioId = securityUtils.getUsuarioId();
         EmpresaDto result = empresaService.obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
+        result.setPuedeEditar(puedeEditarEmpresa());
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Empresa obtenida exitosamente", false, result),
                 HttpStatus.OK);
@@ -69,6 +78,34 @@ public class EmpresaController {
         return new ResponseEntity<>(
                 new ApiResponse<>(HttpStatus.OK.value(), "Datos de la empresa actualizados", false, result),
                 HttpStatus.OK);
+    }
+
+    /**
+     * Nombre comercial, logo, contacto, resolución de facturación y rangos de
+     * Factus. Se exige siempre, sin importar el modo de permisos (OBSERVAR no
+     * aplica): son los datos con los que la empresa factura ante la DIAN.
+     */
+    @PutMapping("/datos")
+    public ResponseEntity<ApiResponse<EmpresaDto>> actualizarDatos(
+            @Valid @RequestBody UpdateEmpresaDatosDto dto) {
+        if (!puedeEditarEmpresa())
+            throw new GlobalException(HttpStatus.FORBIDDEN,
+                    "Su perfil no le permite editar los datos de la empresa. Pídale al administrador que lo agregue a su perfil");
+        Integer empresaId = securityUtils.getEmpresaId();
+        Long sucursalId = securityUtils.getSucursalId();
+        Long usuarioId = securityUtils.getUsuarioId();
+        EmpresaDto result = empresaService.actualizarDatos(dto, empresaId, sucursalId, usuarioId);
+        result.setPuedeEditar(true);
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Datos de la empresa actualizados", false, result),
+                HttpStatus.OK);
+    }
+
+    /** SUPER_ADMIN (dueño de la cuenta) por rol; los demás por la acción especial de su perfil. */
+    private boolean puedeEditarEmpresa() {
+        if ("SUPER_ADMIN".equalsIgnoreCase(securityUtils.getRol())) return true;
+        Long usuarioId = securityUtils.getUsuarioId();
+        return usuarioId != null && permisoUsuarioService.puedeEspecial(usuarioId.intValue(), EDITAR_EMPRESA);
     }
 
     private void exigirAdministrador() {

@@ -69,6 +69,12 @@ public class BasesLiquidacion {
     private final boolean topeAplicado;
     private final boolean salarioIntegral;
 
+    /** Ley 1393: exceso de pagos no salariales sobre el 40 % que entra al IBC. */
+    private final BigDecimal excesoNoSalarial;
+
+    /** Lo ya liquidado en el mes (quincenas previas); VACIO si es la primera. */
+    private final AcumuladoMes acumuladoMes;
+
     private BasesLiquidacion(Builder b) {
         this.salarioProporcional   = b.salarioProporcional;
         this.auxilioTransporte     = b.auxilioTransporte;
@@ -81,6 +87,8 @@ public class BasesLiquidacion {
         this.basePrestacional      = b.basePrestacional;
         this.topeAplicado          = b.topeAplicado;
         this.salarioIntegral       = b.salarioIntegral;
+        this.excesoNoSalarial      = b.excesoNoSalarial;
+        this.acumuladoMes          = b.acumuladoMes;
     }
 
     public static Builder builder() {
@@ -116,6 +124,8 @@ public class BasesLiquidacion {
         private BigDecimal topeIbcSmmlv         = new BigDecimal("25");
         private BigDecimal factorIntegral       = new BigDecimal("70");
         private boolean salarioIntegral         = false;
+        private AcumuladoMes acumuladoMes       = AcumuladoMes.VACIO;
+        private BigDecimal excesoNoSalarial     = BigDecimal.ZERO;
 
         private BigDecimal totalDevengado;
         private BigDecimal baseIbc;
@@ -133,6 +143,7 @@ public class BasesLiquidacion {
         public Builder topeIbcSmmlv(BigDecimal v)         { this.topeIbcSmmlv = nz(v); return this; }
         public Builder factorIntegral(BigDecimal v)       { this.factorIntegral = nz(v); return this; }
         public Builder salarioIntegral(boolean v)         { this.salarioIntegral = v; return this; }
+        public Builder acumuladoMes(AcumuladoMes v)       { this.acumuladoMes = v != null ? v : AcumuladoMes.VACIO; return this; }
 
         public BasesLiquidacion build() {
             // Lo que se le paga: todo.
@@ -151,6 +162,13 @@ public class BasesLiquidacion {
             BigDecimal salarioIbc = salarioParaIbc != null ? salarioParaIbc : salarioProporcional;
             BigDecimal ibc = salarioIbc.add(novedadesIbc);
 
+            // Ley 1393 — lo no salarial que pase del 40 % de la remuneración del MES
+            // entra al IBC. Se mide con las nóminas previas del mes y a esta solo le
+            // toca la parte nueva del exceso.
+            excesoNoSalarial = ReglasMensuales.excesoNoSalarialDeEstaNomina(
+                    acumuladoMes, salarioProporcional.add(novedadesIbc), novedadesNoIbc);
+            ibc = ibc.add(excesoNoSalarial);
+
             // Salario integral: el IBC es el 70% (el 30% es factor prestacional).
             // Va ANTES del tope.
             if (salarioIntegral) {
@@ -159,9 +177,10 @@ public class BasesLiquidacion {
             }
             baseIbcSinTope = ibc;
 
-            // Tope de 25 SMMLV.
+            // Tope de 25 SMMLV en el MES: a esta nómina le queda lo que no se cotizó
+            // en las previas del mes.
             if (smmlv.signum() > 0) {
-                BigDecimal tope = smmlv.multiply(topeIbcSmmlv);
+                BigDecimal tope = ReglasMensuales.topeIbcRestante(smmlv.multiply(topeIbcSmmlv), acumuladoMes);
                 if (ibc.compareTo(tope) > 0) {
                     ibc = tope;
                     topeAplicado = true;
@@ -177,9 +196,17 @@ public class BasesLiquidacion {
         }
     }
 
-    /** IBC expresado en SMMLV. Para ubicar el rango del fondo de solidaridad. */
+    /** IBC del mes: el de esta nómina más el de las nóminas previas del mismo mes. */
+    public BigDecimal ibcMes() {
+        return ReglasMensuales.ibcMes(acumuladoMes, baseIbc);
+    }
+
+    /**
+     * IBC del MES expresado en SMMLV. Para ubicar el rango del fondo de solidaridad:
+     * en quincenas se mide con todo el mes, no con media remuneración.
+     */
     public BigDecimal ibcEnSmmlv(BigDecimal smmlv) {
         if (smmlv == null || smmlv.signum() == 0) return BigDecimal.ZERO;
-        return baseIbc.divide(smmlv, 4, RoundingMode.HALF_UP);
+        return ibcMes().divide(smmlv, 4, RoundingMode.HALF_UP);
     }
 }

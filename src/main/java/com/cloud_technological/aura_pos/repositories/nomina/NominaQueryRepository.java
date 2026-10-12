@@ -45,6 +45,7 @@ public class NominaQueryRepository {
             INNER JOIN empleados e     ON n.empleado_id = e.id
             INNER JOIN periodo_nomina p ON n.periodo_id  = p.id
             WHERE n.empresa_id = :empresaId
+              AND n.es_prenomina = FALSE
         """);
 
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
@@ -95,6 +96,7 @@ public class NominaQueryRepository {
             WHERE n.empresa_id = :empresaId
               AND n.empleado_id = :empleadoId
               AND n.estado <> 'ANULADO'
+              AND n.es_prenomina = FALSE
             ORDER BY p.fecha_fin DESC, n.id DESC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId)

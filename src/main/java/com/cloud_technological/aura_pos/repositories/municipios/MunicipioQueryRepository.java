@@ -19,6 +19,34 @@ public class MunicipioQueryRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
 
+    /**
+     * Departamentos de Colombia, para el select que filtra los municipios.
+     *
+     * @return nombres de departamento ordenados
+     */
+    public List<String> departamentos() {
+        return jdbc.queryForList("SELECT DISTINCT departamento FROM municipios ORDER BY departamento",
+                new HashMap<String, Object>(), String.class);
+    }
+
+    /**
+     * Municipios de un departamento, filtrados por nombre.
+     *
+     * @param departamento nombre exacto del departamento
+     * @param search       texto a buscar en el nombre (vacío = todos)
+     */
+    public List<MunicipioDto> buscarEnDepartamento(String departamento, String search) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("departamento", departamento);
+        params.put("search", "%" + (search != null ? search : "") + "%");
+        return jdbc.query("""
+            SELECT id, codigo, nombre, departamento, nombre || ' - ' || departamento as label
+              FROM municipios
+             WHERE departamento = :departamento AND LOWER(nombre) LIKE LOWER(:search)
+             ORDER BY nombre
+            """, params, BeanPropertyRowMapper.newInstance(MunicipioDto.class));
+    }
+
     public List<MunicipioDto> buscar(String search) {
         String sql = """
             SELECT id, codigo, nombre, departamento,

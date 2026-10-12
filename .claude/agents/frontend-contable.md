@@ -99,3 +99,9 @@ editando en `aura-post\aura-frontend`.
    (sidebar.config + verificar gotcha del submoduloCodigo).
 3. `ng build` al final. Reporta si el submódulo necesita INSERT/UPDATE en BD para el menú.
 4. Al terminar, deja constancia de la pantalla en el checklist del plan (repo backend).
+
+## Actualización 2026-10-08
+- Pantallas nuevas: `/compras/causaciones` (+ nueva, ficha), `/compras/devoluciones`, `/contabilidad/conciliacion-fiscal` (+ ficha con pestañas), `/comprobantes/contable/:id/editar`.
+- Toda pantalla nueva: contenido bajo el `.card-head` dentro de `<div class="card-body">` (padding 1.25rem 1.5rem; 1rem en móvil): la `.card` no trae relleno.
+- PDF de documentos: usar `shared/utils/pdf-estilo.ts` (encabezados #e1e8ef, filas blanco/#dfe2e7, sin azul) y nombrar el archivo con el número del documento. Valor en letras: `shared/utils/numero-letras.ts`.
+- Importador Excel reutilizable con `base` dinámica (ej. `conciliacion-fiscal/{id}`), ver `PLANTILLA_BALANCE_FISCAL`.

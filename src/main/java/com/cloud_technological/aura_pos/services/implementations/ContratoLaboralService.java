@@ -3,6 +3,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import com.cloud_technological.aura_pos.entity.ContratoSalarioHistorialEntity;
 import com.cloud_technological.aura_pos.repositories.nomina.ContratoLaboralJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.ContratoRenovacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.ContratoSalarioHistorialJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.VinculacionQueryRepository;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -36,13 +38,16 @@ public class ContratoLaboralService {
     private final ContratoLaboralJPARepository contratoRepo;
     private final ContratoSalarioHistorialJPARepository historialRepo;
     private final ContratoRenovacionJPARepository renovacionRepo;
+    private final VinculacionQueryRepository vinculacionQuery;
 
     public ContratoLaboralService(ContratoLaboralJPARepository contratoRepo,
                                   ContratoSalarioHistorialJPARepository historialRepo,
-                                  ContratoRenovacionJPARepository renovacionRepo) {
+                                  ContratoRenovacionJPARepository renovacionRepo,
+                                  VinculacionQueryRepository vinculacionQuery) {
         this.contratoRepo = contratoRepo;
         this.historialRepo = historialRepo;
         this.renovacionRepo = renovacionRepo;
+        this.vinculacionQuery = vinculacionQuery;
     }
 
     // ── Consultas ───────────────────────────────────────────────────────────
@@ -133,6 +138,9 @@ public class ContratoLaboralService {
     public ContratoLaboralEntity crear(ContratoLaboralEntity contrato) {
         validarFechas(contrato);
         validarPrincipalUnico(contrato);
+        // Consecutivo de vinculación (V210) también para las altas de la pantalla vieja.
+        if (contrato.getCodigo() == null)
+            contrato.setCodigo(vinculacionQuery.siguienteCodigo(contrato.getEmpresa().getId()));
 
         ContratoLaboralEntity guardado = contratoRepo.save(contrato);
 
@@ -174,6 +182,21 @@ public class ContratoLaboralService {
         return contratoRepo.save(contrato);
     }
 
+    /**
+     * Guarda una vinculación ya modificada aplicando las mismas reglas que el alta y
+     * la edición (fechas coherentes y un solo contrato principal). Lo usa el módulo
+     * de vinculaciones, que llena los campos ampliados antes de llamar.
+     *
+     * @param contrato entidad cargada y modificada (no cambia el salario)
+     * @return la entidad guardada
+     */
+    @Transactional
+    public ContratoLaboralEntity guardarCambios(ContratoLaboralEntity contrato) {
+        validarFechas(contrato);
+        validarPrincipalUnico(contrato);
+        return contratoRepo.save(contrato);
+    }
+
     // ── Cambio de salario ───────────────────────────────────────────────────
 
     /**
@@ -205,7 +228,9 @@ public class ContratoLaboralService {
                         + ". El cambio debe ser posterior.");
             }
             vigente.setFechaHasta(fechaDesde.minusDays(1));
-            historialRepo.save(vigente);
+            // saveAndFlush: Hibernate inserta antes de actualizar; sin el flush la fila
+            // nueva choca con ux_csh_vigente porque la vigente aún no está cerrada.
+            historialRepo.saveAndFlush(vigente);
         });
 
         ContratoSalarioHistorialEntity nuevo = new ContratoSalarioHistorialEntity();
@@ -219,6 +244,38 @@ public class ContratoLaboralService {
         // Denormalización de lectura: la verdad histórica está en el histórico.
         contrato.setSalarioBase(nuevoSalario);
         return contratoRepo.save(contrato);
+    }
+
+    /**
+     * Deshace un cambio de salario (reverso de un incremento, R8): borra la fila del
+     * historial, reabre la anterior y vuelve el salario del contrato al anterior.
+     *
+     * @param historialId fila creada por el cambio; debe seguir siendo la vigente
+     * @throws GlobalException 409 si después hubo otro cambio de salario
+     */
+    @Transactional
+    public void revertirSalario(Long contratoId, Integer empresaId, Long historialId, BigDecimal salarioAnterior) {
+        ContratoLaboralEntity contrato = obtener(contratoId, empresaId);
+        ContratoSalarioHistorialEntity vigente = historialRepo.findVigente(contratoId)
+                .filter(h -> h.getId().equals(historialId))
+                .orElseThrow(() -> new GlobalException(HttpStatus.CONFLICT,
+                        "La vinculación " + (contrato.getCodigo() != null ? contrato.getCodigo() : contratoId)
+                        + " tuvo otro cambio de salario después del incremento: revérselo primero."));
+        LocalDate desde = vigente.getFechaDesde();
+        historialRepo.delete(vigente);
+        historialRepo.flush();
+        historialRepo.findEnFecha(contratoId, desde.minusDays(1)).ifPresent(anterior -> {
+            anterior.setFechaHasta(null);
+            historialRepo.save(anterior);
+        });
+        contrato.setSalarioBase(salarioAnterior);
+        contratoRepo.save(contrato);
+    }
+
+    /** Fila vigente del historial salarial (la que acaba de crear un cambio de salario). */
+    @Transactional(readOnly = true)
+    public Optional<ContratoSalarioHistorialEntity> salarioVigente(Long contratoId) {
+        return historialRepo.findVigente(contratoId);
     }
 
     /** Salario que regía en una fecha. Para retroactivos, PILA y liquidación definitiva. */
@@ -256,6 +313,26 @@ public class ContratoLaboralService {
             historialRepo.save(vigente);
         });
 
+        return contratoRepo.save(contrato);
+    }
+
+    /**
+     * Deshace {@link #terminar}: la vinculación vuelve a ACTIVO con su fecha de fin
+     * pactada (null en indefinidos), sin causa de retiro, y se reabre la última fila
+     * del historial salarial. Lo usa la anulación de un retiro (R5).
+     */
+    @Transactional
+    public ContratoLaboralEntity reactivar(Long contratoId, Integer empresaId, LocalDate fechaFinPactada) {
+        ContratoLaboralEntity contrato = obtener(contratoId, empresaId);
+        contrato.setEstado("ACTIVO");
+        contrato.setFechaFin(fechaFinPactada);
+        contrato.setCausaRetiro(null);
+        historialRepo.findByContratoIdOrderByFechaDesdeDesc(contratoId).stream().findFirst()
+                .filter(ultima -> ultima.getFechaHasta() != null)
+                .ifPresent(ultima -> {
+                    ultima.setFechaHasta(null);
+                    historialRepo.save(ultima);
+                });
         return contratoRepo.save(contrato);
     }
 

@@ -22,4 +22,20 @@ public class UpdateEmpresaPlataformaDto {
     private Boolean activa;
     /** AUTOMATICO | REVISION */
     private String modoContabilizacion;
+
+    /** null = no cambia. La firma que la atiende se cambia en PUT /empresas/{id}/firma-contable. */
+    private Boolean esFirmaContable;
+
+    /** Clientes gestionados que puede crear la firma; null = no cambia. */
+    @javax.validation.constraints.Min(value = 0, message = "El cupo no puede ser negativo")
+    private Integer cupoGestionados;
+
+    // ── Facturación electrónica (Factus): las credenciales las pone solo la plataforma ──
+    private Boolean facturaElectronica;
+    private String factusClientId;
+    private String factusClientSecret;
+    private String factusUsername;
+    private String factusPassword;
+    private Integer factusNumberingRangeId;
+    private String factusPrefijo;
 }

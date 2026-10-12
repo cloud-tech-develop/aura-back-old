@@ -51,11 +51,22 @@ public class DiferidoService {
     /** Corre la amortización del mes de la fecha dada. Devuelve cuántas cuotas generó. */
     @Transactional
     public int amortizar(LocalDate fecha) {
+        return amortizar(null, fecha);
+    }
+
+    /**
+     * Igual, pero solo para una empresa (null = todas). El cierre de mes la usa
+     * para no tocar los diferidos de otras empresas.
+     */
+    @Transactional
+    public int amortizar(Integer soloEmpresaId, LocalDate fecha) {
         String periodo = fecha.format(PERIODO);
         int generadas = 0;
         for (GastoEntity gasto : gastoRepo.findByEsDiferidoTrue()) {
             if (gasto.getMesesDiferido() == null || gasto.getMesesDiferido() <= 0
-                    || gasto.getEmpresa() == null) {
+                    || gasto.getEmpresa() == null
+                    || (soloEmpresaId != null && !soloEmpresaId.equals(gasto.getEmpresa().getId()))
+                    || "ELIMINADO".equalsIgnoreCase(gasto.getEstado())) {
                 continue;
             }
             long cuotasGeneradas = amortizacionRepo.countByGastoId(gasto.getId());
@@ -86,18 +97,19 @@ public class DiferidoService {
                     "DIFERIDO", amortizacion.getId(), empresaId, null));
             generadas++;
         }
-        return generadas + amortizarDiferidos(fecha, periodo);
+        return generadas + amortizarDiferidos(soloEmpresaId, fecha, periodo);
     }
 
     /**
      * Diferidos que nacen de una compra (V185). Empiezan el mes de su fecha de
      * inicio: la cuota de un mes anterior a la compra no existe.
      */
-    private int amortizarDiferidos(LocalDate fecha, String periodo) {
+    private int amortizarDiferidos(Integer soloEmpresaId, LocalDate fecha, String periodo) {
         int generadas = 0;
         for (Long id : diferidoQuery.vigentesConCuotasPendientes()) {
             DiferidoEntity diferido = diferidoRepo.findById(id).orElse(null);
             if (diferido == null || diferido.getMeses() == null || diferido.getMeses() <= 0
+                    || (soloEmpresaId != null && !soloEmpresaId.equals(diferido.getEmpresaId()))
                     || diferido.getFechaInicio().withDayOfMonth(1).isAfter(fecha)
                     || diferidoQuery.cuotaDelPeriodo(id, periodo)) {
                 continue;

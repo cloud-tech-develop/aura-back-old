@@ -27,7 +27,10 @@ import com.cloud_technological.aura_pos.repositories.nomina.LiquidacionPrestacio
 import com.cloud_technological.aura_pos.repositories.nomina.NominaConfigJPARepository;
 import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.services.PrestacionService;
+import com.cloud_technological.aura_pos.services.nomina.DiasHabiles;
+import com.cloud_technological.aura_pos.services.nomina.FormulasPrestaciones;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasAprendiz;
 
 @Service
 public class PrestacionServiceImpl implements PrestacionService {
@@ -52,15 +55,12 @@ public class PrestacionServiceImpl implements PrestacionService {
             List.of("PRIMA", "VACACIONES", "CESANTIAS", "INTERESES_CESANTIAS");
 
     /**
-     * B-09/B-10 — tipos de contrato SIN prestaciones sociales laborales: prestación
-     * de servicios (no hay relación laboral) y aprendizaje SENA (recibe apoyo de
-     * sostenimiento, no salario; no causa cesantías, prima ni vacaciones).
+     * B-09/B-10 — contratos SIN prestaciones sociales laborales: prestación de
+     * servicios (no hay relación laboral) y aprendiz SENA en etapa lectiva. El
+     * aprendiz en práctica sí las causa (Ley 2466/2025).
      */
-    private static final java.util.Set<String> SIN_PRESTACIONES_LABORALES =
-            java.util.Set.of("PRESTACION_SERVICIOS", "APRENDIZAJE");
-
     private boolean sinPrestacionesLaborales(ContratoLaboralEntity c) {
-        return c != null && SIN_PRESTACIONES_LABORALES.contains(c.getTipoContrato());
+        return c != null && !ReglasAprendiz.causaPrestaciones(c);
     }
 
     private ContratoLaboralEntity contratoActivo(Long empleadoId) {
@@ -219,7 +219,7 @@ public class PrestacionServiceImpl implements PrestacionService {
         // B-09/B-10 — servicios y aprendiz no causan prestaciones sociales.
         if (sinPrestacionesLaborales(contratoActivo(empleado.getId())))
             throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "El contrato (prestación de servicios / aprendizaje) no causa prestaciones sociales laborales");
+                    "El contrato (prestación de servicios / aprendiz en etapa lectiva) no causa prestaciones sociales laborales");
 
         // F3 — vacaciones: no se pueden tomar más días hábiles de los disponibles,
         // salvo que la empresa permita anticipadas.
@@ -594,29 +594,8 @@ public class PrestacionServiceImpl implements PrestacionService {
      */
     private BigDecimal calcular(String tipo, BigDecimal salario, BigDecimal auxilio,
                                 BigDecimal promedioVariable, int dias, boolean vacacionesDisfrute) {
-        BigDecimal d = new BigDecimal(dias);
-        BigDecimal prom = promedioVariable != null ? promedioVariable : BigDecimal.ZERO;
-        BigDecimal baseAux = salario.add(auxilio).add(prom);
-        BigDecimal baseVac = salario.add(prom);
-        switch (tipo) {
-            case "PRIMA", "CESANTIAS":
-                return baseAux.multiply(d).divide(D360, 2, RoundingMode.HALF_UP);
-            case "VACACIONES":
-                // B-08 — DISFRUTE: pago del descanso = base diaria × días hábiles
-                // tomados (base/30 × días). CAUSACIÓN (definitiva): valor acumulado
-                // = base × días trabajados / 720 (15 hábiles por 360 → medio mes/año).
-                return vacacionesDisfrute
-                        ? baseVac.multiply(d).divide(TREINTA, 2, RoundingMode.HALF_UP)
-                        : baseVac.multiply(d).divide(D720, 2, RoundingMode.HALF_UP);
-            case "INTERESES_CESANTIAS": {
-                // Intereses = cesantías del período × 12% × días/360.
-                BigDecimal cesantias = baseAux.multiply(d).divide(D360, 6, RoundingMode.HALF_UP);
-                return cesantias.multiply(PCT_INT_CESANTIAS).multiply(d)
-                        .divide(D360, 2, RoundingMode.HALF_UP);
-            }
-            default:
-                return BigDecimal.ZERO;
-        }
+        // R5 — las fórmulas viven en FormulasPrestaciones (las comparte la liquidación definitiva).
+        return FormulasPrestaciones.valor(tipo, salario, auxilio, promedioVariable, dias, vacacionesDisfrute);
     }
 
     /**
@@ -664,30 +643,12 @@ public class PrestacionServiceImpl implements PrestacionService {
      * festivos colombianos. Los sábados sí cuentan (CST art. 187).
      */
     private int diasHabilesVacaciones(LocalDate desde, LocalDate hasta) {
-        java.util.Set<LocalDate> festivos = new java.util.HashSet<>();
-        for (int y = desde.getYear(); y <= hasta.getYear(); y++) {
-            for (var f : com.cloud_technological.aura_pos.utils.FestivosColombiaUtil.calcular(y)) {
-                festivos.add(f.fecha);
-            }
-        }
-        int dias = 0;
-        for (LocalDate d = desde; !d.isAfter(hasta); d = d.plusDays(1)) {
-            if (d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) continue;
-            if (festivos.contains(d)) continue;
-            dias++;
-        }
-        return dias;
+        return DiasHabiles.entre(desde, hasta);
     }
 
     /** Días entre dos fechas (inclusive) con convención base-360 (mes = 30). */
     private int diasBase360(LocalDate inicio, LocalDate fin) {
-        int d1 = inicio.getDayOfMonth();
-        int d2 = fin.getDayOfMonth();
-        if (d1 == 31) d1 = 30;
-        boolean finDeMes = fin.getDayOfMonth() == fin.lengthOfMonth();
-        if (d2 == 31 || finDeMes) d2 = 30;
-        int meses = (fin.getYear() - inicio.getYear()) * 12 + (fin.getMonthValue() - inicio.getMonthValue());
-        return Math.max(0, meses * 30 + (d2 - d1) + 1);
+        return FormulasPrestaciones.diasBase360(inicio, fin);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

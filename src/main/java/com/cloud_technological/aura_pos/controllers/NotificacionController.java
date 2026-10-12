@@ -90,7 +90,45 @@ public class NotificacionController {
                     stockBajo, null, "/inventario/stock", "Revisar inventario"));
         }
         agregarCartera(empresaId, notificaciones);
-        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, notificaciones), HttpStatus.OK);
+        try {
+            agregarFirmaContable(empresaId, notificaciones);
+        } catch (Exception e) {
+            log.warn("Campana: no se pudieron leer las solicitudes de firma contable: {}", e.getMessage());
+        }
+                return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, notificaciones), HttpStatus.OK);
+    }
+
+    @Autowired
+    private com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository firmaQuery;
+
+    /**
+     * Firma contable (docs/PLAN_FIRMA_CONTABLE.md §9), solo para administradores de la
+     * empresa de la sesión: la firma ve las solicitudes de clientes que esperan respuesta;
+     * el cliente ve durante 7 días si su solicitud fue aceptada o rechazada.
+     */
+    private void agregarFirmaContable(Integer empresaId, List<NotificacionDto> notificaciones) {
+        String rol = securityUtils.getRol();
+        if (empresaId == null || securityUtils.getVinculoId() != null || rol == null
+                || !(rol.equalsIgnoreCase("ADMIN") || rol.equalsIgnoreCase("SUPER_ADMIN"))) return;
+        var pendientes = firmaQuery.solicitudesPendientesDeLaFirma(empresaId);
+        if (!pendientes.isEmpty()) {
+            notificaciones.add(0, new NotificacionDto("SOLICITUDES_FIRMA", "warn",
+                    pendientes.size() == 1 ? "1 empresa quiere que le lleve la contabilidad"
+                            : pendientes.size() + " empresas quieren que les lleve la contabilidad",
+                    "Revise la solicitud y acéptela o recházela.",
+                    pendientes.size(), null, "/firma/clientes", "Responder"));
+        }
+        var ultima = firmaQuery.ultimaSolicitudDelCliente(empresaId);
+        if (ultima != null && ultima.respondidoAt() != null
+                && ultima.respondidoAt().isAfter(java.time.LocalDateTime.now().minusDays(7))
+                && ("ACEPTADA".equals(ultima.estado()) || "RECHAZADA".equals(ultima.estado()))) {
+            boolean acepto = "ACEPTADA".equals(ultima.estado());
+            notificaciones.add(new NotificacionDto("RESPUESTA_FIRMA", acepto ? "info" : "warn",
+                    ultima.firmaNombre() + (acepto ? " aceptó llevarle la contabilidad" : " rechazó su solicitud"),
+                    acepto ? "Ya puede trabajar con su firma contable."
+                            : ultima.motivo() != null ? "Motivo: " + ultima.motivo() : "Puede solicitar otra firma.",
+                    1, null, "/admin/usuarios", "Ver"));
+        }
     }
 
     /**

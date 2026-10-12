@@ -122,6 +122,26 @@ public class PlatformAdminController {
                 configuracionService.actualizar(id, dto)), HttpStatus.OK);
     }
 
+    // ─── Firma contable (docs/PLAN_FIRMA_CONTABLE.md) ─────────
+
+    /** Firmas contables activas, para el buscador de crear/editar empresa. */
+    @GetMapping("/firmas-contables")
+    public ResponseEntity<ApiResponse<java.util.List<com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.EmpresaDisponible>>> firmasContables(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String texto) {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Firmas contables", false,
+                empresaService.firmasContables(texto)), HttpStatus.OK);
+    }
+
+    /** Cambia o quita ({@code firmaEmpresaId} null) la firma contable que atiende a la empresa. */
+    @PutMapping("/empresas/{id}/firma-contable")
+    public ResponseEntity<ApiResponse<EmpresaPlataformaDto>> asignarFirmaContable(@PathVariable Integer id,
+            @RequestBody java.util.Map<String, Integer> body) {
+        Integer firmaId = body != null ? body.get("firmaEmpresaId") : null;
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                firmaId == null ? "Firma contable quitada" : "Firma contable asignada", false,
+                empresaService.asignarFirmaContable(id, firmaId)), HttpStatus.OK);
+    }
+
     /** Vuelve a correr el arranque (PUC y configuración por defecto); no duplica nada. */
     @PostMapping("/empresas/{id}/arranque")
     public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> reintentarArranque(@PathVariable Integer id) {

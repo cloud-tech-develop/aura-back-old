@@ -30,32 +30,49 @@ import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.MediosPago;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.services.GastoService;
+import com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago;
+import com.cloud_technological.aura_pos.event.ContabilidadReversaEvent;
+import com.cloud_technological.aura_pos.event.OperacionContabilizableEvent;
+import com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository;
+import com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository;
+import com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository;
+import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
+import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
+import com.cloud_technological.aura_pos.services.ContabilidadAutoService;
+import com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService;
+import com.cloud_technological.aura_pos.services.CuentaPagarService;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
+import java.util.Objects;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class GastoServiceImpl implements GastoService {
 
     /** Guard: no se registran documentos con fecha en un mes contable cerrado. */
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.cloud_technological.aura_pos.services.implementations.PeriodoContableResolver periodoGuard;
+    @Autowired
+    private PeriodoContableResolver periodoGuard;
 
-    @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
-    @Autowired private com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository terceroJPARepository;
-    @Autowired private com.cloud_technological.aura_pos.repositories.contabilidad.PlanCuentaJPARepository planCuentaJPARepository;
-    @Autowired private com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva;
+    @Autowired private ApplicationEventPublisher eventPublisher;
+    @Autowired private TerceroJPARepository terceroJPARepository;
+    @Autowired private PlanCuentaJPARepository planCuentaJPARepository;
+    @Autowired private ControlFechaRetroactivaService controlFechaRetroactiva;
     @Autowired private GastoJPARepository gastoJPARepository;
     @Autowired private GastoQueryRepository gastoQueryRepository;
     @Autowired private EmpresaJPARepository empresaJPARepository;
     @Autowired private SucursalJPARepository sucursalJPARepository;
     @Autowired private UsuarioJPARepository usuarioJPARepository;
-    @Autowired private com.cloud_technological.aura_pos.services.OrigenFondosService origenFondosService;
-    @Autowired private com.cloud_technological.aura_pos.repositories.movimiento_caja.MovimientoCajaJPARepository movimientoCajaJPARepository;
-    @Autowired private com.cloud_technological.aura_pos.services.TesoreriaService tesoreriaService;
-    @Autowired private com.cloud_technological.aura_pos.services.CuentaPagarService cuentaPagarService;
-    @Autowired private com.cloud_technological.aura_pos.services.ComprobanteCajaService comprobanteCajaService;
-    @Autowired private com.cloud_technological.aura_pos.contabilidad.application.resolucion.ResolucionCuentaPago resolucionCuentaPago;
-    @Autowired private com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository cuentaPagarJPARepository;
-    @Autowired private com.cloud_technological.aura_pos.services.ContabilidadAutoService contabilidadAutoService;
-    @Autowired private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+    @Autowired private OrigenFondosService origenFondosService;
+    @Autowired private MovimientoCajaJPARepository movimientoCajaJPARepository;
+    @Autowired private TesoreriaService tesoreriaService;
+    @Autowired private CuentaPagarService cuentaPagarService;
+    @Autowired private ComprobanteCajaService comprobanteCajaService;
+    @Autowired private ResolucionCuentaPago resolucionCuentaPago;
+    @Autowired private CuentaPagarJPARepository cuentaPagarJPARepository;
+    @Autowired private ContabilidadAutoService contabilidadAutoService;
+    @Autowired private SecurityUtils securityUtils;
 
     @Override
     public GastoDto obtener(Long id, Integer empresaId) {
@@ -89,6 +106,9 @@ public class GastoServiceImpl implements GastoService {
         gasto.setEstado("ACTIVO");
         gasto.setCreatedAt(LocalDateTime.now());
         mapCamposTributarios(dto, gasto);
+        if (valorAPagar(gasto).signum() < 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Las retenciones no pueden superar el valor del gasto más el IVA");
 
         // De dónde sale la plata. Antes no se preguntaba: el asiento acreditaba
         // CAJA a ciegas, así que un gasto pagado por transferencia dejaba la
@@ -107,7 +127,7 @@ public class GastoServiceImpl implements GastoService {
                             dto.getSucursalId(),
                             "gasto",
                             salidaOtroDia));
-            origenFondosService.exigirSaldoDisponible(empresaId, origen, dto.getMonto(),
+            origenFondosService.exigirSaldoDisponible(empresaId, origen, valorAPagar(gasto),
                     "gasto", null, null);
             gasto.setCuentaPagoId(origen.cuentaContableId());
             gasto.setSalidaCajaOtroDia(salidaOtroDia);
@@ -142,7 +162,7 @@ public class GastoServiceImpl implements GastoService {
 
         // Asiento contable del gasto tras el commit.
         eventPublisher.publishEvent(
-                new com.cloud_technological.aura_pos.event.OperacionContabilizableEvent(
+                new OperacionContabilizableEvent(
                         "GASTO", gasto.getId(), empresaId, usuarioId != null ? usuarioId.intValue() : null));
 
         return toDto(gasto);
@@ -160,12 +180,12 @@ public class GastoServiceImpl implements GastoService {
                 .tipo("EGRESO")
                 .concepto("Gasto #" + gasto.getId()
                         + (gasto.getCategoria() != null ? " — " + gasto.getCategoria() : ""))
-                .monto(gasto.getMonto())
+                .monto(valorAPagar(gasto))
                 // La plata sale hoy aunque el gasto sea de otra fecha: el turno
                 // que se afecta es el de hoy, y la fecha del documento se guarda
                 // aparte para que el cierre muestre el desfase en vez de
                 // esconderlo dentro del total.
-                .fecha(java.time.LocalDate.now())
+                .fecha(LocalDate.now())
                 .fechaDocumento(gasto.getFecha())
                 .origenTipo(MovimientoCajaEntity.ORIGEN_GASTO)
                 .origenId(gasto.getId())
@@ -188,7 +208,7 @@ public class GastoServiceImpl implements GastoService {
         tesoreriaService.registrarMovimientoDeDocumento(empresaId,
                 usuarioId != null ? usuarioId.intValue() : null,
                 new TesoreriaService.MovimientoDocumento(
-                        dto.getCuentaBancariaId(), true, gasto.getMonto(),
+                        dto.getCuentaBancariaId(), true, valorAPagar(gasto),
                         "Gasto #" + gasto.getId()
                                 + (gasto.getDescripcion() != null ? " — " + gasto.getDescripcion() : ""),
                         beneficiario, referencia, gasto.getCategoria()));
@@ -211,7 +231,7 @@ public class GastoServiceImpl implements GastoService {
                 "EGRESO",
                 "Gasto #" + gasto.getId()
                         + (gasto.getCategoria() != null ? " — " + gasto.getCategoria() : ""),
-                gasto.getMonto(),
+                valorAPagar(gasto),
                 gasto.getMetodoPago(),
                 beneficiario,
                 "GASTO", gasto.getId(), null);
@@ -225,7 +245,7 @@ public class GastoServiceImpl implements GastoService {
         }
         CreateCuentaPagarDto cxp = new CreateCuentaPagarDto();
         cxp.setProveedorId(dto.getTerceroId());
-        cxp.setTotalDeuda(gasto.getMonto());
+        cxp.setTotalDeuda(valorAPagar(gasto));
         cxp.setFechaEmision(gasto.getFecha().atStartOfDay());
         cxp.setFechaVencimiento(dto.getFechaVencimiento() != null
                 ? dto.getFechaVencimiento()
@@ -257,9 +277,9 @@ public class GastoServiceImpl implements GastoService {
                 || !formaNueva.equalsIgnoreCase(gasto.getFormaPago() != null ? gasto.getFormaPago() : "CONTADO")
                 || (!MediosPago.CREDITO.equalsIgnoreCase(formaNueva)
                         && !metodoNuevo.equalsIgnoreCase(gasto.getMetodoPago() != null ? gasto.getMetodoPago() : MediosPago.EFECTIVO))
-                || !java.util.Objects.equals(dto.getCuentaBancariaId(), gasto.getCuentaBancariaId())
+                || !Objects.equals(dto.getCuentaBancariaId(), gasto.getCuentaBancariaId())
                 || (MediosPago.CREDITO.equalsIgnoreCase(formaNueva)
-                        && !java.util.Objects.equals(dto.getTerceroId(), gasto.getTerceroId()));
+                        && !Objects.equals(dto.getTerceroId(), gasto.getTerceroId()));
         if (cambiaDinero)
             throw new GlobalException(HttpStatus.CONFLICT,
                     "El valor, la fecha y la forma de pago de un gasto no se editan: anúlelo y regístrelo de nuevo");
@@ -267,6 +287,7 @@ public class GastoServiceImpl implements GastoService {
         SucursalEntity sucursal = sucursalJPARepository.findByIdAndEmpresaId(dto.getSucursalId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Sucursal no encontrada"));
 
+        BigDecimal aPagarAntes = valorAPagar(gasto);
         gasto.setSucursal(sucursal);
         gasto.setCategoria(dto.getCategoria());
         gasto.setDescripcion(dto.getDescripcion());
@@ -275,6 +296,11 @@ public class GastoServiceImpl implements GastoService {
         periodoGuard.exigirAbierto(empresaId, gasto.getFecha());
         gasto.setDeducible(dto.getDeducible());
         mapCamposTributarios(dto, gasto);
+        // El IVA y las retenciones cambian lo que sale de la caja o se le debe
+        // al tercero: igual que el valor, eso no se edita.
+        if (valorAPagar(gasto).compareTo(aPagarAntes) != 0)
+            throw new GlobalException(HttpStatus.CONFLICT,
+                    "Cambiar el IVA o las retenciones cambia el valor pagado: anule el gasto y regístrelo de nuevo");
 
         gasto = gastoJPARepository.save(gasto);
 
@@ -282,15 +308,15 @@ public class GastoServiceImpl implements GastoService {
         // confirmada, reversando y generando en una sola transacción.
         final Long gastoId = gasto.getId();
         final Long usuarioActual = securityUtils.getUsuarioId();
-        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
                     @Override
                     public void afterCommit() {
                         try {
                             contabilidadAutoService.reprocesarGasto(gastoId, empresaId,
                                     usuarioActual != null ? usuarioActual.intValue() : null);
                         } catch (Exception ex) {
-                            org.slf4j.LoggerFactory.getLogger(GastoServiceImpl.class)
+                            LoggerFactory.getLogger(GastoServiceImpl.class)
                                     .warn("No se pudo rehacer el asiento del gasto #{}: {}", gastoId, ex.getMessage());
                         }
                     }
@@ -334,7 +360,7 @@ public class GastoServiceImpl implements GastoService {
 
         // Reversar el asiento del gasto tras el commit.
         eventPublisher.publishEvent(
-                new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
+                new ContabilidadReversaEvent(
                         "GASTO", gasto.getId(), empresaId, null));
     }
 
@@ -346,11 +372,15 @@ public class GastoServiceImpl implements GastoService {
      */
     private void devolverDineroDelGasto(GastoEntity gasto, Integer empresaId) {
         Long usuarioId = securityUtils.getUsuarioId();
+        // Se devuelve lo que salió, que en los gastos de antes del arreglo no
+        // es el neto sino el valor sin IVA ni retenciones.
+        BigDecimal salio = gastoQueryRepository.montoEgresoRegistrado(empresaId, gasto.getId())
+                .orElseGet(() -> valorAPagar(gasto));
         if (gasto.getCuentaBancariaId() != null) {
             tesoreriaService.registrarMovimientoDeDocumento(empresaId,
                     usuarioId != null ? usuarioId.intValue() : null,
                     new TesoreriaService.MovimientoDocumento(
-                            gasto.getCuentaBancariaId(), false, gasto.getMonto(),
+                            gasto.getCuentaBancariaId(), false, salio,
                             "Reverso gasto #" + gasto.getId() + " (anulación)",
                             null, "GASTO-" + gasto.getId(), gasto.getCategoria()));
         }
@@ -369,10 +399,10 @@ public class GastoServiceImpl implements GastoService {
                         .usuario(usuario)
                         .tipo("INGRESO")
                         .concepto("Reverso gasto #" + gasto.getId() + " (anulación)")
-                        .monto(gasto.getMonto())
+                        .monto(salio)
                         // Entra hoy a la caja abierta: si el turno que pagó ya
                         // cerró, devolverle la plata no lo reabre.
-                        .fecha(java.time.LocalDate.now())
+                        .fecha(LocalDate.now())
                         .fechaDocumento(gasto.getFecha())
                         .origenTipo(MovimientoCajaEntity.ORIGEN_GASTO)
                         .origenId(gasto.getId())
@@ -389,6 +419,17 @@ public class GastoServiceImpl implements GastoService {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Lo que de verdad sale de la caja o del banco, o se le queda debiendo al
+     * tercero: valor + IVA − retenciones. Es la misma cifra que el asiento
+     * acredita; usar el valor solo dejaba el arqueo, el banco y la cuenta por
+     * pagar distintos de la contabilidad en todo gasto con IVA o retenciones.
+     */
+    private BigDecimal valorAPagar(GastoEntity g) {
+        return nvl(g.getMonto()).add(nvl(g.getValorIva()))
+                .subtract(nvl(g.getValorRetefuente())).subtract(nvl(g.getValorReteica()));
+    }
 
     private void mapCamposTributarios(CreateGastoDto dto, GastoEntity gasto) {
         // Origen de fondos (V142). El método se normaliza porque el cierre de
@@ -415,6 +456,9 @@ public class GastoServiceImpl implements GastoService {
         gasto.setBaseReteica(nvl(dto.getBaseReteica()));
         gasto.setTarifaReteica(nvl(dto.getTarifaReteica()));
         gasto.setValorReteica(nvl(dto.getValorReteica()));
+        // Sin retención no hay concepto: evita que quede colgado uno viejo.
+        gasto.setRetefuenteTarifaId(nvl(dto.getValorRetefuente()).signum() > 0 ? dto.getRetefuenteTarifaId() : null);
+        gasto.setReteicaTarifaId(nvl(dto.getValorReteica()).signum() > 0 ? dto.getReteicaTarifaId() : null);
         gasto.setTipoDocSoporte(dto.getTipoDocSoporte());
         gasto.setNumeroDocSoporte(dto.getNumeroDocSoporte());
     }
@@ -513,6 +557,8 @@ public class GastoServiceImpl implements GastoService {
         dto.setBaseReteica(g.getBaseReteica());
         dto.setTarifaReteica(g.getTarifaReteica());
         dto.setValorReteica(g.getValorReteica());
+        dto.setRetefuenteTarifaId(g.getRetefuenteTarifaId());
+        dto.setReteicaTarifaId(g.getReteicaTarifaId());
         dto.setTipoDocSoporte(g.getTipoDocSoporte());
         dto.setNumeroDocSoporte(g.getNumeroDocSoporte());
         return dto;

@@ -428,3 +428,10 @@ Siempre entregar:
 
 No digas simplemente “falta X”.
 Explica cómo encaja en el modelo y qué se debe construir.
+
+## Estado al 2026-10-08 (leer antes de auditar)
+Hecho local sin commit, ver `docs/PENDIENTES.md` y `docs/PLAN_EXCEL_IMPORTADORES_MODULOS.md` (plan 1–5 COMPLETO):
+- Excel en reportes, importadores de catálogo e inventario, devoluciones en compras, causaciones de gastos (V201), conciliación fiscal 2516/2517 (V202).
+- Firma contable (V198–V200), comprobantes manuales editables y PDF contable de comprobantes.
+- Estilo único de PDF: `aura-frontend/src/app/shared/utils/pdf-estilo.ts` (#e1e8ef / filas blanco-#dfe2e7).
+No volver a proponer como brecha lo anterior; los pendientes reales están en `docs/PENDIENTES.md`.

@@ -95,6 +95,7 @@ class CuentaPagarServiceTest {
 
         // Configurar proveedor mock
         proveedorMock = new TerceroEntity();
+        proveedorMock.setEmpresa(empresaMock); // los terceros que llegan por ID se validan contra la empresa
         proveedorMock.setId(1L);
         proveedorMock.setNombres("Pedro");
         proveedorMock.setApellidos("Gómez");
@@ -192,6 +193,7 @@ class CuentaPagarServiceTest {
     void shouldLanzarExcepcionWhenTerceroNoEsProveedor() {
         // Arrange
         TerceroEntity terceroNoProveedor = new TerceroEntity();
+        terceroNoProveedor.setEmpresa(empresaMock);
         terceroNoProveedor.setId(1L);
         terceroNoProveedor.setEsCliente(true);
         terceroNoProveedor.setEsProveedor(false);

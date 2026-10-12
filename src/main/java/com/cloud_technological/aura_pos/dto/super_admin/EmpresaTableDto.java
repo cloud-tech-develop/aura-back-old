@@ -14,6 +14,14 @@ public class EmpresaTableDto {
     private String nit;
     private Boolean activa;
     private LocalDateTime createdAt;
+    // Firma contable (V199, docs/PLAN_FIRMA_CONTABLE.md)
+    private Boolean esFirmaContable;
+    private Integer firmaContableId;
+    private String firmaContableNombre;
+    private Integer totalClientesFirma;
+    private Integer cupoGestionados;
+    private Integer totalGestionadosFirma;
+    private String firmaModalidad;
     private Integer totalSucursales;
     private Integer totalUsuarios;
     private Long totalRows;

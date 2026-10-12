@@ -154,7 +154,7 @@ class ConfiguracionEmpresaServiceTest {
         Map<String, Object> cfg = new LinkedHashMap<>();
         Map<String, Object> ok = new LinkedHashMap<>();
         ok.put("resultado", "OK");
-        cfg.put("arranque", Map.of("CONTABLE", ok));
+        cfg.put("arranque", Map.of("CONTABLE", ok, "TERCEROS", ok));
         empresa.setConfiguracion(cfg);
 
         ActualizarConfiguracionDto dto = new ActualizarConfiguracionDto();
@@ -190,7 +190,7 @@ class ConfiguracionEmpresaServiceTest {
     void inicializarSinLineasNoDeclaraPeroArrancaContable() {
         service.inicializar(empresa, List.of());
         verify(empresaRepo, never()).save(any());
-        verify(arranque).programar(eq(7), eq(Set.of(PasoArranque.CONTABLE)));
+        verify(arranque).programar(eq(7), eq(Set.of(PasoArranque.CONTABLE, PasoArranque.TERCEROS)));
         verify(moduloQuery, never()).listarPermisosPorEmpresa(isNull());
         verify(permisoService, never()).activarSubmodulos(any(), anyCollection());
     }

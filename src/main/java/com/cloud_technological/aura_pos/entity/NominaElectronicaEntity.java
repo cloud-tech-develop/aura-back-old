@@ -47,6 +47,13 @@ public class NominaElectronicaEntity {
     @JoinColumn(name = "nomina_id", nullable = false)
     private NominaEntity nomina;
 
+    /**
+     * Contrato del documento. La nómina electrónica es MENSUAL (una por contrato y
+     * mes, V224): {@code nomina} es la última nómina del mes, la que lo completó.
+     */
+    @Column(name = "contrato_id")
+    private Long contratoId;
+
     @Column(name = "agno", nullable = false)
     private Integer agno;
 

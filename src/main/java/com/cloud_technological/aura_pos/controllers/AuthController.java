@@ -51,6 +51,23 @@ public class AuthController {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Sede cambiada", false, r));
     }
 
+    /**
+     * Elige la empresa de trabajo: tras el login de quien tiene varias (token de paso)
+     * o desde "Cambiar empresa". Devuelve el token para esa empresa.
+     */
+    @PostMapping("/seleccionar-empresa")
+    public ResponseEntity<ApiResponse<LoginResponseDto>> seleccionarEmpresa(@RequestBody java.util.Map<String, Integer> body) {
+        LoginResponseDto r = authService.seleccionarEmpresa(body != null ? body.get("empresaId") : null);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Empresa seleccionada", false, r));
+    }
+
+    /** Empresas en las que puede trabajar (para "Cambiar empresa"). */
+    @org.springframework.web.bind.annotation.GetMapping("/empresas")
+    public ResponseEntity<ApiResponse<java.util.List<LoginResponseDto.EmpresaOpcionDto>>> empresas() {
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Empresas", false,
+                authService.empresasDisponibles()));
+    }
+
     @PostMapping("/register")
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public ResponseEntity<ApiResponse<Boolean>> register(@Valid @RequestBody RegisterRequestDto dto) {

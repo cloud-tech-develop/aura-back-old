@@ -126,6 +126,54 @@ public class TerceroEntity {
     @Column(name = "municipio_expedicion_id")
     private Long municipioExpedicionId;
 
+    // ── Persona natural ampliada (V211) ─────────────────────────────
+    // Los teléfonos y correos son varios: viven en tercero_telefono y
+    // tercero_correo; `telefono` y `email` guardan el primero.
+
+    /** NIT del RUT cuando es distinto del documento. */
+    @Column(name = "rut", length = 20)
+    private String rut;
+
+    @Column(name = "codigo_pais_expedicion", length = 3)
+    private String codigoPaisExpedicion;
+
+    /** SOLTERO | CASADO | UNION_LIBRE | SEPARADO | DIVORCIADO | VIUDO. */
+    @Column(name = "estado_civil", length = 20)
+    private String estadoCivil;
+
+    /** Grupo sanguíneo y factor RH (O+, AB-…). */
+    @Column(name = "rh", length = 3)
+    private String rh;
+
+    @Column(name = "codigo_pais_nacimiento", length = 3)
+    private String codigoPaisNacimiento;
+
+    @Column(name = "municipio_nacimiento_id")
+    private Long municipioNacimientoId;
+
+    /** URBANA | RURAL (residencia). */
+    @Column(name = "zona", length = 10)
+    private String zona;
+
+    @Column(name = "comuna", length = 80)
+    private String comuna;
+
+    @Column(name = "barrio", length = 80)
+    private String barrio;
+
+    /** Persona de contacto (sus teléfonos y correos van marcados de_contacto). */
+    @Column(name = "contacto_nombre", length = 150)
+    private String contactoNombre;
+
+    @Column(name = "foto_oficial_url", length = 500)
+    private String fotoOficialUrl;
+
+    @Column(name = "foto_perfil_url", length = 500)
+    private String fotoPerfilUrl;
+
+    @Column(name = "firma_url", length = 500)
+    private String firmaUrl;
+
     // ── Persona jurídica (V97) ──────────────────────────────────────
 
     /** Marca comercial, distinta de la razón social. */

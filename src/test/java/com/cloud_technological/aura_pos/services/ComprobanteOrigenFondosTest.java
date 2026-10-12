@@ -451,4 +451,71 @@ class ComprobanteOrigenFondosTest {
         verify(cuentaPagarService, never()).revertirCrucesDeDocumento(anyString(), anyInt());
         verify(movimientoCajaRepo, never()).deleteAll(any());
     }
+
+    // ── Corregir un comprobante manual ──────────────────────────────────
+
+    private AsientoContableEntity comprobanteExistente(String estadoTurno) {
+        AsientoContableEntity a = AsientoContableEntity.builder()
+                .empresaId(EMPRESA_ID)
+                .tipoOrigen("MANUAL")
+                .tipoComprobante("CE")
+                .numeroComprobante("CE-000007")
+                .estado("CONTABILIZADO")
+                .turnoCajaId(88L)
+                .detalles(new ArrayList<>())
+                .build();
+        a.setId(500L);
+        turnoAbierto.setEstado(estadoTurno);
+        when(repo.findByIdAndEmpresaId(500L, EMPRESA_ID)).thenReturn(Optional.of(a));
+        when(turnoCajaRepo.findByIdAndCajaSucursalEmpresaId(88L, EMPRESA_ID)).thenReturn(Optional.of(turnoAbierto));
+        return a;
+    }
+
+    @Test
+    @DisplayName("Corregir conserva el número, deshace la cartera y la vuelve a aplicar con el valor nuevo")
+    void corregirConservaNumeroYReaplica() {
+        AsientoContableEntity existente = comprobanteExistente("ABIERTA");
+        origenEsCaja();
+        CreateComprobanteDto dto = comprobanteEgreso();
+        dto.getDetalles().get(0).setDebito(new BigDecimal("150000"));
+        dto.getDetalles().get(1).setCredito(new BigDecimal("150000"));
+        dto.setAplicaciones(List.of(aplicacion("CXP", 42L, "150000")));
+
+        service.actualizarComprobante(500L, EMPRESA_ID, USUARIO_ID, dto);
+
+        verify(cuentaPagarService).revertirCrucesDeDocumento("Comprobante CE-000007", EMPRESA_ID);
+        verify(cuentaCobrarService).revertirCrucesDeDocumento("Comprobante CE-000007", EMPRESA_ID);
+        verify(queryRepo, never()).siguienteNumeroComprobante(anyInt(), anyString());
+        verify(cuentaPagarService).aplicarCruce(eq(42L), eq(new BigDecimal("150000")),
+                eq(EMPRESA_ID), eq(USUARIO_ID), eq("Comprobante CE-000007"), any(), eq("EFECTIVO"));
+        assertEquals("CE-000007", existente.getNumeroComprobante());
+        assertEquals(0, new BigDecimal("150000").compareTo(existente.getTotalDebito()));
+        assertEquals(2, existente.getDetalles().size(), "las líneas viejas se reemplazan, no se suman");
+    }
+
+    @Test
+    @DisplayName("Con el turno de caja cerrado no se corrige: se remite al ajuste retroactivo")
+    void corregirConTurnoCerradoSeBloquea() {
+        comprobanteExistente("CERRADA");
+        origenEsCaja();
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.actualizarComprobante(500L, EMPRESA_ID, USUARIO_ID, comprobanteEgreso()));
+
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        verify(cuentaPagarService, never()).revertirCrucesDeDocumento(anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("Corregir no cambia el tipo del comprobante")
+    void corregirNoCambiaElTipo() {
+        comprobanteExistente("ABIERTA");
+        CreateComprobanteDto dto = comprobanteEgreso();
+        dto.setTipoComprobante("RC");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.actualizarComprobante(500L, EMPRESA_ID, USUARIO_ID, dto));
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+    }
 }

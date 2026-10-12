@@ -22,6 +22,7 @@ import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQuer
 import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository.Perfil;
 import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository.SubmoduloHabilitado;
 import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository.UsuarioPerfil;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
 class PermisoUsuarioServiceTest {
 
@@ -31,12 +32,18 @@ class PermisoUsuarioServiceTest {
     private PermisoUsuarioQueryRepository query;
     private PerfilesSistemaService perfilesSistema;
     private PermisoUsuarioService service;
+    private SecurityUtils securityUtils;
+    private com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository firmaQuery;
 
     @BeforeEach
     void setUp() {
         query = mock(PermisoUsuarioQueryRepository.class);
         perfilesSistema = mock(PerfilesSistemaService.class);
-        service = new PermisoUsuarioService(query, perfilesSistema);
+        securityUtils = mock(SecurityUtils.class);
+        // Sin token (como un job): la empresa sale del usuario. Mockito daría 0.
+        when(securityUtils.getEmpresaId()).thenReturn(null);
+        firmaQuery = mock(com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.class);
+        service = new PermisoUsuarioService(query, perfilesSistema, securityUtils, firmaQuery);
         // La empresa tiene activos: ventas.cotizaciones (1), contabilidad.asientos (2), caja.usuarios (3).
         when(query.habilitadosEmpresa(EMPRESA)).thenReturn(List.of(
                 new SubmoduloHabilitado(1L, "ventas.cotizaciones"),
@@ -182,5 +189,158 @@ class PermisoUsuarioServiceTest {
         service.invalidarUsuario(2);
         service.efectivos(2);
         verify(query, times(2)).usuario(2);
+    }
+
+    // ── Aislamiento por empresa de la sesión (PLAN_FIRMA_CONTABLE F0) ──────
+
+    @Test
+    void sesionEnLaEmpresaDelUsuarioDaSusPermisos() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA);
+
+        PermisosUsuarioDto p = service.efectivos(1);
+
+        assertTrue(p.isAccesoTotal());
+        assertEquals(3, p.getPermisos().size());
+    }
+
+    @Test
+    void sesionEnOtraEmpresaNoDaPermisos() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA + 1);
+
+        PermisosUsuarioDto p = service.efectivos(1);
+
+        assertFalse(p.isAccesoTotal());
+        assertTrue(p.getPermisos().isEmpty());
+        assertTrue(p.getEspeciales().isEmpty());
+    }
+
+    @Test
+    void laCacheNoMezclaEmpresas() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA);
+        assertEquals(3, service.efectivos(1).getPermisos().size());
+
+        // Mismo usuario, la sesión ahora es de otra empresa: no reusa lo de la primera.
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA + 1);
+        assertTrue(service.efectivos(1).getPermisos().isEmpty());
+
+        // Y al volver, sigue con lo suyo.
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA);
+        assertEquals(3, service.efectivos(1).getPermisos().size());
+    }
+
+    @Test
+    void invalidarUsuarioBorraTodasSusEmpresas() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        when(securityUtils.getEmpresaId()).thenReturn(EMPRESA);
+        service.efectivos(1);
+
+        service.invalidarUsuario(1);
+        service.efectivos(1);
+
+        verify(query, times(2)).usuario(1);
+    }
+
+    @Test
+    void fueraDeUnaPeticionUsaLaEmpresaDelUsuario() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        when(securityUtils.getEmpresaId()).thenThrow(new IllegalStateException("sin token"));
+
+        assertEquals(3, service.efectivos(1).getPermisos().size());
+    }
+
+    // ── Contador externo en un cliente (PLAN_FIRMA_CONTABLE F3) ─────────────
+
+    private static final int CLIENTE = 50;
+
+    private String modalidad = "CLIENTE_PAGA";
+    private String rolEnFirma = "ADMIN";
+
+    private void accesoAlCliente(long perfilId) {
+        when(securityUtils.getEmpresaId()).thenReturn(CLIENTE);
+        when(firmaQuery.acceso(1, CLIENTE)).thenReturn(
+                new com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.AccesoCliente(
+                        9L, EMPRESA, CLIENTE, perfilId, modalidad, rolEnFirma));
+        when(query.perfil(perfilId)).thenReturn(new Perfil(perfilId, CLIENTE, "Contador externo", false, true));
+        when(query.habilitadosEmpresa(CLIENTE)).thenReturn(List.of(
+                new SubmoduloHabilitado(2L, "contabilidad.asientos-contables"),
+                new SubmoduloHabilitado(4L, "ventas.facturas")));
+        Map<Long, Boolean[]> delPerfil = new HashMap<>();
+        delPerfil.put(2L, new Boolean[] { true, true, true, true });
+        when(query.permisosPerfil(perfilId)).thenReturn(delPerfil);
+    }
+
+    @Test
+    void enElClienteUsaElPerfilDelVinculoConRolContadorExterno() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        accesoAlCliente(80L);
+
+        PermisosUsuarioDto p = service.efectivos(1);
+
+        assertEquals(PerfilesSistema.CONTADOR_EXTERNO, p.getRol());
+        assertFalse(p.isAccesoTotal());
+        assertEquals(TODAS, p.getPermisos().get("contabilidad.asientos-contables"));
+        assertFalse(p.getPermisos().containsKey("ventas.facturas"));
+        assertTrue(p.isTodasLasSedes());
+    }
+
+    @Test
+    void enElClienteNoValenLasExcepcionesDeSuFirma() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        accesoAlCliente(80L);
+        // En su firma le dieron facturas de venta por excepción: en el cliente no cuenta.
+        when(query.excepcionesUsuario(1)).thenReturn(Map.of(4L, new Boolean[] { true, true, true, true }));
+
+        assertFalse(service.efectivos(1).getPermisos().containsKey("ventas.facturas"));
+    }
+
+    @Test
+    void perfilDelVinculoDeOtraEmpresaNoDaNada() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        accesoAlCliente(80L);
+        when(query.perfil(80L)).thenReturn(new Perfil(80L, EMPRESA, "Ajeno", true, true));
+
+        assertTrue(service.efectivos(1).getPermisos().isEmpty());
+    }
+
+    @Test
+    void enUnGestionadoElAdminDeLaFirmaEntraComoAdministrador() {
+        usuario(1, "ADMIN", 10L);
+        perfil(10L, true, true);
+        modalidad = "GESTIONADO";
+        accesoAlCliente(80L);
+        when(query.perfilIdPorCodigo(CLIENTE, PerfilesSistema.ADMINISTRADOR)).thenReturn(81L);
+        when(query.perfil(81L)).thenReturn(new Perfil(81L, CLIENTE, "Administrador", true, true));
+
+        PermisosUsuarioDto p = service.efectivos(1);
+
+        assertEquals("ADMIN", p.getRol());
+        assertTrue(p.isAccesoTotal());
+        assertTrue(p.getPermisos().containsKey("ventas.facturas"));
+    }
+
+    @Test
+    void enUnGestionadoElAuxiliarSigueConContadorExterno() {
+        usuario(1, "CONTADOR", 10L);
+        perfil(10L, false, true);
+        modalidad = "GESTIONADO";
+        rolEnFirma = "CONTADOR";
+        accesoAlCliente(80L);
+
+        PermisosUsuarioDto p = service.efectivos(1);
+
+        assertEquals(PerfilesSistema.CONTADOR_EXTERNO, p.getRol());
+        assertFalse(p.getPermisos().containsKey("ventas.facturas"));
     }
 }

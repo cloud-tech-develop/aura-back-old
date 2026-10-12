@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -105,7 +106,7 @@ public class CuentaPagarServiceImpl implements CuentaPagarService {
     @Transactional
     public CuentaPagarDto crear(CreateCuentaPagarDto dto, Integer empresaId, Long usuarioId) {
         // Validar proveedor
-        TerceroEntity tercero = terceroRepository.findById(dto.getProveedorId().intValue())
+        TerceroEntity tercero = terceroRepository.findById(dto.getProveedorId().intValue()).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
         
         if (!Boolean.TRUE.equals(tercero.getEsProveedor())) {

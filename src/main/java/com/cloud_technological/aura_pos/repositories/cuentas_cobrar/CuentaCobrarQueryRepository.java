@@ -55,9 +55,10 @@ public class CuentaCobrarQueryRepository {
                 cc.fecha_vencimiento,
                 cc.total_deuda,
                 COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS total_abonado,
-                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
+                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado AS saldo_pendiente,
                 CASE 
-                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN cc.estado = 'castigada' THEN 'castigada'
+                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado <= 0 THEN 'pagada'
                     WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
@@ -131,9 +132,10 @@ public class CuentaCobrarQueryRepository {
                 cc.fecha_vencimiento,
                 cc.total_deuda,
                 COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS total_abonado,
-                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
+                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado AS saldo_pendiente,
                 CASE 
-                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN cc.estado = 'castigada' THEN 'castigada'
+                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado <= 0 THEN 'pagada'
                     WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
@@ -176,17 +178,19 @@ public class CuentaCobrarQueryRepository {
 
         if (estado != null && !estado.isEmpty()) {
             // Filtrar por estado calculado dinámicamente
-            if ("pagada".equals(estado)) {
-                sql.append(" AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) <= 0");
+            if ("castigada".equals(estado)) {
+                sql.append(" AND cc.estado = 'castigada'");
+            } else if ("pagada".equals(estado)) {
+                sql.append(" AND cc.estado <> 'castigada' AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado) <= 0");
             } else if ("vencida".equals(estado)) {
-                sql.append(" AND cc.fecha_vencimiento < NOW() AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
+                sql.append(" AND cc.fecha_vencimiento < NOW() AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado) > 0");
             } else if ("activa".equals(estado)) {
-                sql.append(" AND (cc.fecha_vencimiento IS NULL OR cc.fecha_vencimiento >= NOW()) AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
+                sql.append(" AND (cc.fecha_vencimiento IS NULL OR cc.fecha_vencimiento >= NOW()) AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado) > 0");
             } else if ("pendiente".equals(estado)) {
                 // Todo lo que todavía se debe: activa + vencida. Lo pide la
                 // pantalla de recaudo, donde filtrar por "activa" escondería
                 // justo las facturas vencidas, que son las que más se cobran.
-                sql.append(" AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0");
+                sql.append(" AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado) > 0");
             }
         }
 
@@ -292,9 +296,10 @@ public class CuentaCobrarQueryRepository {
                 cc.fecha_vencimiento,
                 cc.total_deuda,
                 COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS total_abonado,
-                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) AS saldo_pendiente,
+                cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado AS saldo_pendiente,
                 CASE 
-                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) <= 0 THEN 'pagada'
+                    WHEN cc.estado = 'castigada' THEN 'castigada'
+                    WHEN cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado <= 0 THEN 'pagada'
                     WHEN COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) > 0 THEN 'parcial'
                     WHEN cc.fecha_vencimiento < NOW() THEN 'vencida'
                     ELSE 'activa'
@@ -305,7 +310,7 @@ public class CuentaCobrarQueryRepository {
             WHERE cc.empresa_id = :empresaId
             AND cc.deleted_at IS NULL
             AND cc.fecha_vencimiento < NOW()
-            AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0)) > 0
+            AND (cc.total_deuda - COALESCE((SELECT SUM(monto) FROM abonos_cobrar WHERE cuenta_cobrar_id = cc.id AND deleted_at IS NULL), 0) - cc.valor_castigado) > 0
             ORDER BY cc.fecha_vencimiento ASC
         """;
         MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);

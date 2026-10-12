@@ -38,7 +38,7 @@ public class CarteraQueryRepository {
                                   THEN cc.saldo_pendiente ELSE 0 END), 0)                           AS cartera_por_vencer
             FROM cuentas_cobrar cc
             WHERE cc.empresa_id = :empresaId
-              AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.deleted_at IS NULL
             """;
         jdbc.query(sqlKpi, p, rs -> {
@@ -64,7 +64,7 @@ public class CarteraQueryRepository {
             FROM cuentas_cobrar cc
             WHERE cc.empresa_id = :empresaId
               AND cc.fecha_vencimiento < NOW()
-              AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.deleted_at IS NULL
             """;
         Long clientesMora = jdbc.queryForObject(sqlMora, p, Long.class);
@@ -100,7 +100,7 @@ public class CarteraQueryRepository {
             FROM cuentas_cobrar cc
             WHERE cc.empresa_id = :empresaId
               AND cc.fecha_vencimiento < NOW()
-              AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.deleted_at IS NULL
             """;
         jdbc.query(sqlEdades, p, rs -> {
@@ -144,7 +144,7 @@ public class CarteraQueryRepository {
             ) gc_last ON true
             WHERE cc.empresa_id = :empresaId
               AND cc.fecha_vencimiento < NOW()
-              AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.deleted_at IS NULL
             ORDER BY cc.saldo_pendiente DESC, diasVencida DESC
             LIMIT :limit
@@ -184,13 +184,13 @@ public class CarteraQueryRepository {
                 COUNT(*) OVER ()                                                    AS totalRows
             FROM tercero t
             JOIN cuentas_cobrar cc ON cc.tercero_id = t.id AND cc.empresa_id = :empresaId
-                AND cc.estado NOT IN ('pagada','anulada') AND cc.deleted_at IS NULL
+                AND cc.estado NOT IN ('pagada','anulada','castigada') AND cc.deleted_at IS NULL
             LEFT JOIN tercero_credito tc ON tc.tercero_id = t.id AND tc.empresa_id = :empresaId
             LEFT JOIN LATERAL (
                 SELECT SUM(c.saldo_pendiente) AS saldo_cartera
                 FROM cuentas_cobrar c
                 WHERE c.tercero_id = t.id AND c.empresa_id = :empresaId
-                  AND c.estado NOT IN ('pagada','anulada') AND c.deleted_at IS NULL
+                  AND c.estado NOT IN ('pagada','anulada','castigada') AND c.deleted_at IS NULL
             ) saldo ON true
             LEFT JOIN LATERAL (
                 SELECT
@@ -200,7 +200,7 @@ public class CarteraQueryRepository {
                 FROM cuentas_cobrar c
                 WHERE c.tercero_id = t.id AND c.empresa_id = :empresaId
                   AND c.fecha_vencimiento < NOW()
-                  AND c.estado NOT IN ('pagada','anulada') AND c.deleted_at IS NULL
+                  AND c.estado NOT IN ('pagada','anulada','castigada') AND c.deleted_at IS NULL
             ) mora ON true
             LEFT JOIN LATERAL (
                 SELECT tipo_gestion, created_at
@@ -255,7 +255,7 @@ public class CarteraQueryRepository {
             FROM cuentas_cobrar cc
             JOIN tercero t ON t.id = cc.tercero_id
             WHERE cc.empresa_id = :empresaId
-              AND cc.estado NOT IN ('pagada','anulada')
+              AND cc.estado NOT IN ('pagada','anulada','castigada')
               AND cc.deleted_at IS NULL
             GROUP BY t.id, t.razon_social, t.nombres, t.apellidos, t.numero_documento
             HAVING COALESCE(SUM(cc.saldo_pendiente), 0) > 0
@@ -273,7 +273,7 @@ public class CarteraQueryRepository {
             FROM cuentas_cobrar
             WHERE tercero_id = :terceroId
               AND empresa_id = :empresaId
-              AND estado NOT IN ('pagada','anulada')
+              AND estado NOT IN ('pagada','anulada','castigada')
               AND deleted_at IS NULL
             """;
         BigDecimal val = jdbc.queryForObject(sql,
@@ -291,7 +291,7 @@ public class CarteraQueryRepository {
             WHERE tercero_id = :terceroId
               AND empresa_id = :empresaId
               AND fecha_vencimiento < NOW()
-              AND estado NOT IN ('pagada','anulada')
+              AND estado NOT IN ('pagada','anulada','castigada')
               AND deleted_at IS NULL
             """;
         Integer val = jdbc.queryForObject(sql,

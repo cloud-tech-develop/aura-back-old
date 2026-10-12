@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.domain.PageImpl;
@@ -25,6 +26,12 @@ public interface NominaService {
     NominaDto liquidarContrato(Long periodoId, Long contratoId, Integer empresaId);
 
     void liquidarPeriodoCompleto(Long periodoId, Integer empresaId);
+
+    /**
+     * Liquida la fila de un empleado dentro de una prenómina con la fecha de
+     * liquidación del documento. Lanza la causa si no se puede liquidar.
+     */
+    void liquidarFilaDocumento(Long nominaId, LocalDate fechaLiquidacion, Integer empresaId);
     NominaDto agregarNovedad(Long nominaId, AddNovedadDto dto, Integer empresaId);
     NominaDto eliminarNovedad(Long nominaId, Long novedadId, Integer empresaId);
     NominaDto aprobar(Long id, Integer empresaId);

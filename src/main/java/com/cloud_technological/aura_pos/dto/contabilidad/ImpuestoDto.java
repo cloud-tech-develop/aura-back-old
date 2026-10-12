@@ -30,6 +30,9 @@ public class ImpuestoDto {
     private String cuentaGenerado;
     private Long cuentaDescontableId;
     private String cuentaDescontable;
+    /** A quién se le paga el impuesto (DIAN para IVA e INC). */
+    private Long terceroAcreedorId;
+    private String terceroAcreedor;
     private LocalDate vigenteDesde;
     private LocalDate vigenteHasta;
     private Boolean activo;

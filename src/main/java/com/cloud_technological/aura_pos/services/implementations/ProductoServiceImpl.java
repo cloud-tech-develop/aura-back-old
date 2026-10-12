@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -100,6 +101,10 @@ public class ProductoServiceImpl implements ProductoService {
     @Transactional
     public ProductoDto crear(CreateProductoDto dto, Integer empresaId) {
 
+        if(dto.getSku() != null && !dto.getSku().isBlank() && productoRepository.existeSku(dto.getSku(), empresaId)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El SKU ya está registrado");
+        }
+
         if (dto.getCodigoBarras() != null && !dto.getCodigoBarras().isBlank() &&
                 productoRepository.existeCodigoBarras(dto.getCodigoBarras(), empresaId)) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está registrado");
@@ -148,6 +153,10 @@ public class ProductoServiceImpl implements ProductoService {
     public ProductoDto actualizar(Long id, UpdateProductoDto dto, Integer empresaId) {
         ProductoEntity entity = productoJPARepository.findByIdAndEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+
+        if(dto.getSku() != null && !dto.getSku().isBlank() && productoRepository.existeSkuExcluyendo(dto.getSku(), empresaId, id)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El SKU ya está registrado en otro producto");
+        }
 
         // Validar código de barras duplicado excluyendo el actual
         if (dto.getCodigoBarras() != null && !dto.getCodigoBarras().isBlank() &&
@@ -224,7 +233,7 @@ public class ProductoServiceImpl implements ProductoService {
 
     /** Precios y costo comparables (sin ceros de escala) para la bitácora. */
     private static java.util.Map<String, Object> preciosDe(ProductoEntity p) {
-        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Object> m = new LinkedHashMap<>();
         m.put("precio", plano(p.getPrecio()));
         m.put("precio2", plano(p.getPrecio2()));
         m.put("precio3", plano(p.getPrecio3()));

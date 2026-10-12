@@ -35,7 +35,8 @@ public class TableroCarteraQueryRepository {
      * Foto mensual reconstruida hacia atrás desde el saldo de hoy: al saldo
      * actual se le suman los pagos (abonos y cruces de anticipo) fechados después
      * del corte. Así el mes en curso cuadra exacto con las cuentas, aunque haya
-     * cuentas con total_abonado desalineado.
+     * cuentas con total_abonado desalineado. El castigo también baja el saldo,
+     * pero no es recaudo: entra a la foto y no al pagado del mes.
      */
     public List<TableroMesDto> meses(Integer empresaId, int meses) {
         String sql = "WITH " + CUENTAS + """
@@ -46,14 +47,19 @@ public class TableroCarteraQueryRepository {
                 FROM generate_series(date_trunc('month', CURRENT_DATE) - (:meses - 1) * INTERVAL '1 month',
                                      date_trunc('month', CURRENT_DATE), INTERVAL '1 month') m
             ), movs AS (
-                SELECT a.cuenta_cobrar_id AS cuenta_id, a.fecha_pago::date AS fecha, a.monto
+                SELECT a.cuenta_cobrar_id AS cuenta_id, a.fecha_pago::date AS fecha, a.monto, TRUE AS pago
                 FROM abonos_cobrar a
                 JOIN cuentas c ON c.id = a.cuenta_cobrar_id
                 WHERE a.deleted_at IS NULL
                 UNION ALL
-                SELECT x.cuenta_cobrar_id, x.fecha, x.monto
+                SELECT x.cuenta_cobrar_id, x.fecha, x.monto, TRUE
                 FROM anticipo_cruce x
                 JOIN cuentas c ON c.id = x.cuenta_cobrar_id
+                UNION ALL
+                SELECT k.cuenta_cobrar_id, k.fecha, k.valor, FALSE
+                FROM cartera_castigo k
+                JOIN cuentas c ON c.id = k.cuenta_cobrar_id
+                WHERE k.estado = 'CASTIGADO'
             ), fotos AS (
                 SELECT m.inicio, m.fin, m.corte, c.id, c.vence, c.emision, c.total_deuda,
                        GREATEST(c.saldo + COALESCE((SELECT SUM(v.monto) FROM movs v
@@ -63,7 +69,7 @@ public class TableroCarteraQueryRepository {
                                  WHERE v.cuenta_id = c.id AND v.fecha >= m.inicio), 0), 0)
                             ELSE c.total_deuda END AS saldo_inicio,
                        COALESCE((SELECT SUM(v.monto) FROM movs v
-                                 WHERE v.cuenta_id = c.id AND v.fecha BETWEEN m.inicio AND m.corte), 0) AS pagado_mes
+                                 WHERE v.cuenta_id = c.id AND v.pago AND v.fecha BETWEEN m.inicio AND m.corte), 0) AS pagado_mes
                 FROM meses m
                 JOIN cuentas c ON c.emision <= m.corte
             )

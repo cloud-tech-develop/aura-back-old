@@ -57,6 +57,67 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    // ── Firma contable (docs/PLAN_FIRMA_CONTABLE.md, F3) ─────────────────────
+
+    /** Claim del token de paso: solo sirve para elegir la empresa. */
+    public static final String SCOPE_SELECCION = "SELECCION_EMPRESA";
+    private static final long PASO_MS = 2 * 60 * 1000L;
+
+    /**
+     * Token de un usuario de una firma trabajando en un cliente: además de lo normal
+     * lleva el vínculo (se revisa en cada petición) y la firma de origen.
+     */
+    public String generateTokenCliente(String username, Integer empresaId, Long sucursalId, String rol,
+            Long usuarioId, Integer tokenVersion, Long vinculoId, Integer firmaId) {
+        Date ahora = new Date();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("empresaId", empresaId);
+        claims.put("sucursalId", sucursalId);
+        claims.put("rol", rol);
+        claims.put("usuarioId", usuarioId);
+        claims.put("tv", tokenVersion != null ? tokenVersion : 0);
+        claims.put("vinculoId", vinculoId);
+        claims.put("firmaId", firmaId);
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(username)
+                .setIssuedAt(ahora)
+                .setExpiration(new Date(ahora.getTime() + jwtExpirationDate))
+                .signWith(key(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /**
+     * Token de paso tras el login de quien tiene varias empresas: sin empresa, dura
+     * {@value #PASO_MS} ms y el filtro solo lo deja usar para elegir la empresa.
+     */
+    public String generateTokenSeleccion(String username, Long usuarioId, Integer tokenVersion) {
+        Date ahora = new Date();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("usuarioId", usuarioId);
+        claims.put("tv", tokenVersion != null ? tokenVersion : 0);
+        claims.put("scope", SCOPE_SELECCION);
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(username)
+                .setIssuedAt(ahora)
+                .setExpiration(new Date(ahora.getTime() + PASO_MS))
+                .signWith(key(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /** null en los tokens normales; {@link #SCOPE_SELECCION} en el de paso. */
+    public String getScope(String token) {
+        Object v = getClaims(token).get("scope");
+        return v == null ? null : v.toString();
+    }
+
+    /** Vínculo firma→cliente; null si el usuario trabaja en su propia empresa. */
+    public Long getVinculoId(String token) {
+        Object v = getClaims(token).get("vinculoId");
+        return v == null ? null : Long.valueOf(v.toString());
+    }
+
     private Key key() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
     }

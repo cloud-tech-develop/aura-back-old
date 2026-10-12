@@ -41,6 +41,10 @@ public class ExogenaMapeoCuentaEntity {
     @Column(name = "tipo_valor", nullable = false, length = 20)
     private String tipoValor;
 
+    /** Columna de valor del formato a la que va (null = la principal). */
+    @Column(length = 30)
+    private String columna;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

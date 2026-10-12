@@ -166,6 +166,25 @@ public class ContabilidadController {
                 .body(new ApiResponse<>(201, "Comprobante creado", false, created));
     }
 
+    /** Comprobante manual para el formulario de edición (dice si se puede corregir y por qué no). */
+    @GetMapping("/comprobantes/{id}")
+    public ResponseEntity<ApiResponse<com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto>>
+            obtenerComprobante(@PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
+                asientoService.obtenerComprobanteEdicion(id, securityUtils.getEmpresaId())));
+    }
+
+    /** Corrige un comprobante manual: mismo número, valores nuevos. */
+    @PutMapping("/comprobantes/{id}")
+    public ResponseEntity<ApiResponse<AsientoContableTableDto>> actualizarComprobante(
+            @PathVariable Long id, @Valid @RequestBody CreateComprobanteDto dto) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        Integer usuarioId = securityUtils.getUsuarioId() != null
+                ? securityUtils.getUsuarioId().intValue() : null;
+        return ResponseEntity.ok(new ApiResponse<>(200, "Comprobante corregido", false,
+                asientoService.actualizarComprobante(id, empresaId, usuarioId, dto)));
+    }
+
     @GetMapping("/comprobantes/siguiente")
     public ResponseEntity<ApiResponse<String>> siguienteConsecutivo(
             @RequestParam(defaultValue = "CD") String tipo) {

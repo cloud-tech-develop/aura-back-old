@@ -25,4 +25,10 @@ public interface EmpresaPlataformaService {
     void suspender(Integer id);
 
     void activar(Integer id);
+
+    /** Deja a {@code firmaEmpresaId} como la firma contable de la empresa; null la quita (V199). */
+    EmpresaPlataformaDto asignarFirmaContable(Integer id, Integer firmaEmpresaId);
+
+    /** Firmas contables activas para el buscador. */
+    java.util.List<com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.EmpresaDisponible> firmasContables(String texto);
 }

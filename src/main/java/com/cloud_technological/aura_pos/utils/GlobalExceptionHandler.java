@@ -27,6 +27,9 @@ public class GlobalExceptionHandler {
 	@Autowired(required = false)
 	private ErrorLogService errorLogService;
 
+	@Autowired(required = false)
+	private SecurityUtils securityUtils;
+
 	@ExceptionHandler(GlobalException.class)
 	public ResponseEntity<?> handleGlobalException(GlobalException ex, HttpServletRequest request) {
 		registrarError(ex.getStatus().value(), ex.getMessage(), null, request);
@@ -155,6 +158,16 @@ public class GlobalExceptionHandler {
 		return builder.body(response);
 	}
 
+	/** La empresa del token; null si no hay o no se puede leer (token vencido o inválido). */
+	private Integer empresaDelToken() {
+		if (securityUtils == null) return null;
+		try {
+			return securityUtils.getEmpresaId();
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
 	// ── Registro asíncrono de error ───────────────────────────
 	private void registrarError(int status, String mensaje, String detalle, HttpServletRequest request) {
 		if (errorLogService == null) return;
@@ -166,7 +179,10 @@ public class GlobalExceptionHandler {
 			String metodo   = request != null ? request.getMethod()      : "UNKNOWN";
 			String endpoint = request != null ? request.getRequestURI()  : "unknown";
 			String ip       = request != null ? request.getRemoteAddr()  : null;
-			errorLogService.registrarAsync(metodo, endpoint, status, mensaje, detalle, username, ip);
+			// La empresa se lee aquí, en el hilo de la petición: el registro es
+			// asíncrono y allá ya no hay token.
+			Integer empresaId = empresaDelToken();
+			errorLogService.registrarAsync(metodo, endpoint, status, mensaje, detalle, username, ip, empresaId);
 		} catch (Exception ignored) {
 			// Silencioso — nunca debe romper la respuesta al cliente
 		}

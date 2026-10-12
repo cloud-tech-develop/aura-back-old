@@ -1,6 +1,6 @@
 # Plan: línea "Contabilidad" que sí factura
 
-**Fecha:** 2026-10-07 · **Estado:** propuesto, sin implementar · Continúa `docs/PLAN_PERFIL_EMPRESA.md`
+**Fecha:** 2026-10-07 · **Estado:** implementado 2026-10-09 (local, sin commit) · Continúa `docs/PLAN_PERFIL_EMPRESA.md`
 
 ## Por qué
 
@@ -73,3 +73,23 @@ Que `CONTABILIDAD` sirva para una empresa de servicios u oficina que factura, co
 - Se corrigió el 409 al crear empresa (`empresa.configuracion` se guarda como texto JSON). Falta **reintentar la
   creación** de la empresa `900452123` y seguir las 7 pruebas de `docs/PLAN_PERFIL_EMPRESA.md`.
 - Nada de esto tiene commit todavía (back y front).
+
+## Cómo quedó (2026-10-09)
+
+- **Plantilla** (`LineaUso.CONTABILIDAD`): suma `compras.compras`, `ventas.facturas`, `ventas.notas-credito/debito`,
+  `ventas.cotizaciones`, `catalogo.productos`, `catalogo.categorias`, `catalogo.unidades` y
+  `reportes.facturacion-electronica`. Sin `principal.*`, `inventario.*`, `precios.*` ni marcas/presentaciones.
+- **Mínimos**: sin cambio (plan de cuentas y notas contables).
+- **Producto sin inventario**: verificado en código. La clasificación `SERVICIO` apaga inventario, lotes y seriales
+  (`ProductoServiceImpl.aplicarClasificacion`); el formulario no llama a inventario ni a listas de precios, y las
+  lecturas de marcas/unidades/categorías están en `PermisoRutas.LECTURA_LIBRE`.
+- **Factura sin inventario**: verificado en código. `VentaServiceImpl` solo toca stock y kardex si
+  `maneja_inventario`; la bodega se resuelve con la principal de la sede, que toda sede crea al nacer
+  (también la de los gestionados).
+- **Puesta en marcha**: el grupo de productos aparece siempre que la empresa tenga la línea Contabilidad. Sin POS ni
+  Comercial se llama "Facturación" (código `FACTURACION`) y pide "Servicios o productos creados" y, si tiene
+  facturación electrónica, el rango de Factus.
+- **Pruebas**: `LineaUsoTest` (3) + `ConfiguracionEmpresaServiceTest` (9) en verde.
+- **Manual**: Inicio → "Un tablero por línea de uso" explica que Contabilidad factura servicios.
+- **Empresas existentes**: editarlas y guardar con "completar módulos" suma las pantallas nuevas. Sin migración.
+- No probado en navegador.

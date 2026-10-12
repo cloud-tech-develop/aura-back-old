@@ -33,6 +33,13 @@ public class CreateCompraDto {
     private java.math.BigDecimal retefuentePct;
     private java.math.BigDecimal reteivaPct;
     private java.math.BigDecimal reteicaPct;
+    /**
+     * Tarifa (concepto) de cada retención. Obligatoria si su porcentaje es
+     * mayor que cero: de ella sale la cuenta del asiento (honorarios ≠ compras).
+     */
+    private Long retefuenteTarifaId;
+    private Long reteivaTarifaId;
+    private Long reteicaTarifaId;
 
     // Forma de pago
     private String formaPago; // CONTADO | CREDITO

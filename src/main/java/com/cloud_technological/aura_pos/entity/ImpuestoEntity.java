@@ -44,6 +44,10 @@ public class ImpuestoEntity {
     @Column(name = "cuenta_descontable_id")
     private Long cuentaDescontableId;
 
+    /** A quién se le paga (DIAN para IVA e INC). V204. */
+    @Column(name = "tercero_acreedor_id")
+    private Long terceroAcreedorId;
+
     @Column(name = "vigente_desde")
     private LocalDate vigenteDesde;
 

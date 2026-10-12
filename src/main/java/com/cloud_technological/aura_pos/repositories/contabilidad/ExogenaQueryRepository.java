@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.repositories.contabilidad;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -10,6 +11,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.cloud_technological.aura_pos.dto.contabilidad.CuentaTerceroMovimientoDto;
+import com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.Clasificador2276;
+import com.cloud_technological.aura_pos.contabilidad.infrastructure.exogena.ExogenaExcelExporter;
 import com.cloud_technological.aura_pos.dto.contabilidad.TerceroExogenaDto;
 
 /**
@@ -102,10 +105,13 @@ public class ExogenaQueryRepository {
             return List.of();
         }
         String sql = """
-            SELECT id, tipo_documento, numero_documento, dv, razon_social,
-                   nombres, apellidos, direccion, municipio
-            FROM tercero
-            WHERE empresa_id = :empresaId AND id IN (:ids)
+            SELECT t.id, t.tipo_documento, t.numero_documento, t.dv, t.razon_social,
+                   t.nombres, t.apellidos, t.direccion, t.municipio,
+                   t.nombre1, t.nombre2, t.apellido1, t.apellido2, t.tipo_persona,
+                   m.codigo AS codigo_dane, t.codigo_pais
+            FROM tercero t
+            LEFT JOIN municipios m ON m.id = t.municipio_id
+            WHERE t.empresa_id = :empresaId AND t.id IN (:ids)
             """;
         return jdbc.query(sql,
                 new MapSqlParameterSource()
@@ -120,6 +126,101 @@ public class ExogenaQueryRepository {
                         rs.getString("nombres"),
                         rs.getString("apellidos"),
                         rs.getString("direccion"),
-                        rs.getString("municipio")));
+                        rs.getString("municipio"),
+                        rs.getString("nombre1"),
+                        rs.getString("nombre2"),
+                        rs.getString("apellido1"),
+                        rs.getString("apellido2"),
+                        rs.getString("tipo_persona"),
+                        rs.getString("codigo_dane"),
+                        rs.getString("codigo_pais")));
+    }
+
+    /** Lo pagado de un concepto a un empleado (tercero) en el año, para el 2276. */
+    public record PagoNomina(Long terceroId, Long empleadoId, String empleadoNombre,
+                             Clasificador2276.Pago pago) {
+    }
+
+    /**
+     * Pagos de nómina del año por empleado y concepto (formato 2276): nóminas
+     * confirmadas (aprobadas o pagadas, no prenómina) cuyo período termina en el año.
+     */
+    public List<PagoNomina> pagosNominaDelAnio(Integer empresaId, int anio) {
+        String sql = """
+            SELECT e.tercero_id, e.id AS empleado_id,
+                   CONCAT(e.nombres, ' ', e.apellidos) AS empleado,
+                   c.codigo, c.codigo_dian, c.clase, c.constituye_ibc,
+                   COALESCE(t.clase, 'PERIODICO') AS clase_documento,
+                   SUM(nd.valor) AS valor
+            FROM nomina n
+            JOIN periodo_nomina p ON p.id = n.periodo_id
+            JOIN empleados e ON e.id = n.empleado_id
+            JOIN nomina_detalle nd ON nd.nomina_id = n.id
+            JOIN concepto_nomina c ON c.id = nd.concepto_id
+            LEFT JOIN nomina_documento d ON d.id = n.documento_id
+            LEFT JOIN nomina_tipo_comprobante t ON t.id = d.tipo_comprobante_id
+            WHERE n.empresa_id = :empresaId
+              AND n.es_prenomina = FALSE
+              AND n.estado IN ('APROBADO', 'PAGADO')
+              AND p.fecha_fin BETWEEN CAST(:desde AS DATE) AND CAST(:hasta AS DATE)
+              AND c.clase IN ('DEVENGADO', 'DEDUCCION')
+            GROUP BY e.tercero_id, e.id, e.nombres, e.apellidos, c.codigo, c.codigo_dian, c.clase,
+                     c.constituye_ibc, COALESCE(t.clase, 'PERIODICO')
+            """;
+        return jdbc.query(sql, Map.of("empresaId", empresaId, "desde", anio + "-01-01", "hasta", anio + "-12-31"),
+                (rs, i) -> new PagoNomina(
+                        rs.getObject("tercero_id") != null ? rs.getLong("tercero_id") : null,
+                        rs.getLong("empleado_id"),
+                        rs.getString("empleado"),
+                        new Clasificador2276.Pago(rs.getString("codigo"), rs.getString("codigo_dian"),
+                                rs.getString("clase"), rs.getBoolean("constituye_ibc"),
+                                rs.getString("clase_documento"), rs.getBigDecimal("valor"))));
+    }
+
+    /** Cuenta contable de cada cuenta bancaria → tercero del banco (formato 1012). */
+    public Map<String, Long> bancoPorCuentaContable(Integer empresaId) {
+        String sql = """
+            SELECT pc.codigo, cb.tercero_id
+            FROM cuenta_bancaria cb
+            JOIN plan_cuenta pc ON pc.id = cb.cuenta_contable_id
+            WHERE cb.empresa_id = :empresaId
+              AND cb.tercero_id IS NOT NULL
+            """;
+        Map<String, Long> out = new HashMap<>();
+        jdbc.query(sql, Map.of("empresaId", empresaId),
+                rs -> { out.putIfAbsent(rs.getString("codigo"), rs.getLong("tercero_id")); });
+        return out;
+    }
+
+    /**
+     * Dirección y municipio DANE del informante (la empresa): la DIAN los pide en la
+     * fila de cuantías menores. La dirección es la de su primera sede con dirección.
+     */
+    public ExogenaExcelExporter.Informante informante(Integer empresaId) {
+        String sql = """
+            SELECT (SELECT s.direccion FROM sucursal s
+                     WHERE s.empresa_id = e.id AND s.direccion IS NOT NULL AND s.direccion <> ''
+                     ORDER BY s.id LIMIT 1) AS direccion,
+                   m.codigo AS codigo_dane
+            FROM empresa e
+            LEFT JOIN municipios m ON m.id = e.municipio_id
+            WHERE e.id = :id
+            """;
+        List<ExogenaExcelExporter.Informante> r = jdbc.query(sql, Map.of("id", empresaId),
+                (rs, i) -> new ExogenaExcelExporter.Informante(rs.getString("direccion"), rs.getString("codigo_dane")));
+        return r.isEmpty() ? new ExogenaExcelExporter.Informante(null, null) : r.get(0);
+    }
+
+    /** Tipo de persona del informante (NATURAL | JURIDICA). */
+    public String tipoPersonaEmpresa(Integer empresaId) {
+        List<String> r = jdbc.queryForList("SELECT tipo_persona FROM empresa WHERE id = :id",
+                Map.of("id", empresaId), String.class);
+        return r.isEmpty() || r.get(0) == null ? "JURIDICA" : r.get(0);
+    }
+
+    /** Cambia el tipo de persona del informante. */
+    public void cambiarTipoPersonaEmpresa(Integer empresaId, String tipoPersona) {
+        jdbc.update("UPDATE empresa SET tipo_persona = :tp WHERE id = :id",
+                Map.of("tp", tipoPersona, "id", empresaId));
     }
 }

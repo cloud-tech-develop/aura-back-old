@@ -17,6 +17,7 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.AnticipoCruceJ
 import com.cloud_technological.aura_pos.repositories.contabilidad.AnticipoJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_pagar.CuentaPagarJPARepository;
+import com.cloud_technological.aura_pos.services.cartera.CastigoCarteraService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -113,6 +114,7 @@ public class AnticipoService {
                             "Cuenta por cobrar no encontrada"));
             validarTercero(anticipo.getTerceroId(),
                     cxc.getTercero() != null ? cxc.getTercero().getId() : null);
+            CastigoCarteraService.exigirNoCastigada(cxc);
             if (monto.compareTo(cxc.getSaldoPendiente()) > 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "El monto supera el saldo pendiente de la factura ("

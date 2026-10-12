@@ -71,6 +71,8 @@ public class GastoDto {
     private BigDecimal baseReteica;
     private BigDecimal tarifaReteica;
     private BigDecimal valorReteica;
+    private Long retefuenteTarifaId;
+    private Long reteicaTarifaId;
     private String tipoDocSoporte;
     private String numeroDocSoporte;
 }

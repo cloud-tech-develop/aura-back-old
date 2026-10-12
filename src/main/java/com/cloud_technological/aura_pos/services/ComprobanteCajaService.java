@@ -57,4 +57,7 @@ public interface ComprobanteCajaService {
      * normales.
      */
     void anularDeDocumento(Integer empresaId, String origen, Long origenId, String motivo);
+
+    /** Cuentas contables del comprobante (el asiento de su documento); null si no tiene asiento. */
+    com.cloud_technological.aura_pos.dto.comprobante.ComprobanteContableDto contable(Long id, Integer empresaId);
 }

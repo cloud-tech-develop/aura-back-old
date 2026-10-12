@@ -68,10 +68,10 @@ public class NominaConfigEntity {
 
     /** B-10 — apoyo de sostenimiento del aprendiz como % del SMMLV, por fase. */
     @Column(name = "aprendiz_pct_lectiva", nullable = false, precision = 5, scale = 2)
-    private BigDecimal aprendizPctLectiva = new BigDecimal("50.00");
+    private BigDecimal aprendizPctLectiva = new BigDecimal("75.00");
 
     @Column(name = "aprendiz_pct_practica", nullable = false, precision = 5, scale = 2)
-    private BigDecimal aprendizPctPractica = new BigDecimal("75.00");
+    private BigDecimal aprendizPctPractica = new BigDecimal("100.00");
 
     // ── Topes y exoneraciones (V107) ────────────────────────────────────────
     // Parametrizado por empresa, no hardcodeado: la exoneración depende del

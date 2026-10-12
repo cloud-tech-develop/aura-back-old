@@ -17,6 +17,7 @@ import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQuer
 import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository.SubmoduloHabilitado;
 import com.cloud_technological.aura_pos.repositories.permisos.PermisoUsuarioQueryRepository.UsuarioPerfil;
 import com.cloud_technological.aura_pos.utils.PoliticaRoles;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,9 +31,15 @@ import lombok.RequiredArgsConstructor;
  * empresa no quede sin nadie que pueda arreglar los permisos. PLATFORM_ADMIN no
  * depende de perfiles.
  *
- * <p>Se guarda en caché unos minutos por usuario: lo consultan el menú (P2) y,
- * más adelante, cada petición al API (P3). Quien cambie perfiles, excepciones o
- * módulos de la empresa debe llamar a {@link #invalidarUsuario} o {@link #invalidarTodo}.
+ * <p>Se guarda en caché unos minutos por usuario y empresa de la sesión: lo
+ * consultan el menú (P2) y cada petición al API (P3). Quien cambie perfiles,
+ * excepciones o módulos de la empresa debe llamar a {@link #invalidarUsuario} o
+ * {@link #invalidarTodo}.
+ *
+ * <p>La empresa es la del token, no la del usuario: un usuario de una firma
+ * contable trabaja en empresas cliente (docs/PLAN_FIRMA_CONTABLE.md): ahí valen el
+ * perfil del vínculo ("Contador externo"), sin las excepciones ni los límites que el
+ * usuario tenga en su firma. Sin acceso vigente, una sesión en otra empresa no tiene permisos.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,16 +54,30 @@ public class PermisoUsuarioService {
 
     private final PermisoUsuarioQueryRepository query;
     private final PerfilesSistemaService perfilesSistema;
+    private final SecurityUtils securityUtils;
+    private final com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository firmaQuery;
 
-    private final Map<Integer, Entrada> cache = new ConcurrentHashMap<>();
+    /** Llave "usuarioId:empresaId" (empresa de la sesión; "-" fuera de una petición). */
+    private final Map<String, Entrada> cache = new ConcurrentHashMap<>();
 
     public PermisosUsuarioDto efectivos(Integer usuarioId) {
         if (usuarioId == null) return new PermisosUsuarioDto();
-        Entrada e = cache.get(usuarioId);
+        Integer empresaSesion = empresaDeLaSesion();
+        String llave = usuarioId + ":" + (empresaSesion != null ? empresaSesion : "-");
+        Entrada e = cache.get(llave);
         if (e != null && e.expira() > System.currentTimeMillis()) return e.permisos();
-        PermisosUsuarioDto calculado = calcular(usuarioId);
-        cache.put(usuarioId, new Entrada(calculado, System.currentTimeMillis() + TTL_MS));
+        PermisosUsuarioDto calculado = calcular(usuarioId, empresaSesion);
+        cache.put(llave, new Entrada(calculado, System.currentTimeMillis() + TTL_MS));
         return calculado;
+    }
+
+    /** La empresa del token; null fuera de una petición (jobs, eventos) o si no se puede leer. */
+    private Integer empresaDeLaSesion() {
+        try {
+            return securityUtils.getEmpresaId();
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     /** ¿Puede el usuario hacer esta acción en el submódulo {@code modulo.submodulo}? */
@@ -119,19 +140,26 @@ public class PermisoUsuarioService {
     }
 
     public void invalidarUsuario(Integer usuarioId) {
-        if (usuarioId != null) cache.remove(usuarioId);
+        if (usuarioId == null) return;
+        String prefijo = usuarioId + ":";
+        cache.keySet().removeIf(k -> k.startsWith(prefijo));
     }
 
     public void invalidarTodo() {
         cache.clear();
     }
 
-    private PermisosUsuarioDto calcular(Integer usuarioId) {
+    private PermisosUsuarioDto calcular(Integer usuarioId, Integer empresaSesion) {
         PermisosUsuarioDto dto = new PermisosUsuarioDto();
         dto.setUsuarioId(usuarioId);
         UsuarioPerfil u = query.usuario(usuarioId);
         if (u == null) return dto;
         dto.setRol(u.rol());
+        // Sesión en una empresa que no es la del usuario: solo con el vínculo de su firma.
+        if (empresaSesion != null && u.empresaId() != null && !empresaSesion.equals(u.empresaId())
+                && !PoliticaRoles.PLATFORM_ADMIN.equals(u.rol())) {
+            return comoContadorExterno(dto, usuarioId, empresaSesion);
+        }
 
         if (PoliticaRoles.PLATFORM_ADMIN.equals(u.rol())) {
             dto.setAccesoTotal(true);
@@ -148,11 +176,63 @@ public class PermisoUsuarioService {
             dto.setAccesoTotal(perfil.accesoTotal());
         }
 
+        llenar(dto, perfil, u.empresaId(), query.excepcionesUsuario(usuarioId),
+                PoliticaRoles.SUPER_ADMIN.equals(u.rol()));
+        especiales(dto, perfil, usuarioId, u.empresaId());
+        limites(dto, perfil, usuarioId);
+        return dto;
+    }
+
+    /**
+     * Usuario de una firma contable en un cliente: el perfil del vínculo y nada más
+     * (sus excepciones, especiales y límites son de la firma). Todas las sedes: el
+     * cliente no le asigna sedes. Rol {@code CONTADOR_EXTERNO}.
+     */
+    private PermisosUsuarioDto comoContadorExterno(PermisosUsuarioDto dto, Integer usuarioId, Integer empresaId) {
+        var acceso = firmaQuery.acceso(usuarioId, empresaId);
+        if (acceso == null) return dto;
+        // Cliente gestionado (V200): los administradores de la firma lo administran con el
+        // perfil Administrador del cliente. Los demás, con el del vínculo ("Contador externo").
+        Long perfilId = acceso.administraElCliente() ? perfilAdministrador(empresaId) : acceso.perfilId();
+        if (perfilId == null) return dto;
+        Perfil perfil = query.perfil(perfilId);
+        if (perfil == null || !perfil.activo() || !empresaId.equals(perfil.empresaId())) return dto;
+
+        dto.setRol(acceso.administraElCliente() ? "ADMIN" : PerfilesSistema.CONTADOR_EXTERNO);
+        dto.setPerfilId(perfil.id());
+        dto.setPerfilNombre(perfil.nombre());
+        dto.setAccesoTotal(perfil.accesoTotal());
+        llenar(dto, perfil, empresaId, Map.of(), false);
+        especiales(dto, perfil, null, empresaId);
+        LimitesPerfil lp = query.limitesPerfil(perfil.id());
+        dto.setDescuentoMaxPct(perfil.accesoTotal() || lp == null ? null : lp.descuentoMaxPct());
+        dto.setRebajaPrecioMaxPct(perfil.accesoTotal() || lp == null ? null : lp.rebajaPrecioMaxPct());
+        dto.setTodasLasSedes(true);
+        return dto;
+    }
+
+    /** El perfil Administrador (de sistema) de la empresa; se crea si falta. */
+    private Long perfilAdministrador(Integer empresaId) {
+        Long id = query.perfilIdPorCodigo(empresaId, PerfilesSistema.ADMINISTRADOR);
+        if (id == null) {
+            try {
+                perfilesSistema.asegurar(empresaId);
+            } catch (DataIntegrityViolationException carrera) {
+                // Otra petición los creó al mismo tiempo: basta con volver a leer.
+            }
+            id = query.perfilIdPorCodigo(empresaId, PerfilesSistema.ADMINISTRADOR);
+        }
+        return id;
+    }
+
+    /** Acciones por submódulo: perfil (o acceso total) ± excepciones, sobre lo que la empresa tiene activo. */
+    private void llenar(PermisosUsuarioDto dto, Perfil perfil, Integer empresaId, Map<Long, Boolean[]> excepciones,
+            boolean superAdmin) {
         Map<Long, Boolean[]> base = perfil != null && !perfil.accesoTotal()
                 ? query.permisosPerfil(perfil.id()) : Map.of();
-        Map<Long, Boolean[]> excepciones = query.excepcionesUsuario(usuarioId);
+        excepciones = nulo(excepciones);
 
-        for (SubmoduloHabilitado s : query.habilitadosEmpresa(u.empresaId())) {
+        for (SubmoduloHabilitado s : query.habilitadosEmpresa(empresaId)) {
             Boolean[] delPerfil = perfil == null ? null
                     : perfil.accesoTotal() ? new Boolean[] { true, true, true, true } : base.get(s.id());
             Boolean[] exc = excepciones.get(s.id());
@@ -163,14 +243,11 @@ public class PermisoUsuarioService {
                         : delPerfil != null && Boolean.TRUE.equals(delPerfil[i]);
                 if (v) acciones.add(orden[i].name());
             }
-            if (PoliticaRoles.SUPER_ADMIN.equals(u.rol()) && CLAVES_SUPER_ADMIN.contains(s.clave())) {
+            if (superAdmin && CLAVES_SUPER_ADMIN.contains(s.clave())) {
                 acciones = TODAS;
             }
             if (!acciones.isEmpty()) dto.getPermisos().put(s.clave(), List.copyOf(acciones));
         }
-        especiales(dto, perfil, usuarioId, u.empresaId());
-        limites(dto, perfil, usuarioId);
-        return dto;
     }
 
     /**
@@ -182,7 +259,8 @@ public class PermisoUsuarioService {
         if (catalogo.isEmpty()) return;
         Map<Long, Boolean> delPerfil = perfil != null && !perfil.accesoTotal()
                 ? nulo(query.especialesPerfil(perfil.id())) : Map.of();
-        Map<Long, Boolean> delUsuario = nulo(query.especialesUsuario(usuarioId));
+        // usuarioId null = sin excepciones de usuario (contador externo en un cliente).
+        Map<Long, Boolean> delUsuario = usuarioId != null ? nulo(query.especialesUsuario(usuarioId)) : Map.of();
         for (AccionEspecial a : catalogo) {
             List<String> base = dto.getPermisos().get(a.clave());
             if (base == null) continue;

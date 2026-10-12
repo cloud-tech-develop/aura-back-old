@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.web.multipart.MultipartFile;
+import com.cloud_technological.aura_pos.services.terceros.TerceroDatosPersonalesService;
 import com.cloud_technological.aura_pos.dto.terceros.CreateTerceroDto;
 import com.cloud_technological.aura_pos.dto.terceros.EstadoCuentaClienteDto;
 import com.cloud_technological.aura_pos.dto.terceros.TerceroDto;
@@ -48,6 +50,9 @@ public class TerceroController {
 
     @Autowired
     private EstadoCuentaPdfService estadoCuentaPdfService;
+
+    @Autowired
+    private TerceroDatosPersonalesService datosPersonales;
 
     @PostMapping("/page")
     public ResponseEntity<ApiResponse<PageImpl<TerceroTableDto>>> listar(
@@ -129,6 +134,24 @@ public class TerceroController {
         Integer empresaId = securityUtils.getEmpresaId();
         terceroService.eliminar(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Tercero eliminado correctamente", false, true), HttpStatus.OK);
+    }
+
+    /**
+     * Sube o reemplaza una imagen del tercero persona natural.
+     * {@code tipo}: foto-oficial | foto-perfil | firma. Devuelve la URL.
+     */
+    @PostMapping(value = "/{id}/imagen/{tipo}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<String>> subirImagen(@PathVariable Long id, @PathVariable String tipo,
+            @RequestParam("archivo") MultipartFile archivo) {
+        String url = datosPersonales.subirImagen(id, tipo, archivo, securityUtils.getEmpresaId());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Imagen cargada", false, url), HttpStatus.OK);
+    }
+
+    /** Quita una imagen del tercero. */
+    @DeleteMapping("/{id}/imagen/{tipo}")
+    public ResponseEntity<ApiResponse<Boolean>> quitarImagen(@PathVariable Long id, @PathVariable String tipo) {
+        datosPersonales.quitarImagen(id, tipo, securityUtils.getEmpresaId());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Imagen quitada", false, true), HttpStatus.OK);
     }
 
     /**

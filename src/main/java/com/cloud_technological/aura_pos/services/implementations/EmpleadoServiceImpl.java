@@ -27,6 +27,7 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.tipo_empleado.TipoEmpleadoJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.EmpleadoService;
+import com.cloud_technological.aura_pos.services.VinculacionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.PoliticaRoles;
@@ -54,6 +55,9 @@ public class EmpleadoServiceImpl implements EmpleadoService {
 
     @Autowired
     private ContratoLaboralService contratoLaboralService;
+
+    @Autowired
+    private VinculacionService vinculacionService;
 
     @Autowired
     private com.cloud_technological.aura_pos.repositories.nomina.ContratoLaboralJPARepository contratoRepo;
@@ -268,6 +272,8 @@ public class EmpleadoServiceImpl implements EmpleadoService {
         contrato.setSalarioBase(dto.getSalarioBase());
         contrato.setEsPrincipal(Boolean.TRUE);
         contrato.setEstado("ACTIVO");
+        // Código VIN-, tipo de vinculación y cargo del catálogo, como una vinculación de R2.
+        vinculacionService.completarContratoHeredado(contrato, empresaId);
 
         // crear() abre la primera fila del historial salarial.
         contratoLaboralService.crear(contrato);

@@ -68,6 +68,12 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
     @org.springframework.beans.factory.annotation.Autowired
     private ConfiguracionEmpresaService configuracionService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.services.firma_contable.FirmaContableService firmaContable;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+
     public EmpresaPlataformaServiceImpl(EmpresaPlataformaQueryRepository queryRepo,
                                         EmpresaJPARepository empresaRepo,
                                         SucursalJPARepository sucursalRepo,
@@ -125,8 +131,14 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 .municipio(dto.getMunicipio())
                 .municipioId(dto.getMunicipioId())
                 .modoContabilizacion(normalizarModo(dto.getModoContabilizacion()))
+                .esFirmaContable(Boolean.TRUE.equals(dto.getEsFirmaContable()))
                 .activa(true)
                 .build();
+        aplicarFactus(empresa, dto.getFacturaElectronica(), dto.getFactusClientId(), dto.getFactusClientSecret(),
+                dto.getFactusUsername(), dto.getFactusPassword(), dto.getFactusNumberingRangeId(), dto.getFactusPrefijo());
+        if (Boolean.TRUE.equals(dto.getEsFirmaContable()) && dto.getFirmaContableId() != null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Una firma contable lleva su propia contabilidad: no se le asigna otra firma");
         empresa = empresaRepo.save(empresa);
 
         // 2. Sucursal principal
@@ -192,6 +204,12 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 com.cloud_technological.aura_pos.services.permisos.PerfilesSistema.ADMINISTRADOR));
         usuario = usuarioRepo.save(usuario);
 
+        // 4.3 Firma contable que la atiende (docs/PLAN_FIRMA_CONTABLE.md): crea el
+        //     perfil "Contador externo" del cliente y el vínculo.
+        if (dto.getFirmaContableId() != null) {
+            firmaContable.asignarFirma(empresa.getId(), dto.getFirmaContableId(), actorId());
+        }
+
         // 5. Vincular usuario ↔ sucursal
         usuarioSucursalRepo.save(UsuarioSucursalEntity.builder()
                 .usuario(usuario)
@@ -235,9 +253,56 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
         if (dto.getActiva()          != null) empresa.setActiva(dto.getActiva());
         if (dto.getModoContabilizacion() != null)
             empresa.setModoContabilizacion(normalizarModo(dto.getModoContabilizacion()));
+        if (dto.getCupoGestionados() != null) empresa.setCupoGestionados(dto.getCupoGestionados());
+        aplicarFactus(empresa, dto.getFacturaElectronica(), dto.getFactusClientId(), dto.getFactusClientSecret(),
+                dto.getFactusUsername(), dto.getFactusPassword(), dto.getFactusNumberingRangeId(), dto.getFactusPrefijo());
         empresaRepo.save(empresa);
+        if (dto.getEsFirmaContable() != null) firmaContable.marcarFirma(empresa, dto.getEsFirmaContable());
 
         return obtenerPorId(id);
+    }
+
+    @Override
+    @Transactional
+    public EmpresaPlataformaDto asignarFirmaContable(Integer id, Integer firmaEmpresaId) {
+        firmaContable.asignarFirma(id, firmaEmpresaId, actorId());
+        return obtenerPorId(id);
+    }
+
+    @Override
+    public java.util.List<com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.EmpresaDisponible> firmasContables(String texto) {
+        return firmaContable.firmas(texto);
+    }
+
+    /**
+     * Facturación electrónica: las credenciales de Factus solo las pone la plataforma
+     * (antes el formulario las mandaba y aquí se perdían). Un campo null o vacío no
+     * cambia lo guardado, para no borrar una clave al editar otra cosa.
+     */
+    private static void aplicarFactus(EmpresaEntity e, Boolean activa, String clientId, String secret,
+            String usuario, String clave, Integer rangoId, String prefijo) {
+        if (activa != null) e.setFacturaElectronica(activa);
+        if (lleno(clientId)) e.setFactusClientId(clientId.trim());
+        if (lleno(secret)) e.setFactusClientSecret(secret.trim());
+        if (lleno(usuario)) e.setFactusUsername(usuario.trim());
+        if (lleno(clave)) e.setFactusPassword(clave);
+        if (rangoId != null) e.setFactusNumberingRangeId(rangoId);
+        if (lleno(prefijo)) e.setFactusPrefijo(prefijo.trim().toUpperCase());
+        // Credenciales nuevas: el token viejo de Factus ya no sirve.
+        if (lleno(clientId) || lleno(secret) || lleno(usuario) || lleno(clave)) {
+            e.setFactusAccessToken(null);
+            e.setFactusRefreshToken(null);
+            e.setFactusTokenExpiry(null);
+        }
+    }
+
+    private static boolean lleno(String v) {
+        return v != null && !v.isBlank();
+    }
+
+    private Integer actorId() {
+        Long id = securityUtils.getUsuarioId();
+        return id != null ? id.intValue() : null;
     }
 
     /** Solo admite AUTOMATICO o REVISION; cualquier otro cae en AUTOMATICO. */

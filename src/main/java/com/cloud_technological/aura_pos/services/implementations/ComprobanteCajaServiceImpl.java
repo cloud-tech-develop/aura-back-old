@@ -117,6 +117,19 @@ public class ComprobanteCajaServiceImpl implements ComprobanteCajaService {
                 });
     }
 
+    @Override
+    public com.cloud_technological.aura_pos.dto.comprobante.ComprobanteContableDto contable(Long id, Integer empresaId) {
+        repo.findById(id)
+                .filter(c -> empresaId.equals(c.getEmpresaId()))
+                .orElseThrow(() -> new com.cloud_technological.aura_pos.utils.GlobalException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Comprobante no encontrado"));
+        Long asientoId = queryRepo.asientoDeComprobante(id, empresaId);
+        if (asientoId == null) return null;
+        var dto = queryRepo.asientoParaComprobante(asientoId);
+        if (dto != null) dto.setLineas(queryRepo.lineasParaComprobante(asientoId));
+        return dto;
+    }
+
     private ComprobanteCajaDto toDto(ComprobanteCajaEntity e) {
         ComprobanteCajaDto dto = new ComprobanteCajaDto();
         dto.setId(e.getId());

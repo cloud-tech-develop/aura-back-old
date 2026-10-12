@@ -31,10 +31,12 @@ import com.cloud_technological.aura_pos.mappers.TerceroMapper;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.AbonoCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina.EmpleadoHojaVidaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroQueryRepository;
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ITerceroService;
+import com.cloud_technological.aura_pos.services.terceros.TerceroDatosPersonalesService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -50,6 +52,8 @@ public class TerceroServiceImpl implements ITerceroService {
     private final CuentaCobrarJPARepository cuentaCobrarRepository;
     private final AbonoCobrarJPARepository abonoCobrarRepository;
     private final TerceroRolService terceroRolService;
+    private final TerceroDatosPersonalesService datosPersonales;
+    private final EmpleadoHojaVidaQueryRepository hojaVida;
 
     @Autowired
     public TerceroServiceImpl(TerceroQueryRepository terceroRepository,
@@ -59,7 +63,9 @@ public class TerceroServiceImpl implements ITerceroService {
             VentaJPARepository ventaRepository,
             CuentaCobrarJPARepository cuentaCobrarRepository,
             AbonoCobrarJPARepository abonoCobrarRepository,
-            TerceroRolService terceroRolService) {
+            TerceroRolService terceroRolService,
+            TerceroDatosPersonalesService datosPersonales,
+            EmpleadoHojaVidaQueryRepository hojaVida) {
         this.terceroRepository = terceroRepository;
         this.terceroJPARepository = terceroJPARepository;
         this.empresaRepository = empresaRepository;
@@ -68,6 +74,8 @@ public class TerceroServiceImpl implements ITerceroService {
         this.cuentaCobrarRepository = cuentaCobrarRepository;
         this.abonoCobrarRepository = abonoCobrarRepository;
         this.terceroRolService = terceroRolService;
+        this.datosPersonales = datosPersonales;
+        this.hojaVida = hojaVida;
     }
 
     @Override
@@ -82,6 +90,7 @@ public class TerceroServiceImpl implements ITerceroService {
         TerceroDto dto = terceroMapper.toDto(entity);
         // `roles` no vive en la entidad: sale de tercero_rol (V98).
         dto.setRoles(terceroRolService.rolesDe(entity.getId()));
+        datosPersonales.completar(dto);
         // Nombre del banco: el selector necesita el texto para mostrarlo al
         // cargar; el DTO solo trae el id.
         if (entity.getBancoTerceroId() != null) {
@@ -144,6 +153,7 @@ public class TerceroServiceImpl implements ITerceroService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Debe ingresar razón social o nombres");
 
         TerceroEntity entity = terceroMapper.toEntity(dto);
+        datosPersonales.aplicarPrincipales(entity, dto.getTelefonos(), dto.getCorreos());
 
         EmpresaEntity empresa = empresaRepository.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "Empresa no encontrada"));
@@ -157,7 +167,14 @@ public class TerceroServiceImpl implements ITerceroService {
         terceroRolService.sincronizarDesdeBooleanos(guardado);
         // Roles de seguridad social (V120): no tienen booleano, van por lista.
         sincronizarRolesSeguridadSocial(guardado.getId(), dto.getRoles());
-        return terceroMapper.toDto(guardado);
+        datosPersonales.guardarContactos(guardado, dto.getTelefonos(), dto.getCorreos());
+        return conContactos(terceroMapper.toDto(guardado));
+    }
+
+    /** DTO de salida con teléfonos y correos (V211). */
+    private TerceroDto conContactos(TerceroDto dto) {
+        datosPersonales.completar(dto);
+        return dto;
     }
 
     /**
@@ -187,6 +204,7 @@ public class TerceroServiceImpl implements ITerceroService {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El número de documento ya está en uso");
 
         terceroMapper.updateEntityFromDto(dto, entity);
+        datosPersonales.aplicarPrincipales(entity, dto.getTelefonos(), dto.getCorreos());
         entity.setUpdated_at(LocalDateTime.now());
 
         TerceroEntity guardado = terceroJPARepository.save(entity);
@@ -194,7 +212,10 @@ public class TerceroServiceImpl implements ITerceroService {
         // reflejarse en tercero_rol o la tabla se desincroniza en silencio.
         terceroRolService.sincronizarDesdeBooleanos(guardado);
         sincronizarRolesSeguridadSocial(guardado.getId(), dto.getRoles());
-        return terceroMapper.toDto(guardado);
+        datosPersonales.guardarContactos(guardado, dto.getTelefonos(), dto.getCorreos());
+        // La cuenta del empleado se maneja en su hoja de vida (pestaña Banco).
+        if (Boolean.TRUE.equals(guardado.getEsEmpleado())) hojaVida.resincronizarCuentaDelTercero(id);
+        return conContactos(terceroMapper.toDto(guardado));
     }
 
     @Override

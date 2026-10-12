@@ -131,6 +131,11 @@ public class ConceptoNominaEntity {
         public static final String FIJO = "FIJO";
         /** Lo resuelve el motor o lo captura el usuario (novedades, ARL, retefuente). */
         public static final String MANUAL = "MANUAL";
+        /**
+         * El valor lo trae una novedad o un concepto propio de la vinculación (V217):
+         * el motor no lo calcula en su recorrido de conceptos.
+         */
+        public static final String NOVEDAD = "NOVEDAD";
         private Base() {}
     }
 

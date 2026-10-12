@@ -88,6 +88,11 @@ public class ConfiguracionEmpresaService {
         return out;
     }
 
+    /** Ids de los submódulos del catálogo que casan con las claves ({@code modulo.*} = el módulo entero). */
+    public Set<Integer> submodulosPorPatron(Collection<String> patrones) {
+        return ids(moduloQuery.listarPermisosPorEmpresa(null), patrones);
+    }
+
     /** Ids de submódulos de la plantilla de esas líneas, más la base común. */
     public Set<Integer> plantilla(Collection<LineaUso> lineas) {
         return plantilla(moduloQuery.listarPermisosPorEmpresa(null), lineas);

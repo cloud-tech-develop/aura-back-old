@@ -162,6 +162,82 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     @Transactional
     public AsientoContableTableDto crearComprobante(Integer empresaId, Integer usuarioId,
             CreateComprobanteDto dto) {
+        return guardarComprobante(empresaId, usuarioId, dto, null);
+    }
+
+    /**
+     * Corrige un comprobante manual (CE/RC/CD) conservando su número: deshace lo
+     * que movió (cruces de cartera y movimiento de caja), reemplaza sus líneas y
+     * lo vuelve a aplicar con los datos nuevos. Mismas fronteras que anular: mes
+     * cerrado o turno de caja cerrado no se tocan.
+     */
+    @Override
+    @Transactional
+    public AsientoContableTableDto actualizarComprobante(Long id, Integer empresaId, Integer usuarioId,
+            CreateComprobanteDto dto) {
+        AsientoContableEntity asiento = repo.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comprobante no encontrado"));
+        String motivo = motivoNoEditable(asiento, empresaId);
+        if (motivo != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, motivo);
+        }
+        String tipo = dto.getTipoComprobante() != null ? dto.getTipoComprobante().trim().toUpperCase() : "";
+        if (!tipo.equals(asiento.getTipoComprobante())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No se puede cambiar el tipo del comprobante " + asiento.getNumeroComprobante()
+                            + ": anúlelo y haga uno nuevo.");
+        }
+        deshacerEfectos(asiento, empresaId);
+        // Las líneas viejas salen antes de validar el saldo disponible: si no,
+        // el egreso que se está corrigiendo contaría dos veces.
+        asiento.getDetalles().clear();
+        repo.saveAndFlush(asiento);
+        return guardarComprobante(empresaId, usuarioId, dto, asiento);
+    }
+
+    /** El comprobante cargado para el formulario de edición. */
+    @Override
+    public com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto obtenerComprobanteEdicion(
+            Long id, Integer empresaId) {
+        AsientoContableEntity a = repo.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comprobante no encontrado"));
+        var d = new com.cloud_technological.aura_pos.dto.contabilidad.ComprobanteEdicionDto();
+        d.setId(a.getId());
+        d.setNumeroComprobante(a.getNumeroComprobante());
+        d.setTipoComprobante(a.getTipoComprobante());
+        d.setFecha(a.getFecha());
+        d.setConcepto(a.getDescripcion());
+        d.setBeneficiarioTerceroId(a.getBeneficiarioTerceroId());
+        d.setBeneficiarioNombre(a.getBeneficiarioNombre());
+        d.setBeneficiarioDireccion(a.getBeneficiarioDireccion());
+        d.setBeneficiarioTelefono(a.getBeneficiarioTelefono());
+        d.setCiudad(a.getCiudad());
+        d.setFechaVencimiento(a.getFechaVencimiento());
+        d.setMetodoPago(a.getMetodoPago());
+        d.setCuentaBancariaId(a.getCuentaBancariaId());
+        // El asiento guarda lo que declaró el comprobante; de ahí sale el origen.
+        if (Boolean.TRUE.equals(a.getCajaOtroDia())) {
+            d.setOrigenFondos("CAJA_OTRO_DIA");
+        } else if (a.getCuentaBancariaId() != null) {
+            d.setOrigenFondos("BANCO");
+        } else if (a.getTurnoCajaId() != null) {
+            d.setOrigenFondos("CAJA");
+            d.setSucursalId(queryRepo.sucursalDeTurno(a.getTurnoCajaId()));
+        } else {
+            d.setOrigenFondos("CUENTA");
+            d.setCuentaContableId(queryRepo.cuentaMedioPagoDeAsiento(a.getId()));
+        }
+        String motivo = motivoNoEditable(a, empresaId);
+        d.setEditable(motivo == null);
+        d.setMotivoNoEditable(motivo);
+        d.setLineas(queryRepo.obtenerDetalles(a.getId()));
+        d.setAplicaciones(queryRepo.aplicacionesDeComprobante(empresaId,
+                "Comprobante " + a.getNumeroComprobante()));
+        return d;
+    }
+
+    private AsientoContableTableDto guardarComprobante(Integer empresaId, Integer usuarioId,
+            CreateComprobanteDto dto, AsientoContableEntity existente) {
         BigDecimal totalDebito = dto.getDetalles().stream()
                 .map(d -> d.getDebito() != null ? d.getDebito() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -256,9 +332,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     "comprobante de egreso", null, null);
         }
 
-        String comprobante = queryRepo.siguienteNumeroComprobante(empresaId, tipo);
+        String comprobante = existente != null ? existente.getNumeroComprobante()
+                : queryRepo.siguienteNumeroComprobante(empresaId, tipo);
 
-        AsientoContableEntity asiento = AsientoContableEntity.builder()
+        AsientoContableEntity asiento = existente != null
+                ? actualizarCabecera(existente, dto, benefNombre, benefDireccion, benefTelefono, periodo,
+                        totalDebito, totalCredito, origen, mueveDinero, detalles)
+                : AsientoContableEntity.builder()
                 .empresaId(empresaId)
                 .fecha(dto.getFecha())
                 .descripcion(dto.getConcepto().trim())
@@ -317,6 +397,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         registrarMovimientoDeCaja(saved, origen, tipo, montoContrapartida.subtract(totalAplicado),
                 dto, usuarioId);
         emitirComprobanteDeCaja(saved, origen, tipo, montoContrapartida, dto, usuarioId);
+        if (existente != null && (origen == null || montoContrapartida.signum() <= 0)) {
+            comprobanteCajaService.anularDeDocumento(empresaId, MovimientoCajaEntity.ORIGEN_COMPROBANTE,
+                    saved.getId(), "Comprobante " + comprobante + " corregido: ya no mueve dinero");
+        }
 
         AsientoContableTableDto result = toTableDto(saved);
         result.setDetalles(queryRepo.obtenerDetalles(saved.getId()));
@@ -394,6 +478,81 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 asiento.getNumeroComprobante());
     }
 
+    /** Pone los datos nuevos en el comprobante que se corrige (conserva id y número). */
+    private AsientoContableEntity actualizarCabecera(AsientoContableEntity a, CreateComprobanteDto dto,
+            String benefNombre, String benefDireccion, String benefTelefono, PeriodoContableEntity periodo,
+            BigDecimal totalDebito, BigDecimal totalCredito, OrigenFondosService.OrigenFondos origen,
+            boolean mueveDinero, List<AsientoDetalleEntity> detalles) {
+        a.setFecha(dto.getFecha());
+        a.setDescripcion(dto.getConcepto().trim());
+        a.setBeneficiarioTerceroId(dto.getBeneficiarioTerceroId());
+        a.setBeneficiarioNombre(benefNombre);
+        a.setBeneficiarioDireccion(benefDireccion);
+        a.setBeneficiarioTelefono(benefTelefono);
+        a.setCiudad(dto.getCiudad());
+        a.setFechaVencimiento(dto.getFechaVencimiento());
+        a.setPeriodoContableId(periodo.getId());
+        a.setTotalDebito(totalDebito);
+        a.setTotalCredito(totalCredito);
+        a.setTurnoCajaId(origen != null ? origen.turnoId() : null);
+        a.setMetodoPago(origen != null ? MediosPago.normalizar(dto.getMetodoPago()) : null);
+        a.setCuentaBancariaId(mueveDinero ? dto.getCuentaBancariaId() : null);
+        a.setCajaOtroDia(origen != null && origen.tipo() == OrigenFondosService.Tipo.CAJA_OTRO_DIA);
+        a.getDetalles().addAll(detalles);
+        return a;
+    }
+
+    /**
+     * Por qué un comprobante ya no se puede corregir ni anular (null si se puede).
+     * Mes cerrado: sus saldos ya se reportaron. Turno de caja cerrado: su arqueo
+     * ya se contó y firmó.
+     */
+    private String motivoNoEditable(AsientoContableEntity asiento, Integer empresaId) {
+        if (!"MANUAL".equals(asiento.getTipoOrigen())) {
+            return "Solo se pueden corregir comprobantes manuales; los demás se corrigen desde su documento.";
+        }
+        if ("ANULADO".equals(asiento.getEstado())) {
+            return "El comprobante " + asiento.getNumeroComprobante() + " está anulado.";
+        }
+        if ("BORRADOR".equals(asiento.getEstado())) {
+            return "Es un borrador: se corrige desde Notas contables.";
+        }
+        PeriodoContableEntity periodo = asiento.getPeriodoContableId() != null
+                ? periodoRepo.findById(asiento.getPeriodoContableId()).orElse(null)
+                : asiento.getFecha() == null ? null
+                : periodoRepo.findByEmpresaIdAndAnioAndMes(empresaId,
+                        (short) asiento.getFecha().getYear(),
+                        (short) asiento.getFecha().getMonthValue()).orElse(null);
+        if (periodo != null && !"ABIERTO".equals(periodo.getEstado())) {
+            return "El comprobante " + asiento.getNumeroComprobante() + " pertenece al período "
+                    + periodo.getAnio() + "-" + String.format("%02d", periodo.getMes())
+                    + ", que está cerrado. Cambiarlo alteraría saldos ya reportados: reabra el "
+                    + "período desde Períodos contables o registre una nota de ajuste en un mes abierto.";
+        }
+        if (asiento.getTurnoCajaId() != null) {
+            TurnoCajaEntity turno = turnoCajaRepo
+                    .findByIdAndCajaSucursalEmpresaId(asiento.getTurnoCajaId(), empresaId)
+                    .orElse(null);
+            if (turno != null && "CERRADA".equals(turno.getEstado())) {
+                return "El comprobante " + asiento.getNumeroComprobante() + " afectó la caja "
+                        + turno.getCaja().getNombre() + ", cuyo turno ya está cerrado. "
+                        + "Corríjalo con un ajuste retroactivo de caja: reabrir el arqueo "
+                        + "borraría la evidencia de lo que el cajero entregó.";
+            }
+        }
+        return null;
+    }
+
+    /** Deshace lo que el comprobante movió fuera de la contabilidad: cartera y caja. */
+    private void deshacerEfectos(AsientoContableEntity asiento, Integer empresaId) {
+        String referencia = "Comprobante " + asiento.getNumeroComprobante();
+        cuentaCobrarService.revertirCrucesDeDocumento(referencia, empresaId);
+        cuentaPagarService.revertirCrucesDeDocumento(referencia, empresaId);
+        movimientoCajaRepo.deleteAll(
+                movimientoCajaRepo.findByOrigenTipoAndOrigenId(
+                        MovimientoCajaEntity.ORIGEN_COMPROBANTE, asiento.getId()));
+    }
+
     @Override
     public String siguienteConsecutivo(Integer empresaId, String tipoComprobante) {
         String tipo = tipoComprobante != null ? tipoComprobante.trim().toUpperCase() : "CD";
@@ -428,53 +587,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     "Un borrador no se anula: todavía no afecta la contabilidad. Elimínelo desde Notas contables.");
         }
 
-        // Anular reescribe el mes del asiento. Si ese mes ya se cerró, sus
-        // saldos ya se reportaron (balance, IVA, exógena) y cambiarían por
-        // debajo sin que nadie lo note. Se resuelve por el id guardado y, en
-        // asientos anteriores a V171 que no lo tienen, por la fecha.
-        PeriodoContableEntity periodo = asiento.getPeriodoContableId() != null
-                ? periodoRepo.findById(asiento.getPeriodoContableId()).orElse(null)
-                : asiento.getFecha() == null ? null
-                : periodoRepo.findByEmpresaIdAndAnioAndMes(empresaId,
-                        (short) asiento.getFecha().getYear(),
-                        (short) asiento.getFecha().getMonthValue()).orElse(null);
-        if (periodo != null && !"ABIERTO".equals(periodo.getEstado())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El comprobante " + asiento.getNumeroComprobante() + " pertenece al período "
-                            + periodo.getAnio() + "-" + String.format("%02d", periodo.getMes())
-                            + ", que está cerrado. Anularlo cambiaría saldos ya reportados: reabra el "
-                            + "período desde Períodos contables o registre una nota de ajuste en un mes abierto.");
+        // Anular reescribe el mes del asiento y deshace lo que movió en cartera
+        // y caja: las mismas fronteras que corregirlo (mes cerrado, turno cerrado).
+        String motivo = motivoNoEditable(asiento, empresaId);
+        if (motivo != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, motivo);
         }
-
-        // Anular dejaba el asiento en ANULADO y nada más: el abono que rebajó
-        // la cartera y el egreso que salió de la caja seguían vivos. El
-        // comprobante desaparecía de la contabilidad pero la deuda seguía
-        // rebajada y el arqueo seguía descuadrado.
-        //
-        // El turno cerrado es la frontera: su arqueo ya se contó y se firmó, y
-        // reescribirlo destruye la evidencia de lo que el cajero entregó. Se
-        // bloquea la anulación y se remite al ajuste retroactivo, que corrige
-        // encima sin tocar el cierre original.
-        if (asiento.getTurnoCajaId() != null) {
-            TurnoCajaEntity turno = turnoCajaRepo
-                    .findByIdAndCajaSucursalEmpresaId(asiento.getTurnoCajaId(), empresaId)
-                    .orElse(null);
-            if (turno != null && "CERRADA".equals(turno.getEstado())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "El comprobante " + asiento.getNumeroComprobante() + " afectó la caja "
-                                + turno.getCaja().getNombre() + ", cuyo turno ya está cerrado. "
-                                + "Corríjalo con un ajuste retroactivo de caja: reabrir el arqueo "
-                                + "borraría la evidencia de lo que el cajero entregó.");
-            }
-        }
-
-        String referencia = "Comprobante " + asiento.getNumeroComprobante();
-        cuentaCobrarService.revertirCrucesDeDocumento(referencia, empresaId);
-        cuentaPagarService.revertirCrucesDeDocumento(referencia, empresaId);
-
-        movimientoCajaRepo.deleteAll(
-                movimientoCajaRepo.findByOrigenTipoAndOrigenId(
-                        MovimientoCajaEntity.ORIGEN_COMPROBANTE, id));
+        deshacerEfectos(asiento, empresaId);
 
         // El soporte de caja no se borra: se invalida conservando su número, para
         // no dejar un hueco en la serie.

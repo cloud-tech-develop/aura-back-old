@@ -48,6 +48,10 @@ public class TarifaRetencionEntity {
     @Column(name = "cuenta_contable_id")
     private Long cuentaContableId;
 
+    /** A quién se le paga: DIAN (retefuente, reteIVA) o hacienda municipal (reteICA). V204. */
+    @Column(name = "tercero_acreedor_id")
+    private Long terceroAcreedorId;
+
     @Column(nullable = false)
     private Boolean activo = true;
 

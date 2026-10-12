@@ -122,6 +122,8 @@ public final class ImportacionDtos {
     public static class Resultado {
         private boolean confirmado;
         private int nuevos;
+        /** Registros que ya existían y se actualizan (importador de catálogo). */
+        private int actualizados;
         private int existentes;
         private int errores;
         private List<ResultadoFila> filas = new ArrayList<>();
@@ -131,7 +133,7 @@ public final class ImportacionDtos {
         private BigDecimal totalCredito;
 
         public boolean puedeConfirmarse() {
-            return errores == 0 && nuevos > 0;
+            return errores == 0 && (nuevos + actualizados) > 0;
         }
     }
 }

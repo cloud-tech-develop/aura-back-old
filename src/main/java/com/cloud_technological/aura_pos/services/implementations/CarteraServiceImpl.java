@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
+import com.cloud_technological.aura_pos.utils.AislamientoEmpresa;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -125,7 +126,7 @@ public class CarteraServiceImpl implements CarteraService {
     @Override
     @Transactional
     public TerceroCreditoEntity actualizarCredito(Long id, CreateTerceroCreditoDto dto, Integer empresaId, Long usuarioId) {
-        TerceroCreditoEntity credito = creditoRepo.findById(id)
+        TerceroCreditoEntity credito = creditoRepo.findById(id).filter(x -> AislamientoEmpresa.es(x.getEmpresa(), empresaId))
             .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cupo de crédito no encontrado"));
 
         BigDecimal cupoAnterior = credito.getCupoCreditoActual();

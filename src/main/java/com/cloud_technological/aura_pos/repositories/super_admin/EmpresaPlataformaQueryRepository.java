@@ -33,6 +33,20 @@ public class EmpresaPlataformaQueryRepository {
                 e.nit,
                 e.activa,
                 e.created_at,
+                e.es_firma_contable,
+                (SELECT efc.firma_empresa_id FROM empresa_firma_cliente efc
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_contable_id,
+                (SELECT f.razon_social FROM empresa_firma_cliente efc
+                   JOIN empresa f ON f.id = efc.firma_empresa_id
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_contable_nombre,
+                (SELECT COUNT(*) FROM empresa_firma_cliente efc
+                  WHERE efc.firma_empresa_id = e.id AND efc.activo)::INT           AS total_clientes_firma,
+                e.cupo_gestionados,
+                (SELECT COUNT(*) FROM empresa_firma_cliente efc
+                  WHERE efc.firma_empresa_id = e.id AND efc.activo
+                    AND efc.modalidad = 'GESTIONADO')::INT                         AS total_gestionados_firma,
+                (SELECT efc.modalidad FROM empresa_firma_cliente efc
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_modalidad,
                 COUNT(DISTINCT s.id)::INT  AS total_sucursales,
                 COUNT(DISTINCT u.id)::INT  AS total_usuarios,
                 COUNT(*) OVER()            AS total_rows
@@ -80,6 +94,22 @@ public class EmpresaPlataformaQueryRepository {
                 e.activa,
                 e.modo_contabilizacion,
                 e.created_at,
+                e.factura_electronica, e.factus_client_id, e.factus_client_secret, e.factus_username,
+                e.factus_password, e.factus_numbering_range_id, e.factus_prefijo,
+                e.es_firma_contable,
+                (SELECT efc.firma_empresa_id FROM empresa_firma_cliente efc
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_contable_id,
+                (SELECT f.razon_social FROM empresa_firma_cliente efc
+                   JOIN empresa f ON f.id = efc.firma_empresa_id
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_contable_nombre,
+                (SELECT COUNT(*) FROM empresa_firma_cliente efc
+                  WHERE efc.firma_empresa_id = e.id AND efc.activo)::INT           AS total_clientes_firma,
+                e.cupo_gestionados,
+                (SELECT COUNT(*) FROM empresa_firma_cliente efc
+                  WHERE efc.firma_empresa_id = e.id AND efc.activo
+                    AND efc.modalidad = 'GESTIONADO')::INT                         AS total_gestionados_firma,
+                (SELECT efc.modalidad FROM empresa_firma_cliente efc
+                  WHERE efc.cliente_empresa_id = e.id AND efc.activo)              AS firma_modalidad,
                 COUNT(DISTINCT s.id)::INT      AS total_sucursales,
                 COUNT(DISTINCT u.id)::INT      AS total_usuarios,
                 COUNT(DISTINCT v.id)           AS total_ventas

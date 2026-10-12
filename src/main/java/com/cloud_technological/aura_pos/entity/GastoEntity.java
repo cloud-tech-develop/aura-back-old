@@ -152,6 +152,13 @@ public class GastoEntity {
     @Column(name = "valor_reteica", precision = 18, scale = 2)
     private BigDecimal valorReteica = BigDecimal.ZERO;
 
+    /** Concepto de retención (V208): de él salen la cuenta y el acreedor. */
+    @Column(name = "retefuente_tarifa_id")
+    private Long retefuenteTarifaId;
+
+    @Column(name = "reteica_tarifa_id")
+    private Long reteicaTarifaId;
+
     @Column(name = "tipo_doc_soporte", length = 20)
     private String tipoDocSoporte;
 

@@ -201,6 +201,35 @@ public class ProductoQueryRepository {
         return count != null && count > 0;
     }
 
+    public boolean existeSku(String sku, Integer empresaId) {
+        String sql = """
+            SELECT COUNT(*) FROM producto
+            WHERE sku = :sku
+            AND empresa_id = :empresaId
+            AND deleted_at IS NULL
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("sku", sku);
+        params.addValue("empresaId", empresaId);
+        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
+        return count != null && count > 0;
+    }
+
+    public boolean existeSkuExcluyendo(String sku, Integer empresaId, Long id) {
+        String sql = """
+            SELECT COUNT(*) FROM producto
+            WHERE sku = :sku
+            AND empresa_id = :empresaId
+            AND id != :id
+            AND deleted_at IS NULL
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("sku", sku);
+        params.addValue("empresaId", empresaId);
+        params.addValue("id", id);
+        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
+        return count != null && count > 0;
+    }
     public boolean existeCodigoBarrasExcluyendo(String codigoBarras, Integer empresaId, Long id) {
         String sql = """
             SELECT COUNT(*) FROM producto

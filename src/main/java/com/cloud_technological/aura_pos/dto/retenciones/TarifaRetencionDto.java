@@ -15,4 +15,11 @@ public class TarifaRetencionDto {
     private BigDecimal tarifaJuridica;
     private BigDecimal baseMinima;
     private Boolean activo;
+    /** Cuenta del concepto (2365xx, 2367xx, 2368xx). Sin ella, la cuenta por defecto. */
+    private Long cuentaContableId;
+    private String cuentaCodigo;
+    private String cuentaNombre;
+    /** A quién se le paga: DIAN o la secretaría de hacienda del municipio. */
+    private Long terceroAcreedorId;
+    private String terceroAcreedorNombre;
 }

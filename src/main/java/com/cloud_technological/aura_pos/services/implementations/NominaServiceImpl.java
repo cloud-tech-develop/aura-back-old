@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,14 @@ import com.cloud_technological.aura_pos.entity.PeriodoNominaEntity;
 import com.cloud_technological.aura_pos.repositories.nomina.EmpleadoJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaConfigJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
+import com.cloud_technological.aura_pos.repositories.nomina_documentos.NominaDocumentoEmpleadoQueryRepository;
+import com.cloud_technological.aura_pos.entity.NominaRetiroEntity;
+import com.cloud_technological.aura_pos.services.nomina.LineaLiquidacion;
+import com.cloud_technological.aura_pos.services.nomina.retiro.LiquidadorDefinitiva;
+import com.cloud_technological.aura_pos.services.nomina.prestacion.LiquidadorPrestacionDocumento;
+import com.cloud_technological.aura_pos.services.nomina.vacaciones.VacacionesEnNomina;
+import com.cloud_technological.aura_pos.services.nomina.retroactivo.LiquidadorRetroactivo;
+import com.cloud_technological.aura_pos.repositories.nomina_documentos.NominaPrestacionDocumentoQueryRepository.Documento;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaQueryRepository;
 import com.cloud_technological.aura_pos.repositories.nomina.PeriodoNominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
@@ -41,6 +50,21 @@ import com.cloud_technological.aura_pos.utils.PageableDto;
 @lombok.extern.slf4j.Slf4j
 @Service
 public class NominaServiceImpl implements NominaService {
+
+    @Autowired
+    private NominaDocumentoEmpleadoQueryRepository documentosNomina;
+
+    @Autowired
+    private LiquidadorDefinitiva liquidadorDefinitiva;
+
+    @Autowired
+    private LiquidadorPrestacionDocumento liquidadorPrestacion;
+
+    @Autowired
+    private VacacionesEnNomina vacacionesEnNomina;
+
+    @Autowired
+    private LiquidadorRetroactivo liquidadorRetroactivo;
 
     @Autowired
     private OrigenFondosService origenFondosService;
@@ -238,26 +262,14 @@ public class NominaServiceImpl implements NominaService {
 
         ContratoLaboralEntity contrato = contratoLaboralService.obtener(contratoId, empresaId);
         EmpleadoEntity empleado = contrato.getEmpleado();
+        validarContratoLiquidable(contrato, periodo);
 
-        if (!"ACTIVO".equals(contrato.getEstado()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "El contrato está en estado " + contrato.getEstado());
-
-        // B-09 — la prestación de servicios NO se liquida como nómina laboral: sin
-        // relación laboral no hay deducciones de SS, aportes, prestaciones ni
-        // auxilio. Se paga por cuenta de cobro/compra con retefuente por servicios.
-        if ("PRESTACION_SERVICIOS".equals(contrato.getTipoContrato()))
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "Un contrato de prestación de servicios no se liquida por nómina. "
-                    + "Regístralo como cuenta de cobro / compra (retención por servicios).");
-
-        // El contrato debe solaparse con el período. Un contrato que empieza
-        // después del corte, o que terminó antes, no se liquida aquí.
-        if (contrato.getFechaInicio().isAfter(periodo.getFechaFin())
-            || (contrato.getFechaFin() != null && contrato.getFechaFin().isBefore(periodo.getFechaInicio()))) {
-            throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "El contrato no está vigente en el período");
-        }
+        // V215 — quien ya está en una prenómina o nómina por documento se liquida allá.
+        documentosNomina.documentoDelContrato(contratoId, periodo.getFechaInicio(), periodo.getFechaFin())
+                .ifPresent(numero -> {
+                    throw new GlobalException(HttpStatus.CONFLICT,
+                            "La vinculación ya está en el documento " + numero + " de ese período: liquídela allá.");
+                });
 
         NominaEntity nomina = nominaRepo.findByContratoIdAndPeriodoId(contratoId, periodoId)
                 .orElse(null);
@@ -302,6 +314,193 @@ public class NominaServiceImpl implements NominaService {
         return toDto(nominaRepo.save(nomina));
     }
 
+    /**
+     * Liquida la fila de un empleado dentro de una prenómina (rediseño R3.2c).
+     *
+     * <p>Mismo motor y mismas reglas que {@link #liquidarContrato}: contrato
+     * liquidable, asistencia aprobada si la exige y días del período. La diferencia
+     * es la fecha de liquidación, que la pone el documento. Si algo falla, lanza la
+     * excepción con la causa: quien llama la guarda en la fila.
+     */
+    @Override
+    @Transactional
+    public void liquidarFilaDocumento(Long nominaId, LocalDate fechaLiquidacion, Integer empresaId) {
+        NominaEntity nomina = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Fila de nómina no encontrada"));
+        if (nomina.getDocumentoId() == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La fila no pertenece a un documento de nómina.");
+
+        // R6 — prima, cesantías e intereses por comprobante: solo la prestación, sin motor.
+        Optional<Documento> prestacion = liquidadorPrestacion.documentoDePrestacion(nomina.getDocumentoId());
+        if (prestacion.isPresent()) {
+            liquidarPrestacion(nomina, prestacion.get(), empresaId);
+            return;
+        }
+        // R8 — retroactivo: solo la diferencia salarial de nóminas ya confirmadas.
+        Optional<Documento> retroactivo = liquidadorRetroactivo.documentoRetroactivo(nomina.getDocumentoId());
+        if (retroactivo.isPresent()) {
+            liquidarRetroactivo(nomina, retroactivo.get(), fechaLiquidacion, empresaId);
+            return;
+        }
+
+        PeriodoNominaEntity periodo = nomina.getPeriodo();
+        EmpleadoEntity empleado = nomina.getEmpleado();
+        // R5 — en la liquidación definitiva de un retiro la vinculación ya está terminada.
+        Optional<NominaRetiroEntity> retiro =
+                liquidadorDefinitiva.retiroDelDocumento(nomina.getDocumentoId());
+        validarContratoLiquidable(nomina.getContrato(), periodo, retiro.isPresent());
+
+        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        if (requiereAsistencia(config, empleado)) {
+            if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "La asistencia del período no está aprobada ni autorizada.");
+            consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
+        }
+        // R7 — las vacaciones registradas en el módulo entran como novedades del período.
+        vacacionesEnNomina.sincronizar(nomina, periodo, salarioDelContrato(nomina, empleado), empresaId);
+
+        // Definitiva: si esos días de salario ya se pagaron en otra nómina, no se repiten.
+        boolean salarioPagado = retiro.isPresent()
+                && liquidadorDefinitiva.salarioYaPagado(retiro.get(), nomina.getDocumentoId());
+        nomina.setDiasTrabajados(salarioPagado ? 0 : diasLiquidacion(periodo, empleado, empresaId));
+        calcular(nomina, empleado, config, fechaLiquidacion);
+        if (retiro.isPresent())
+            agregarLineasDefinitiva(nomina, liquidadorDefinitiva.lineas(nomina, retiro.get(), config, empresaId));
+        nomina.setLiquidadaAt(LocalDateTime.now());
+        nomina.setErrorLiquidacion(null);
+        nomina.setUpdatedAt(LocalDateTime.now());
+        nominaRepo.save(nomina);
+    }
+
+    /**
+     * Liquida la fila de un comprobante de prima, cesantías o intereses (R6): una sola
+     * línea con la prestación; sin salario, seguridad social ni provisiones.
+     */
+    private void liquidarPrestacion(NominaEntity nomina, Documento documento, Integer empresaId) {
+        validarContratoLiquidable(nomina.getContrato(), nomina.getPeriodo());
+        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        Optional<LineaLiquidacion> linea = liquidadorPrestacion.linea(nomina, documento, config, empresaId);
+
+        nominaDetalleRepo.deleteByNominaId(nomina.getId());
+        limpiarTotales(nomina);
+        nomina.setSalarioBase(nomina.getContrato().getSalarioBase());
+        linea.ifPresent(l -> {
+            // Los días de la prestación quedan en la línea; los días trabajados de la fila
+            // siguen en 0 para que PILA no los sume a los del mes.
+            nominaDetalleRepo.save(l.aEntidad(nomina));
+            nomina.setTotalDevengado(l.getValor());
+            nomina.setNetoPagar(l.getValor());
+        });
+        nomina.setLiquidadaAt(LocalDateTime.now());
+        nomina.setErrorLiquidacion(null);
+        nomina.setUpdatedAt(LocalDateTime.now());
+        nominaRepo.save(nomina);
+    }
+
+    /**
+     * Liquida la fila de un comprobante de retroactivo (R8): las diferencias salariales
+     * entran como novedades RETROACTIVO y el motor liquida sin días de salario, así
+     * salen salud, pensión, aportes y provisiones sobre la diferencia.
+     */
+    private void liquidarRetroactivo(NominaEntity nomina, Documento documento, LocalDate fechaLiquidacion,
+                                     Integer empresaId) {
+        validarContratoLiquidable(nomina.getContrato(), nomina.getPeriodo());
+        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        List<NominaNovedadEntity> diferencias = liquidadorRetroactivo.novedades(nomina, documento);
+        if (diferencias.isEmpty())
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "No tiene diferencias salariales por pagar en nóminas confirmadas de esas fechas.");
+        nomina.getNovedades().removeIf(n -> LiquidadorRetroactivo.ORIGEN.equals(n.getOrigen()));
+        for (NominaNovedadEntity nv : diferencias) {
+            nv.setNomina(nomina);
+            nomina.getNovedades().add(nv);
+        }
+        nomina.setDiasTrabajados(0);
+        calcular(nomina, nomina.getEmpleado(), config, fechaLiquidacion);
+        nomina.setLiquidadaAt(LocalDateTime.now());
+        nomina.setErrorLiquidacion(null);
+        nomina.setUpdatedAt(LocalDateTime.now());
+        nominaRepo.save(nomina);
+    }
+
+    /** Todos los agregados de la fila en cero (antes de llenarlos con una sola prestación). */
+    private static void limpiarTotales(NominaEntity n) {
+        n.setDiasTrabajados(0);
+        n.setSalarioProporcional(BigDecimal.ZERO);
+        n.setAuxilioTransporte(BigDecimal.ZERO);
+        n.setTotalNovedadesDev(BigDecimal.ZERO);
+        n.setTotalDevengado(BigDecimal.ZERO);
+        n.setIbc(BigDecimal.ZERO);
+        n.setDeduccionSalud(BigDecimal.ZERO);
+        n.setDeduccionPension(BigDecimal.ZERO);
+        n.setDeduccionOtros(BigDecimal.ZERO);
+        n.setTotalDeducciones(BigDecimal.ZERO);
+        n.setNetoPagar(BigDecimal.ZERO);
+        n.setAporteSalud(BigDecimal.ZERO);
+        n.setAportePension(BigDecimal.ZERO);
+        n.setAporteArl(BigDecimal.ZERO);
+        n.setAporteCaja(BigDecimal.ZERO);
+        n.setAporteIcbf(BigDecimal.ZERO);
+        n.setAporteSena(BigDecimal.ZERO);
+        n.setProvisionPrima(BigDecimal.ZERO);
+        n.setProvisionCesantias(BigDecimal.ZERO);
+        n.setProvisionIntCesantias(BigDecimal.ZERO);
+        n.setProvisionVacaciones(BigDecimal.ZERO);
+    }
+
+    /**
+     * Prestaciones e indemnización de la liquidación definitiva (R5): van al detalle
+     * como devengados y suman al devengado y al neto; no entran al IBC (las bases del
+     * motor ya se calcularon).
+     */
+    private void agregarLineasDefinitiva(NominaEntity nomina, List<LineaLiquidacion> lineas) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (LineaLiquidacion l : lineas) {
+            nominaDetalleRepo.save(l.aEntidad(nomina));
+            total = total.add(l.getValor());
+        }
+        nomina.setTotalDevengado(nz(nomina.getTotalDevengado()).add(total));
+        nomina.setNetoPagar(nz(nomina.getNetoPagar()).add(total));
+    }
+
+    private static void validarContratoLiquidable(ContratoLaboralEntity contrato, PeriodoNominaEntity periodo) {
+        validarContratoLiquidable(contrato, periodo, false);
+    }
+
+    /**
+     * El contrato debe estar activo (o terminado, en la liquidación definitiva de su
+     * retiro), no ser de prestación de servicios y cruzarse con el período; 400 con
+     * la causa si no.
+     */
+    private static void validarContratoLiquidable(ContratoLaboralEntity contrato, PeriodoNominaEntity periodo,
+                                                  boolean definitiva) {
+        boolean estadoValido = "ACTIVO".equals(contrato.getEstado())
+                || (definitiva && "TERMINADO".equals(contrato.getEstado()));
+        if (!estadoValido)
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El contrato está en estado " + contrato.getEstado());
+
+        // B-09 — la prestación de servicios NO se liquida como nómina laboral: sin
+        // relación laboral no hay deducciones de SS, aportes, prestaciones ni
+        // auxilio. Se paga por cuenta de cobro/compra con retefuente por servicios.
+        if ("PRESTACION_SERVICIOS".equals(contrato.getTipoContrato()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Un contrato de prestación de servicios no se liquida por nómina. "
+                    + "Regístralo como cuenta de cobro / compra (retención por servicios).");
+
+        // El contrato debe solaparse con el período. Un contrato que empieza
+        // después del corte, o que terminó antes, no se liquida aquí.
+        if (contrato.getFechaInicio().isAfter(periodo.getFechaFin())
+            || (contrato.getFechaFin() != null && contrato.getFechaFin().isBefore(periodo.getFechaInicio()))) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El contrato no está vigente en el período");
+        }
+    }
+
     @Override
     @Transactional
     public void liquidarPeriodoCompleto(Long periodoId, Integer empresaId) {
@@ -330,6 +529,10 @@ public class NominaServiceImpl implements NominaService {
 
         for (ContratoLaboralEntity contrato : contratos) {
             EmpleadoEntity empleado = contrato.getEmpleado();
+
+            // V215 — quien ya está en una prenómina o nómina por documento se omite del lote.
+            if (documentosNomina.documentoDelContrato(contrato.getId(), periodo.getFechaInicio(),
+                    periodo.getFechaFin()).isPresent()) continue;
 
             NominaEntity nomina = nominaRepo.findByContratoIdAndPeriodoId(contrato.getId(), periodoId)
                     .orElse(null);
@@ -486,7 +689,8 @@ public class NominaServiceImpl implements NominaService {
                     "Solo se puede pagar una nómina en estado APROBADO");
 
         aplicarPago(nomina, dto, empresaId);
-        cerrarPeriodoSiCompleto(nomina.getPeriodo(), empresaId);
+        // El estado del período es del flujo viejo: una fila de documento (V215) no lo cierra.
+        if (nomina.getDocumentoId() == null) cerrarPeriodoSiCompleto(nomina.getPeriodo(), empresaId);
         return toDto(nominaRepo.save(nomina));
     }
 
@@ -647,6 +851,19 @@ public class NominaServiceImpl implements NominaService {
      * exactamente — es el invariante que los tests tienen que verificar.
      */
     private void calcular(NominaEntity nomina, EmpleadoEntity empleado, NominaConfigEntity config) {
+        LocalDate fecha = nomina.getPeriodo() != null && nomina.getPeriodo().getFechaFin() != null
+                ? nomina.getPeriodo().getFechaFin()
+                : LocalDate.now();
+        calcular(nomina, empleado, config, fecha);
+    }
+
+    /**
+     * Igual que {@link #calcular(NominaEntity, EmpleadoEntity, NominaConfigEntity)}
+     * pero con la fecha de liquidación explícita (la del documento de nómina): con
+     * ella se toman los conceptos y tarifas vigentes.
+     */
+    private void calcular(NominaEntity nomina, EmpleadoEntity empleado, NominaConfigEntity config,
+                          LocalDate fecha) {
         ContratoLaboralEntity contrato = nomina.getContrato();
         if (contrato == null) {
             // Puente: nóminas creadas antes de V103. Tras el cierre (V118) esto
@@ -657,11 +874,8 @@ public class NominaServiceImpl implements NominaService {
 
         int dias = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
         nomina.setDiasTrabajados(dias);
-        nomina.setSalarioBase(contrato.getSalarioBase());
-
-        LocalDate fecha = nomina.getPeriodo() != null && nomina.getPeriodo().getFechaFin() != null
-                ? nomina.getPeriodo().getFechaFin()
-                : LocalDate.now();
+        // Salario efectivo (al aprendiz le aplica el mínimo legal de su fase).
+        nomina.setSalarioBase(motorLiquidacion.salarioMensual(contrato, config));
 
         MotorLiquidacion.ResultadoLiquidacion r =
                 motorLiquidacion.liquidar(nomina, contrato, config, fecha);

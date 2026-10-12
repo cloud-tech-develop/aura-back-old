@@ -156,6 +156,97 @@ public class ContratoLaboralEntity {
     @Column(name = "tarifa_arl", precision = 5, scale = 3)
     private BigDecimal tarifaArl;
 
+    // ── Vinculación ampliada (V210, rediseño R2) ────────────────────────────
+    // cargo, es_salario_integral y periodicidad se siguen llenando: el motor,
+    // PILA y la nómina electrónica los leen. Los sincroniza VinculacionServiceImpl.
+
+    /** Consecutivo de la vinculación en la empresa (VIN-00001). */
+    @Column(name = "codigo", length = 20)
+    private String codigo;
+
+    @Column(name = "tipo_vinculacion_id")
+    private Long tipoVinculacionId;
+
+    /** Cargo del catálogo; {@link #cargo} guarda su nombre. */
+    @Column(name = "cargo_id")
+    private Long cargoId;
+
+    /** Elemento del catálogo GRUPO_NOMINA. */
+    @Column(name = "grupo_nomina_id")
+    private Long grupoNominaId;
+
+    /** Elemento del catálogo CALENDARIO_LABORAL. */
+    @Column(name = "calendario_id")
+    private Long calendarioId;
+
+    /** Elemento del catálogo RIESGO_ARL. */
+    @Column(name = "riesgo_arl_id")
+    private Long riesgoArlId;
+
+    /** MENSUAL | INTEGRAL | JORNAL | HORA. */
+    @Column(name = "tipo_remuneracion", length = 20, nullable = false)
+    private String tipoRemuneracion = "MENSUAL";
+
+    /** Horas de trabajo a la semana; null = jornada legal vigente. */
+    @Column(name = "horas_semana", precision = 5, scale = 2)
+    private BigDecimal horasSemana;
+
+    @Column(name = "temporal", nullable = false)
+    private Boolean temporal = Boolean.FALSE;
+
+    @Column(name = "fecha_fin_prueba")
+    private LocalDate fechaFinPrueba;
+
+    /** Informativo para el contador (beneficio tributario de primer empleo). */
+    @Column(name = "primer_empleo", nullable = false)
+    private Boolean primerEmpleo = Boolean.FALSE;
+
+    @Column(name = "sucursal_id")
+    private Integer sucursalId;
+
+    @Column(name = "area", length = 100)
+    private String area;
+
+    /** Texto "Municipio - Departamento"; lo llena el servicio desde municipioTrabajoId. */
+    @Column(name = "municipio_trabajo", length = 120)
+    private String municipioTrabajo;
+
+    @Column(name = "municipio_trabajo_id")
+    private Long municipioTrabajoId;
+
+    @Column(name = "direccion_trabajo", length = 200)
+    private String direccionTrabajo;
+
+    @Column(name = "telefono_trabajo", length = 30)
+    private String telefonoTrabajo;
+
+    /** Empleado que autoriza novedades y vacaciones. */
+    @Column(name = "jefe_directo_id")
+    private Long jefeDirectoId;
+
+    @Column(name = "evaluador_id")
+    private Long evaluadorId;
+
+    /** Trabaja en el exterior: no cotiza salud ni pensión en Colombia. */
+    @Column(name = "en_extranjero", nullable = false)
+    private Boolean enExtranjero = Boolean.FALSE;
+
+    /** RESOLUCION | CONTRATO | OTROSI | ACTA | OTRO (V212). */
+    @Column(name = "doc_interno_tipo", length = 30)
+    private String docInternoTipo;
+
+    @Column(name = "doc_interno_numero", length = 50)
+    private String docInternoNumero;
+
+    @Column(name = "doc_interno_fecha")
+    private LocalDate docInternoFecha;
+
+    @Column(name = "doc_interno_url", length = 500)
+    private String docInternoUrl;
+
+    @Column(name = "doc_externo_url", length = 500)
+    private String docExternoUrl;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

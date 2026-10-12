@@ -39,7 +39,8 @@ class PermisoEspecialesTest {
     @BeforeEach
     void setUp() {
         query = mock(PermisoUsuarioQueryRepository.class);
-        service = new PermisoUsuarioService(query, mock(PerfilesSistemaService.class));
+        service = new PermisoUsuarioService(query, mock(PerfilesSistemaService.class), sinToken(),
+                mock(com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.class));
         when(query.habilitadosEmpresa(EMPRESA)).thenReturn(List.of(
                 new SubmoduloHabilitado(1L, "contabilidad.periodos-contables"),
                 new SubmoduloHabilitado(2L, "ventas.ventas")));
@@ -167,5 +168,12 @@ class PermisoEspecialesTest {
 
         assertNull(service.sedePermitida(1, null, 3L), "null = todas");
         assertEquals(9L, service.sedePermitida(1, 9L, 3L));
+    }
+
+    /** SecurityUtils sin token (como un job): la empresa sale del usuario. Mockito daría 0. */
+    private static com.cloud_technological.aura_pos.utils.SecurityUtils sinToken() {
+        var su = mock(com.cloud_technological.aura_pos.utils.SecurityUtils.class);
+        when(su.getEmpresaId()).thenReturn(null);
+        return su;
     }
 }

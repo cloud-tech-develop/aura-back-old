@@ -58,7 +58,8 @@ public class VistaPreviaAsientoService {
         boolean esNota = "NOTA_CREDITO".equalsIgnoreCase(r.getTipoDocumento());
         List<AsientoDetalleEntity> partidas = contabilidad.lineasCompra(empresaId, new DatosCompraAsiento(
                 neto, BigDecimal.ZERO, fletes, iva, netaAPagar, r.getProveedorId(), esNota,
-                r.getCuentaContableId(), lineas, retefuente, reteiva, reteica, pagos));
+                r.getCuentaContableId(), lineas, retefuente, reteiva, reteica, pagos,
+                r.getRetefuenteTarifaId(), r.getReteivaTarifaId(), r.getReteicaTarifaId()));
         return armar(partidas, empresaId);
     }
 

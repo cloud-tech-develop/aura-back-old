@@ -31,6 +31,9 @@ public class PermisosUsuarioDto {
     private java.math.BigDecimal rebajaPrecioMaxPct;
     /** Ve y opera en todas las sedes de la empresa. */
     private boolean todasLasSedes = true;
+
+    /** Administrador en su propia firma contable: el menú muestra "Clientes de la firma". */
+    private boolean adminDeFirma;
     /** Sedes asignadas (las únicas que puede usar si no tiene todas). */
     private List<Long> sucursales = new java.util.ArrayList<>();
 }

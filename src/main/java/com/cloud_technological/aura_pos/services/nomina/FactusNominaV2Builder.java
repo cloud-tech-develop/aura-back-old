@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.services.nomina;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +11,14 @@ import org.springframework.stereotype.Component;
 
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Accruals;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Bonificacion;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Cesantia;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Incapacidad;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Licencia;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.MontoDesc;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Otro;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Prima;
+import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Vacaciones;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Aporte;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Deductions;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.HoraExtra;
@@ -18,10 +27,13 @@ import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Pay
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.SettlementPeriod;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Transporte;
 import com.cloud_technological.aura_pos.dto.nomina.electronica.FactusNominaV2Payload.Worker;
+import com.cloud_technological.aura_pos.entity.ConceptoNominaEntity;
 import com.cloud_technological.aura_pos.entity.ContratoLaboralEntity;
+import com.cloud_technological.aura_pos.entity.NominaDetalleEntity;
 import com.cloud_technological.aura_pos.entity.NominaEntity;
 import com.cloud_technological.aura_pos.entity.NominaNovedadEntity;
 import com.cloud_technological.aura_pos.entity.TerceroEntity;
+import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
 
 /**
  * Mapea nuestra nómina → payload de nómina electrónica de <b>Factus v2</b>
@@ -31,9 +43,10 @@ import com.cloud_technological.aura_pos.entity.TerceroEntity;
  * mapeos de tipo de documento, tipo de contrato, medio de pago, período y tipo
  * de hora extra usan los valores del ejemplo de Factus como defaults; están
  * marcados y hay que contrastarlos contra sus catálogos antes de producción.
- * Cubre el caso mensual estándar: sueldo, transporte, comisiones, horas extra y
- * deducciones de salud/pensión. Cesantías/prima/vacaciones/incapacidades y FSP/
- * retefuente se agregan después.
+ *
+ * <p><b>Un documento por empleado y MES</b> (lo que pide la DIAN): con pago
+ * quincenal o semanal se juntan todas las nóminas confirmadas del mes (y la prima,
+ * vacaciones u otros pagos que caigan en él) y se envían como período mensual.
  */
 @Component
 public class FactusNominaV2Builder {
@@ -42,14 +55,28 @@ public class FactusNominaV2Builder {
     private static final DateTimeFormatter F_FECHA_HORA = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final com.cloud_technological.aura_pos.repositories.municipios.MunicipioQueryRepository municipioRepo;
+    private final NominaDetalleJPARepository detalleRepo;
 
     public FactusNominaV2Builder(
-            com.cloud_technological.aura_pos.repositories.municipios.MunicipioQueryRepository municipioRepo) {
+            com.cloud_technological.aura_pos.repositories.municipios.MunicipioQueryRepository municipioRepo,
+            NominaDetalleJPARepository detalleRepo) {
         this.municipioRepo = municipioRepo;
+        this.detalleRepo = detalleRepo;
     }
 
-    public FactusNominaV2Payload construir(NominaEntity nomina, ContratoLaboralEntity contrato,
-                                           String referenceCode, String numberingRangeId) {
+    /**
+     * Documento del MES de un empleado: junta todas sus nóminas confirmadas del mes.
+     *
+     * @param nominas  nóminas del mes en orden de período (la última da el pago y el salario)
+     * @param contrato contrato del empleado
+     * @param mes      mes del documento
+     */
+    public FactusNominaV2Payload construirMes(List<NominaEntity> nominas, ContratoLaboralEntity contrato,
+                                              YearMonth mes, String referenceCode, String numberingRangeId) {
+        if (nominas == null || nominas.isEmpty())
+            throw new IllegalArgumentException("El mes no tiene nóminas confirmadas");
+        NominaEntity ultima = nominas.get(nominas.size() - 1);
+
         FactusNominaV2Payload p = new FactusNominaV2Payload();
         p.setReferenceCode(referenceCode);
         // numbering_range_id es opcional: si va vacío, Factus asigna uno.
@@ -58,37 +85,38 @@ public class FactusNominaV2Builder {
         }
         p.setObservation("Nómina electrónica");
 
-        p.setSettlementPeriod(periodo(nomina));
-        p.setPayment(pago(nomina));
-        p.setWorker(trabajador(nomina, contrato));
-        p.setAccruals(devengados(nomina));
-        p.setDeductions(deducciones(nomina));
+        p.setSettlementPeriod(periodoMensual(mes));
+        p.setPayment(pago(ultima));
+        p.setWorker(trabajador(ultima, contrato, diasDelMes(nominas), mes));
+        // El detalle es lo que de verdad se pagó (salario, novedades, conceptos
+        // propios, prestaciones) en todas las nóminas del mes.
+        List<NominaDetalleEntity> detalle = new ArrayList<>();
+        for (NominaEntity n : nominas)
+            if (n.getId() != null) detalle.addAll(detalleRepo.findByNominaId(n.getId()));
+        p.setAccruals(devengados(nominas, detalle));
+        p.setDeductions(deducciones(nominas, detalle));
         return p;
     }
 
-    private SettlementPeriod periodo(NominaEntity nomina) {
+    /**
+     * Período mensual. DIAN tabla 5.5.1: 5 = Mensual. Aunque se pague por quincenas,
+     * el documento es uno por mes y va como mensual (decisión de producto: la DIAN
+     * recibe un solo documento con todo el mes).
+     */
+    private SettlementPeriod periodoMensual(YearMonth mes) {
         SettlementPeriod sp = new SettlementPeriod();
-        LocalDate ini = nomina.getPeriodo().getFechaInicio();
-        LocalDate fin = nomina.getPeriodo().getFechaFin();
-        sp.setMonth(String.valueOf(fin.getMonthValue()));
-        sp.setYear(String.valueOf(fin.getYear()));
-
-        // DIAN tabla 5.5.1 (Periodo de Nómina): 1=Semanal, 2=Decadal,
-        // 3=Catorcenal, 4=Quincenal, 5=Mensual. No hay campo de frecuencia en
-        // el período, así que se infiere por la cantidad de días.
-        long dias = java.time.temporal.ChronoUnit.DAYS.between(ini, fin) + 1;
-        String codigo;
-        if (dias <= 8)       codigo = "1";   // semanal
-        else if (dias <= 11) codigo = "2";   // decadal
-        else if (dias <= 14) codigo = "3";   // catorcenal
-        else if (dias <= 16) codigo = "4";   // quincenal
-        else                 codigo = "5";   // mensual
-        sp.setPayrollPeriodCode(codigo);
-        if ("4".equals(codigo)) {
-            // 1ª quincena si empieza en la primera mitad del mes.
-            sp.setPayPeriodHalf(ini.getDayOfMonth() <= 15 ? 1 : 2);
-        }
+        sp.setMonth(String.valueOf(mes.getMonthValue()));
+        sp.setYear(String.valueOf(mes.getYear()));
+        sp.setPayrollPeriodCode("5");
         return sp;
+    }
+
+    /** Días trabajados del mes: los de las nóminas del período (no prima ni otros pagos), máx. 30. */
+    private static int diasDelMes(List<NominaEntity> nominas) {
+        int dias = 0;
+        for (NominaEntity n : nominas)
+            if (n.getDiasTrabajados() != null) dias += n.getDiasTrabajados();
+        return Math.min(30, dias);
     }
 
     private Payment pago(NominaEntity nomina) {
@@ -107,7 +135,7 @@ public class FactusNominaV2Builder {
         return pay;
     }
 
-    private Worker trabajador(NominaEntity nomina, ContratoLaboralEntity contrato) {
+    private Worker trabajador(NominaEntity nomina, ContratoLaboralEntity contrato, int diasMes, YearMonth mes) {
         Worker w = new Worker();
         TerceroEntity t = nomina.getEmpleado() != null ? nomina.getEmpleado().getTercero() : null;
         if (t != null) {
@@ -127,12 +155,13 @@ public class FactusNominaV2Builder {
         w.setWorkerTypeCode(contrato.getTipoCotizante() != null ? contrato.getTipoCotizante() : "01");
         w.setWorkerSubtype(contrato.getSubtipoCotizante() != null ? contrato.getSubtipoCotizante() : "00");
         w.setContractType(mapTipoContrato(contrato.getTipoContrato()));
-        w.setSalary(dec(contrato.getSalarioBase()));
+        // El de la nómina: es el salario con que se liquidó (al aprendiz le aplica el mínimo legal).
+        w.setSalary(dec(nomina.getSalarioBase() != null ? nomina.getSalarioBase() : contrato.getSalarioBase()));
         w.setEntryDate(contrato.getFechaInicio() != null ? contrato.getFechaInicio().format(F_FECHA) : null);
-        w.setDaysWorked(dec(BigDecimal.valueOf(nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30)));
+        w.setDaysWorked(dec(BigDecimal.valueOf(diasMes)));
         // Retiro solo el mes en que ocurre.
-        LocalDate ini = nomina.getPeriodo().getFechaInicio();
-        LocalDate fin = nomina.getPeriodo().getFechaFin();
+        LocalDate ini = mes.atDay(1);
+        LocalDate fin = mes.atEndOfMonth();
         if (contrato.getFechaFin() != null && !contrato.getFechaFin().isBefore(ini)
                 && !contrato.getFechaFin().isAfter(fin)) {
             w.setRetirementDate(contrato.getFechaFin().format(F_FECHA));
@@ -140,65 +169,254 @@ public class FactusNominaV2Builder {
         return w;
     }
 
-    private Accruals devengados(NominaEntity nomina) {
+    /**
+     * Devengados desde el detalle de la nómina (lo que de verdad se pagó: salario,
+     * novedades, conceptos propios, prestaciones, indemnización), clasificados por el
+     * {@code codigo_dian} del concepto. Las fechas y días salen de la novedad ligada a
+     * la línea cuando la hay. La licencia no remunerada no tiene valor (no genera
+     * línea) y se toma de las novedades.
+     */
+    private Accruals devengados(List<NominaEntity> nominas, List<NominaDetalleEntity> detalle) {
         Accruals a = new Accruals();
-
-        Monto suel = new Monto();
-        suel.setAmount(dec(nomina.getSalarioProporcional()));
-        a.setSuel(suel);
-
-        if (positivo(nomina.getAuxilioTransporte())) {
-            Transporte tra = new Transporte();
-            tra.setAmount(dec(nomina.getAuxilioTransporte()));
-            tra.setAccrualTypeCode(1);   // ⚠️ 1 = auxilio legal. Confirmar.
-            a.setTra(List.of(tra));
-        }
-
+        BigDecimal sueldo = BigDecimal.ZERO;
+        BigDecimal transporte = BigDecimal.ZERO;
+        BigDecimal indemnizacion = BigDecimal.ZERO;
         List<HoraExtra> horas = new ArrayList<>();
         List<Monto> comisiones = new ArrayList<>();
-        for (NominaNovedadEntity n : safe(nomina.getNovedades())) {
-            String tipo = n.getTipo();
-            if (tipo == null) continue;
-            if (tipo.startsWith("HORA_EXTRA") || tipo.startsWith("RECARGO")) {
-                HoraExtra h = new HoraExtra();
-                h.setQuantity(n.getCantidad() != null ? n.getCantidad().stripTrailingZeros().toPlainString() : "0");
-                h.setPercentage(porcentajeHora(tipo));
-                h.setAmount(dec(n.getValorTotal()));
-                if (n.getFechaInicio() != null) h.setStartDate(n.getFechaInicio().atStartOfDay().format(F_FECHA_HORA));
-                if (n.getFechaFin() != null) h.setEndDate(n.getFechaFin().atStartOfDay().format(F_FECHA_HORA));
-                h.setAccrualTypeCode(mapHora(tipo));   // ⚠️ confirmar tabla
-                horas.add(h);
-            } else if ("COMISION".equals(tipo)) {
-                Monto m = new Monto();
-                m.setAmount(dec(n.getValorTotal()));
-                comisiones.add(m);
+        List<Bonificacion> bonos = new ArrayList<>();
+        List<Cesantia> cesantias = new ArrayList<>();
+        List<Vacaciones> vacaciones = new ArrayList<>();
+        List<Incapacidad> incapacidades = new ArrayList<>();
+        List<Licencia> licencias = new ArrayList<>();
+        List<Otro> otros = new ArrayList<>();
+        Prima prima = null;
+
+        for (NominaDetalleEntity l : detalle) {
+            ConceptoNominaEntity c = l.getConcepto();
+            if (c == null || !ConceptoNominaEntity.Clase.DEVENGADO.equals(c.getClase()) || !positivo(l.getValor()))
+                continue;
+            NominaNovedadEntity nov = l.getNovedad();
+            String dian = c.getCodigoDian() != null ? c.getCodigoDian() : "";
+            switch (dian) {
+                case "Basico" -> sueldo = sueldo.add(l.getValor());
+                case "Transporte" -> transporte = transporte.add(l.getValor());
+                case "HED", "HEN", "HRN", "HEDDF", "HRDDF", "HENDF", "HRNDF" -> horas.add(hora(c.getCodigo(), l, nov));
+                case "Comisiones" -> comisiones.add(monto(l.getValor()));
+                case "Bonificaciones" -> {
+                    Bonificacion b = new Bonificacion();
+                    b.setAmount(dec(l.getValor()));
+                    b.setAccrualTypeCode(salarial(c, nov) ? "1" : "2");   // ⚠️ 1 salarial, 2 no salarial
+                    bonos.add(b);
+                }
+                case "Cesantias" -> {
+                    Cesantia ce = new Cesantia();
+                    ce.setAmount(dec(l.getValor()));
+                    boolean intereses = "INT_CESANTIAS".equals(c.getCodigo());
+                    ce.setAccrualTypeCode(intereses ? "2" : "1");          // ⚠️ 1 cesantías, 2 intereses
+                    if (intereses) ce.setPercentage("12.00");
+                    cesantias.add(ce);
+                }
+                case "Primas" -> {
+                    if (prima == null) {
+                        prima = new Prima();
+                        prima.setAmount(dec(l.getValor()));
+                        prima.setQuantity(entero(l.getCantidad()));
+                        prima.setAccrualTypeCode("1");                     // ⚠️ 1 = prima
+                    } else {
+                        prima.setAmount(dec(new BigDecimal(prima.getAmount()).add(l.getValor())));
+                    }
+                }
+                case "Vacaciones" -> {
+                    Vacaciones v = new Vacaciones();
+                    v.setAmount(dec(l.getValor()));
+                    v.setQuantity(entero(l.getCantidad()));
+                    boolean disfrutadas = nov != null && Boolean.TRUE.equals(nov.getAfectaDiasSalario());
+                    v.setAccrualTypeCode(disfrutadas ? "1" : "2");         // ⚠️ 1 disfrutadas, 2 compensadas
+                    if (nov != null && nov.getFechaInicio() != null) v.setStartDate(nov.getFechaInicio().format(F_FECHA));
+                    if (nov != null && nov.getFechaFin() != null) v.setEndDate(nov.getFechaFin().format(F_FECHA));
+                    vacaciones.add(v);
+                }
+                case "Incapacidades" -> {
+                    Incapacidad in = new Incapacidad();
+                    in.setAmount(dec(l.getValor()));
+                    in.setQuantity(nov != null && nov.getDias() != null ? nov.getDias() : entero(l.getCantidad()));
+                    in.setAccrualTypeCode(tipoIncapacidad(nov));
+                    if (nov != null && nov.getFechaInicio() != null) in.setStartDate(nov.getFechaInicio().format(F_FECHA));
+                    if (nov != null && nov.getFechaFin() != null) in.setEndDate(nov.getFechaFin().format(F_FECHA));
+                    incapacidades.add(in);
+                }
+                case "LicenciaMP", "LicenciaR" -> {
+                    Licencia li = new Licencia();
+                    li.setAmount(dec(l.getValor()));
+                    li.setQuantity(nov != null && nov.getDias() != null ? nov.getDias() : entero(l.getCantidad()));
+                    li.setAccrualTypeCode("LicenciaMP".equals(dian) ? "1" : "2");   // ⚠️ 1 MP, 2 remunerada
+                    if (nov != null && nov.getFechaInicio() != null) li.setStartDate(nov.getFechaInicio().format(F_FECHA));
+                    if (nov != null && nov.getFechaFin() != null) li.setEndDate(nov.getFechaFin().format(F_FECHA));
+                    licencias.add(li);
+                }
+                case "Indemnizacion" -> indemnizacion = indemnizacion.add(l.getValor());
+                default -> {
+                    // OtrosConceptos, retroactivo, conceptos propios sin código DIAN…
+                    Otro o = new Otro();
+                    o.setAmount(dec(l.getValor()));
+                    o.setDescription(c.getNombre());
+                    o.setAccrualTypeCode(salarial(c, nov) ? "1" : "2");     // ⚠️ 1 salarial, 2 no salarial
+                    otros.add(o);
+                }
             }
+        }
+
+        // Licencias no remuneradas: no pagan, pero se reportan con sus días.
+        for (NominaNovedadEntity n : nominas.stream().flatMap(x -> safe(x.getNovedades()).stream()).toList()) {
+            if (!"LICENCIA_NO_REMUNERADA".equals(n.getTipo())) continue;
+            Licencia li = new Licencia();
+            li.setQuantity(n.getDias() != null ? n.getDias() : entero(n.getCantidad()));
+            li.setAccrualTypeCode("3");                                    // ⚠️ 3 no remunerada
+            if (n.getFechaInicio() != null) li.setStartDate(n.getFechaInicio().format(F_FECHA));
+            if (n.getFechaFin() != null) li.setEndDate(n.getFechaFin().format(F_FECHA));
+            licencias.add(li);
+        }
+
+        // El sueldo siempre va (aunque sea 0, p. ej. una fila de solo prima).
+        a.setSuel(monto(detalle.isEmpty() ? suma(nominas, NominaEntity::getSalarioProporcional) : sueldo));
+        if (positivo(transporte)) {
+            Transporte tra = new Transporte();
+            tra.setAmount(dec(transporte));
+            tra.setAccrualTypeCode(1);   // ⚠️ 1 = auxilio legal
+            a.setTra(List.of(tra));
         }
         if (!horas.isEmpty()) a.setHora(horas);
         if (!comisiones.isEmpty()) a.setComi(comisiones);
+        if (!bonos.isEmpty()) a.setBoni(bonos);
+        if (!cesantias.isEmpty()) a.setCesa(cesantias);
+        if (prima != null) a.setPrim(prima);
+        if (!vacaciones.isEmpty()) a.setVaca(vacaciones);
+        if (!incapacidades.isEmpty()) a.setInca(incapacidades);
+        if (!licencias.isEmpty()) a.setLice(licencias);
+        if (!otros.isEmpty()) a.setOtro(otros);
+        if (positivo(indemnizacion)) a.setInde(monto(indemnizacion));
         return a;
     }
 
-    private Deductions deducciones(NominaEntity nomina) {
+    /**
+     * Deducciones desde el detalle de la nómina, por el {@code codigo_dian} del
+     * concepto: salud, pensión, fondo de solidaridad, retención en la fuente,
+     * libranzas/embargos y otras.
+     */
+    private Deductions deducciones(List<NominaEntity> nominas, List<NominaDetalleEntity> detalle) {
         Deductions d = new Deductions();
-        if (positivo(nomina.getDeduccionSalud())) {
-            Aporte salu = new Aporte();
-            salu.setAmount(dec(nomina.getDeduccionSalud()));
-            salu.setPercentage("4");
-            d.setSalu(salu);
+        BigDecimal salud = BigDecimal.ZERO;
+        BigDecimal pension = BigDecimal.ZERO;
+        BigDecimal solidaridad = BigDecimal.ZERO;
+        BigDecimal retencion = BigDecimal.ZERO;
+        BigDecimal pctSalud = null;
+        BigDecimal pctPension = null;
+        BigDecimal pctSolidaridad = null;
+        List<MontoDesc> libranzas = new ArrayList<>();
+        List<Monto> otras = new ArrayList<>();
+
+        for (NominaDetalleEntity l : detalle) {
+            ConceptoNominaEntity c = l.getConcepto();
+            if (c == null || !ConceptoNominaEntity.Clase.DEDUCCION.equals(c.getClase()) || !positivo(l.getValor()))
+                continue;
+            switch (c.getCodigoDian() != null ? c.getCodigoDian() : "") {
+                case "Salud" -> {
+                    salud = salud.add(l.getValor());
+                    if (l.getPorcentaje() != null) pctSalud = l.getPorcentaje();
+                }
+                case "FondoPension" -> {
+                    pension = pension.add(l.getValor());
+                    if (l.getPorcentaje() != null) pctPension = l.getPorcentaje();
+                }
+                case "FondoSP" -> {
+                    solidaridad = solidaridad.add(l.getValor());
+                    if (l.getPorcentaje() != null) pctSolidaridad = l.getPorcentaje();
+                }
+                case "RetencionFuente" -> retencion = retencion.add(l.getValor());
+                case "Libranza" -> {
+                    MontoDesc m = new MontoDesc();
+                    m.setAmount(dec(l.getValor()));
+                    m.setDescription(c.getNombre());
+                    libranzas.add(m);
+                }
+                default -> otras.add(monto(l.getValor()));
+            }
         }
-        if (positivo(nomina.getDeduccionPension())) {
-            Aporte pens = new Aporte();
-            pens.setAmount(dec(nomina.getDeduccionPension()));
-            pens.setPercentage("4");
-            d.setPens(pens);
+
+        if (detalle.isEmpty()) {
+            // Fila sin detalle (flujo viejo): los totales de la nómina.
+            salud = suma(nominas, NominaEntity::getDeduccionSalud);
+            pension = suma(nominas, NominaEntity::getDeduccionPension);
+            BigDecimal otrosTotal = suma(nominas, NominaEntity::getDeduccionOtros);
+            if (positivo(otrosTotal)) otras.add(monto(otrosTotal));
         }
-        if (positivo(nomina.getDeduccionOtros())) {
-            Monto otra = new Monto();
-            otra.setAmount(dec(nomina.getDeduccionOtros()));
-            d.setOtra(List.of(otra));
+        // Salud y pensión son obligatorias en el documento DIAN aunque el trabajador no
+        // aporte (aprendiz SENA, pensionado): en ese caso van en cero con 0 %.
+        d.setSalu(positivo(salud) ? aporte(salud, pctSalud, "4") : aporte(BigDecimal.ZERO, BigDecimal.ZERO, "0"));
+        d.setPens(positivo(pension) ? aporte(pension, pctPension, "4") : aporte(BigDecimal.ZERO, BigDecimal.ZERO, "0"));
+        if (positivo(solidaridad)) {
+            Aporte fsp = aporte(solidaridad, pctSolidaridad, "1");
+            fsp.setDeductionTypeCode("1");   // ⚠️ 1 = fondo de solidaridad pensional
+            d.setDedu(List.of(fsp));
         }
+        if (positivo(retencion)) d.setRete(monto(retencion));
+        if (!libranzas.isEmpty()) d.setLibr(libranzas);
+        if (!otras.isEmpty()) d.setOtra(otras);
         return d;
+    }
+
+    /** Suma un valor de todas las nóminas del mes (nulos como cero). */
+    private static BigDecimal suma(List<NominaEntity> nominas, java.util.function.Function<NominaEntity, BigDecimal> campo) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (NominaEntity n : nominas) total = total.add(nz(campo.apply(n)));
+        return total;
+    }
+
+    private HoraExtra hora(String codigo, NominaDetalleEntity l, NominaNovedadEntity nov) {
+        HoraExtra h = new HoraExtra();
+        BigDecimal cantidad = l.getCantidad() != null ? l.getCantidad() : nov != null ? nov.getCantidad() : null;
+        h.setQuantity(cantidad != null ? cantidad.stripTrailingZeros().toPlainString() : "0");
+        h.setPercentage(porcentajeHora(codigo));
+        h.setAmount(dec(l.getValor()));
+        if (nov != null && nov.getFechaInicio() != null) h.setStartDate(nov.getFechaInicio().atStartOfDay().format(F_FECHA_HORA));
+        if (nov != null && nov.getFechaFin() != null) h.setEndDate(nov.getFechaFin().atStartOfDay().format(F_FECHA_HORA));
+        h.setAccrualTypeCode(mapHora(codigo));   // ⚠️ confirmar tabla
+        return h;
+    }
+
+    /** ¿El pago es salarial? Lo dice la novedad si la hay; si no, el concepto. */
+    private static boolean salarial(ConceptoNominaEntity c, NominaNovedadEntity nov) {
+        if (nov != null && nov.getConstituyeIbc() != null) return nov.getConstituyeIbc();
+        return Boolean.TRUE.equals(c.getConstituyeIbc());
+    }
+
+    /** ⚠️ Factus: 1 común (EPS), 2 profesional, 3 laboral (ARL). */
+    private static String tipoIncapacidad(NominaNovedadEntity nov) {
+        String st = nov != null && nov.getSubtipo() != null ? nov.getSubtipo().toUpperCase() : "GENERAL";
+        if (st.contains("RIESGO") || st.contains("LABORAL") || st.contains("ARL")) return "3";
+        if (st.contains("PROFESIONAL")) return "2";
+        return "1";
+    }
+
+    private static Aporte aporte(BigDecimal valor, BigDecimal porcentaje, String porDefecto) {
+        Aporte a = new Aporte();
+        a.setAmount(dec(valor));
+        a.setPercentage(porcentaje != null ? porcentaje.stripTrailingZeros().toPlainString() : porDefecto);
+        return a;
+    }
+
+    private static Monto monto(BigDecimal v) {
+        Monto m = new Monto();
+        m.setAmount(dec(v));
+        return m;
+    }
+
+    private static Integer entero(BigDecimal v) {
+        return v != null ? v.setScale(0, java.math.RoundingMode.HALF_UP).intValue() : 0;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
     }
 
     // ── Mapeos de código (⚠️ contra tablas oficiales de Factus) ─────────────
@@ -275,9 +493,9 @@ public class FactusNominaV2Builder {
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
-    private String dec(BigDecimal v) {
+    private static String dec(BigDecimal v) {
         return (v != null ? v : BigDecimal.ZERO).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
-    private boolean positivo(BigDecimal v) { return v != null && v.signum() > 0; }
+    private static boolean positivo(BigDecimal v) { return v != null && v.signum() > 0; }
     private List<NominaNovedadEntity> safe(List<NominaNovedadEntity> l) { return l != null ? l : List.of(); }
 }

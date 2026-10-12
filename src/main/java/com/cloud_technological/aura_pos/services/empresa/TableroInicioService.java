@@ -55,11 +55,17 @@ public class TableroInicioService {
         List<LineaUso> lineas = configuracion.lineas(empresa);
 
         PuestaEnMarchaDto out = new PuestaEnMarchaDto();
-        // La contabilidad la necesitan todas; el grupo va una sola vez.
-        out.getGrupos().add(contable(empresaId, lineas.contains(LineaUso.CONTABILIDAD)));
+        // La lista es del perfil contable: a una empresa POS/comercial/nómina sin
+        // la línea CONTABILIDAD no se le muestra (completa = el front la oculta).
+        if (!lineas.contains(LineaUso.CONTABILIDAD)) {
+            out.setPendientes(0);
+            out.setCompleta(true);
+            return out;
+        }
+        out.getGrupos().add(contable(empresaId, true));
         if (lineas.contains(LineaUso.NOMINA)) out.getGrupos().add(nomina(empresaId));
-        if (lineas.contains(LineaUso.POS) || lineas.contains(LineaUso.COMERCIAL))
-            out.getGrupos().add(comercial(empresaId, empresa, lineas));
+        // Sin POS ni Comercial, la línea Contabilidad igual factura servicios.
+        out.getGrupos().add(comercial(empresaId, empresa, lineas));
 
         int pendientes = 0;
         for (GrupoChequeoDto g : out.getGrupos())
@@ -132,16 +138,22 @@ public class TableroInicioService {
     }
 
     private GrupoChequeoDto comercial(Integer empresaId, EmpresaEntity empresa, List<LineaUso> lineas) {
-        GrupoChequeoDto g = grupo(lineas.contains(LineaUso.COMERCIAL) ? "COMERCIAL" : "POS", "Ventas e inventario");
+        boolean conInventario = lineas.contains(LineaUso.POS) || lineas.contains(LineaUso.COMERCIAL);
+        GrupoChequeoDto g = conInventario
+                ? grupo(lineas.contains(LineaUso.COMERCIAL) ? "COMERCIAL" : "POS", "Ventas e inventario")
+                : grupo("FACTURACION", "Facturación");
         long productos = query.productos(empresaId);
-        g.getChequeos().add(ChequeoDto.de("PRODUCTOS", "Productos creados", productos > 0,
-                productos > 0 ? productos + " producto(s)" : "No hay productos: créelos o impórtelos",
+        String que = conInventario ? "Productos" : "Servicios o productos";
+        g.getChequeos().add(ChequeoDto.de("PRODUCTOS", que + " creados", productos > 0,
+                productos > 0 ? productos + " ítem(s)"
+                        : conInventario ? "No hay productos: créelos o impórtelos"
+                                : "Cree los servicios que factura (tipo Servicio)",
                 "/catalogo/productos"));
         if (empresa.isFacturaElectronica()) {
             boolean rango = empresa.getFactusNumberingRangeId() != null;
             g.getChequeos().add(ChequeoDto.de("RANGO_FE", "Rango de facturación electrónica", rango,
                     rango ? "Rango asignado" : "Falta el rango de numeración de Factus",
-                    null));
+                    "/perfil"));
         }
         return g;
     }

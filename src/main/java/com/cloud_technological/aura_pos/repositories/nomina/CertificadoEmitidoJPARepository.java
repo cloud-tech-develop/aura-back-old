@@ -45,6 +45,7 @@ public interface CertificadoEmitidoJPARepository extends JpaRepository<Certifica
               FROM NominaDetalleEntity d
              WHERE d.nomina.contrato.empleado.tercero.id = :terceroId
                AND d.nomina.estado <> 'ANULADO'
+               AND d.nomina.esPrenomina = false
                AND d.concepto.codigo IN :codigos
                AND EXTRACT(YEAR FROM d.nomina.periodo.fechaFin) = :agno
             """)

@@ -82,11 +82,22 @@ public class DeterioroService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "No hay cartera vencida que deteriorar con esos tramos.");
         }
+        return proponerMonto(empresaId, usuarioId, monto,
+                calculo.get("facturasVencidas") + " facturas, tramos " + calculo.get("tramos"));
+    }
+
+    /**
+     * Persiste una propuesta por un monto ya calculado (la cartera C9 resta la
+     * provisión que ya está en el mayor) y dispara su asiento en BORRADOR.
+     */
+    @Transactional
+    public DeterioroCalculoEntity proponerMonto(Integer empresaId, Long usuarioId, BigDecimal monto,
+            String detalle) {
         DeterioroCalculoEntity propuesta = calculoRepo.save(DeterioroCalculoEntity.builder()
                 .empresaId(empresaId)
-                .fecha(LocalDate.now())
+                .fecha(LocalDate.now(java.time.ZoneId.of("America/Bogota")))
                 .monto(monto)
-                .detalle(calculo.get("facturasVencidas") + " facturas, tramos " + calculo.get("tramos"))
+                .detalle(detalle)
                 .usuarioId(usuarioId)
                 .build());
         eventPublisher.publishEvent(new DocumentoContabilizableEvent(
