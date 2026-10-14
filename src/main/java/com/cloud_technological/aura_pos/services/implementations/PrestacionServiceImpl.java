@@ -294,7 +294,6 @@ public class PrestacionServiceImpl implements PrestacionService {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Indica la fecha de retiro (o configúrala en el empleado como retiro / fin de contrato)");
 
-        LocalDate ingreso = empleado.getFechaIngreso();
         List<PrestacionDto> creadas = new java.util.ArrayList<>();
 
         // Un solo lote agrupa todas las filas de esta liquidación definitiva.
@@ -302,6 +301,9 @@ public class PrestacionServiceImpl implements PrestacionService {
         // Contrato activo del empleado (se termina al final).
         ContratoLaboralEntity contrato = contratoRepo.findActivosByEmpleado(empleado.getId())
                 .stream().findFirst().orElse(null);
+        // El ingreso sale del contrato: empleados.fecha_ingreso es legacy (placeholder en el alta desde tercero).
+        LocalDate ingreso = contrato != null && contrato.getFechaInicio() != null
+                ? contrato.getFechaInicio() : empleado.getFechaIngreso();
 
         // B-09/B-10 — servicios y aprendiz no tienen liquidación definitiva laboral
         // (sin cesantías, prima, vacaciones ni indemnización). Terminar el contrato
