@@ -301,7 +301,7 @@ public class NominaServiceImpl implements NominaService {
             consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
         }
 
-        nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, empresaId));
+        nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, nomina.getContrato(), empresaId));
         calcular(nomina, empleado, config);
         nomina.setUpdatedAt(LocalDateTime.now());
 
@@ -364,7 +364,7 @@ public class NominaServiceImpl implements NominaService {
         // Definitiva: si esos días de salario ya se pagaron en otra nómina, no se repiten.
         boolean salarioPagado = retiro.isPresent()
                 && liquidadorDefinitiva.salarioYaPagado(retiro.get(), nomina.getDocumentoId());
-        nomina.setDiasTrabajados(salarioPagado ? 0 : diasLiquidacion(periodo, empleado, empresaId));
+        nomina.setDiasTrabajados(salarioPagado ? 0 : diasLiquidacion(periodo, empleado, nomina.getContrato(), empresaId));
         calcular(nomina, empleado, config, fechaLiquidacion);
         if (retiro.isPresent())
             agregarLineasDefinitiva(nomina, liquidadorDefinitiva.lineas(nomina, retiro.get(), config, empresaId));
@@ -555,7 +555,7 @@ public class NominaServiceImpl implements NominaService {
                 consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
             }
 
-            nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, empresaId));
+            nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, nomina.getContrato(), empresaId));
             calcular(nomina, empleado, config);
             nomina.setUpdatedAt(LocalDateTime.now());
             nominaRepo.save(nomina);
@@ -1110,16 +1110,24 @@ public class NominaServiceImpl implements NominaService {
     /**
      * Días a liquidar tomados del período (no siempre 30). Aplica la convención
      * colombiana base-30 (mes = 30 días, quincena = 15) y recorta por la fecha de
-     * ingreso/retiro del empleado cuando caen dentro del período.
+     * inicio/fin del contrato cuando caen dentro del período.
+     *
+     * <p>Las fechas salen del contrato, no de {@code empleados.fecha_ingreso}: esa
+     * columna es legacy y el alta desde tercero la llena con la fecha de creación,
+     * lo que dejaba en 0 días a quien se vinculó con fecha anterior al registro.
+     * Sin contrato se usan las del empleado.
      */
-    private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado, Integer empresaId) {
+    private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado, ContratoLaboralEntity contrato,
+                                Integer empresaId) {
         LocalDate inicio = periodo.getFechaInicio();
         LocalDate fin = periodo.getFechaFin();
 
-        if (empleado.getFechaIngreso() != null && empleado.getFechaIngreso().isAfter(inicio))
-            inicio = empleado.getFechaIngreso();
-        if (empleado.getFechaRetiro() != null && empleado.getFechaRetiro().isBefore(fin))
-            fin = empleado.getFechaRetiro();
+        LocalDate ingreso = contrato != null ? contrato.getFechaInicio() : empleado.getFechaIngreso();
+        LocalDate retiro = contrato != null ? contrato.getFechaFin() : empleado.getFechaRetiro();
+        if (ingreso != null && ingreso.isAfter(inicio))
+            inicio = ingreso;
+        if (retiro != null && retiro.isBefore(fin))
+            fin = retiro;
 
         if (fin.isBefore(inicio)) return 0;
 
