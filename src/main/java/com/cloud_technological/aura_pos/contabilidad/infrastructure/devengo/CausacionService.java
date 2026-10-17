@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,6 +20,7 @@ import com.cloud_technological.aura_pos.entity.CausacionEjecucionEntity;
 import com.cloud_technological.aura_pos.entity.CausacionProgramadaEntity;
 import com.cloud_technological.aura_pos.repositories.contabilidad.CausacionEjecucionJPARepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.CausacionProgramadaJPARepository;
+import com.cloud_technological.aura_pos.sync.SyncProperties;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,6 +39,9 @@ public class CausacionService {
     private final CausacionEjecucionJPARepository ejecucionRepo;
     private final ApplicationEventPublisher eventPublisher;
 
+    @Autowired
+    private SyncProperties syncProperties;
+
     public List<CausacionProgramadaEntity> listar(Integer empresaId) {
         return causacionRepo.findByEmpresaIdOrderByNombreAsc(empresaId);
     }
@@ -53,6 +58,9 @@ public class CausacionService {
     /** Diario a las 02:30: genera las causaciones cuyo día ya llegó este mes. */
     @Scheduled(cron = "0 30 2 * * *")
     public void generarDelDia() {
+        // En un servidor local (modo híbrido) las causa la nube: aquí saldrían
+        // repetidas y solo en la tienda.
+        if (syncProperties != null && syncProperties.esNodoLocal()) return;
         int generadas = generar(LocalDate.now());
         if (generadas > 0) {
             log.info("Causaciones programadas: {} asiento(s) en borrador", generadas);

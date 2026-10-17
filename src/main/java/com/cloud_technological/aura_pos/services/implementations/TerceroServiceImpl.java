@@ -37,6 +37,8 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroQueryReposi
 import com.cloud_technological.aura_pos.repositories.ventas.VentaJPARepository;
 import com.cloud_technological.aura_pos.services.ITerceroService;
 import com.cloud_technological.aura_pos.services.terceros.TerceroDatosPersonalesService;
+import com.cloud_technological.aura_pos.sync.TiposComando;
+import com.cloud_technological.aura_pos.sync.local.SyncOutboxService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -54,6 +56,10 @@ public class TerceroServiceImpl implements ITerceroService {
     private final TerceroRolService terceroRolService;
     private final TerceroDatosPersonalesService datosPersonales;
     private final EmpleadoHojaVidaQueryRepository hojaVida;
+
+    /** Modo híbrido: el cliente creado en la tienda sube a la nube. */
+    @Autowired
+    private SyncOutboxService syncOutbox;
 
     @Autowired
     public TerceroServiceImpl(TerceroQueryRepository terceroRepository,
@@ -168,6 +174,7 @@ public class TerceroServiceImpl implements ITerceroService {
         // Roles de seguridad social (V120): no tienen booleano, van por lista.
         sincronizarRolesSeguridadSocial(guardado.getId(), dto.getRoles());
         datosPersonales.guardarContactos(guardado, dto.getTelefonos(), dto.getCorreos());
+        syncOutbox.registrar(TiposComando.TERCERO_CREAR, guardado.getId(), empresaId, null, dto);
         return conContactos(terceroMapper.toDto(guardado));
     }
 

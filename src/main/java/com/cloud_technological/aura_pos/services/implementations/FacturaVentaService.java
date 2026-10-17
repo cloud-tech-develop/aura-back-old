@@ -5,7 +5,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.data.domain.PageImpl;
@@ -32,6 +34,9 @@ import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPAReposito
 import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.VentaService;
+import com.cloud_technological.aura_pos.sync.SyncContexto;
+import com.cloud_technological.aura_pos.sync.TiposComando;
+import com.cloud_technological.aura_pos.sync.local.SyncOutboxService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -72,6 +77,8 @@ public class FacturaVentaService {
     private final com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository cxcRepo;
     private final com.cloud_technological.aura_pos.repositories.centros_costos.CentroCostoJPARepository centroCostoRepo;
     private final com.cloud_technological.aura_pos.contabilidad.infrastructure.devengo.AnticipoService anticipoService;
+    /** Modo híbrido: la factura emitida en la tienda sube a la nube. */
+    private final SyncOutboxService syncOutbox;
 
     // ── Consultas ──────────────────────────────────────────────────────
 
@@ -179,7 +186,8 @@ public class FacturaVentaService {
         } else {
             vence = dto.getFechaVencimiento() != null ? dto.getFechaVencimiento()
                     : LocalDate.now().plusDays(condicion != null ? condicion.getDias() : 30);
-            if (vence.isBefore(LocalDate.now()))
+            // En replay (modo híbrido) la factura se emitió días atrás en la tienda.
+            if (vence.isBefore(LocalDate.now()) && !SyncContexto.enReplay())
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "El vencimiento no puede ser anterior a hoy");
         }
 
@@ -504,7 +512,7 @@ public class FacturaVentaService {
         if (actual.getLineas().isEmpty())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Agregue al menos una línea a la factura");
         if ("CREDITO".equals(f.getFormaPago()) && f.getFechaVencimiento() != null
-                && f.getFechaVencimiento().isBefore(LocalDate.now()))
+                && f.getFechaVencimiento().isBefore(LocalDate.now()) && !SyncContexto.enReplay())
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "El vencimiento ya pasó: corríjalo en el borrador antes de emitir");
 
@@ -538,9 +546,61 @@ public class FacturaVentaService {
         f.setEstado(FacturaVentaEntity.EMITIDA);
         f.setVentaId(creada.getId());
         f.setEmitidaPor(usuarioId != null ? usuarioId.intValue() : null);
-        f.setEmitidaAt(LocalDateTime.now());
+        f.setEmitidaAt(SyncContexto.ahora());
         repo.saveAndFlush(f);
+
+        // Modo híbrido: el borrador no viaja, la factura emitida sí, completa y
+        // con la numeración que su venta ya tiene en la tienda.
+        if (syncOutbox.activo()) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("factura", comoGuardar(f, actual));
+            payload.put("ventaIdLocal", creada.getId());
+            payload.put("prefijo", creada.getPrefijo());
+            payload.put("consecutivo", creada.getConsecutivo());
+            syncOutbox.registrar(TiposComando.FACTURA_EMITIR, f.getId(), empresaId, usuarioId, payload);
+        }
         return obtener(id, empresaId);
+    }
+
+    /**
+     * La factura como formulario de borrador, para que la nube la cree igual. Las
+     * líneas de A, I y U no van: el servicio las vuelve a calcular.
+     */
+    private static FacturaVentaDtos.Guardar comoGuardar(FacturaVentaEntity f, FacturaVentaDtos.Detalle actual) {
+        FacturaVentaDtos.Guardar g = new FacturaVentaDtos.Guardar();
+        g.setSucursalId(f.getSucursalId());
+        g.setBodegaId(f.getBodegaId());
+        g.setClienteId(f.getClienteId());
+        g.setVendedorId(f.getVendedorId());
+        g.setCondicionPagoId(f.getCondicionPagoId());
+        g.setFormaPago(f.getFormaPago());
+        g.setMetodoPago(f.getMetodoPago());
+        g.setCuentaBancariaId(f.getCuentaBancariaId());
+        g.setCentroCostoId(f.getCentroCostoId());
+        g.setFechaVencimiento(f.getFechaVencimiento());
+        g.setOrdenCompra(f.getOrdenCompra());
+        g.setNotas(f.getNotas());
+        g.setAiu(f.getAiu());
+        g.setAiuAdministracionPct(f.getAiuAdministracionPct());
+        g.setAiuImprevistosPct(f.getAiuImprevistosPct());
+        g.setAiuUtilidadPct(f.getAiuUtilidadPct());
+        g.setAiuIvaPct(f.getAiuIvaPct());
+        List<FacturaVentaDtos.Linea> lineas = new ArrayList<>();
+        for (FacturaVentaDtos.LineaDto l : actual.getLineas()) {
+            if (l.getAiuTipo() != null) continue;
+            FacturaVentaDtos.Linea x = new FacturaVentaDtos.Linea();
+            x.setProductoId(l.getProductoId());
+            x.setProductoPresentacionId(l.getProductoPresentacionId());
+            x.setDescripcion(l.getDescripcion());
+            x.setCantidad(l.getCantidad());
+            x.setPrecioUnitario(l.getPrecioUnitario());
+            x.setDescuentoValor(l.getDescuentoValor());
+            x.setImpuestoPorcentaje(l.getImpuestoPorcentaje());
+            x.setCotizacionDetalleId(l.getCotizacionDetalleId());
+            lineas.add(x);
+        }
+        g.setLineas(lineas);
+        return g;
     }
 
     /** La venta que equivale a la factura, para el mismo VentaService del POS. */

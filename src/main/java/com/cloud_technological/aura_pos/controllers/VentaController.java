@@ -23,7 +23,7 @@ import com.cloud_technological.aura_pos.dto.ventas.VentaDto;
 import com.cloud_technological.aura_pos.dto.ventas.VentaTableDto;
 import com.cloud_technological.aura_pos.services.VentaService;
 import com.cloud_technological.aura_pos.services.implementations.FacturaPdfService;
-import com.cloud_technological.aura_pos.services.implementations.VentaFacturaService;
+import com.cloud_technological.aura_pos.sync.local.FacturaElectronicaHibridaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
@@ -39,7 +39,7 @@ public class VentaController {
     private SecurityUtils securityUtils;
 
     @Autowired
-    private VentaFacturaService ventaFacturaService;
+    private FacturaElectronicaHibridaService facturaElectronica;
 
     @Autowired
     private FacturaPdfService facturaPdfService;
@@ -92,13 +92,18 @@ public class VentaController {
 
         Integer empresaId = securityUtils.getEmpresaId();
 
+        // En un servidor local (modo híbrido) la factura la emite la nube: puede
+        // quedar pendiente hasta que vuelva internet.
         FacturaElectronicaResponseDto result =
-                ventaFacturaService.generarFacturaElectronica(ventaId, empresaId);
+                facturaElectronica.generar(ventaId, empresaId, securityUtils.getUsuarioId());
+        String mensaje = FacturaElectronicaHibridaService.PENDIENTE_SYNC.equals(result.getEstadoDian())
+                ? "Factura electrónica en cola: se emitirá cuando haya conexión con la nube"
+                : "Factura electrónica generada exitosamente";
 
         return new ResponseEntity<>(
                 new ApiResponse<>(
                         HttpStatus.OK.value(),
-                        "Factura electrónica generada exitosamente",
+                        mensaje,
                         false,
                         result),
                 HttpStatus.OK);

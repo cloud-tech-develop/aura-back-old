@@ -199,12 +199,48 @@ public class VentaQueryRepository {
      * número repetido; ahora el error sube y la venta no se guarda.
      */
     public Long obtenerSiguienteConsecutivo(Long sucursalId) {
+        return obtenerSiguienteConsecutivo(sucursalId, List.of());
+    }
+
+    /**
+     * Igual que {@link #obtenerSiguienteConsecutivo(Long)}, sin contar las series
+     * de los servidores locales (modo híbrido): sus ventas llegan a la nube con
+     * su propio prefijo y consecutivo, y no deben mover la serie de la sucursal.
+     *
+     * @param seriesExcluidas prefijos reservados por nodos; vacío = todas cuentan
+     */
+    public Long obtenerSiguienteConsecutivo(Long sucursalId, List<String> seriesExcluidas) {
         MapSqlParameterSource params = new MapSqlParameterSource("sucursalId", sucursalId);
         jdbcTemplate.query("SELECT pg_advisory_xact_lock(175175, CAST(:sucursalId AS INTEGER))", params, rs -> null);
         String sql = """
             SELECT COALESCE(MAX(consecutivo), 0) + 1
             FROM venta
             WHERE sucursal_id = :sucursalId
+        """;
+        if (seriesExcluidas != null && !seriesExcluidas.isEmpty()) {
+            sql += " AND (prefijo IS NULL OR prefijo NOT IN (:series))";
+            params.addValue("series", seriesExcluidas);
+        }
+        return jdbcTemplate.queryForObject(sql, params, Long.class);
+    }
+
+    /**
+     * Siguiente consecutivo de una serie propia (la del servidor local en modo
+     * híbrido), con el mismo candado por sucursal.
+     *
+     * @param prefijo serie del nodo
+     * @param piso    último número que la nube conoce de la serie: la base del
+     *                nodo no tiene el historial y empezaría otra vez en 1
+     */
+    public Long obtenerSiguienteConsecutivoSerie(Long sucursalId, String prefijo, long piso) {
+        MapSqlParameterSource params = new MapSqlParameterSource("sucursalId", sucursalId)
+                .addValue("prefijo", prefijo)
+                .addValue("piso", piso);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(175175, CAST(:sucursalId AS INTEGER))", params, rs -> null);
+        String sql = """
+            SELECT GREATEST(COALESCE(MAX(consecutivo), 0), :piso) + 1
+            FROM venta
+            WHERE sucursal_id = :sucursalId AND prefijo = :prefijo
         """;
         return jdbcTemplate.queryForObject(sql, params, Long.class);
     }

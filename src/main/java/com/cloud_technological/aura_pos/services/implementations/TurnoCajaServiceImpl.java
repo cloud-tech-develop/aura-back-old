@@ -6,7 +6,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -41,6 +43,9 @@ import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.ComprobanteCajaService;
 import com.cloud_technological.aura_pos.services.TurnoCajaService;
 import com.cloud_technological.aura_pos.services.cartera.CastigoCarteraService;
+import com.cloud_technological.aura_pos.sync.SyncContexto;
+import com.cloud_technological.aura_pos.sync.TiposComando;
+import com.cloud_technological.aura_pos.sync.local.SyncOutboxService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -63,6 +68,10 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final com.cloud_technological.aura_pos.services.ControlFechaRetroactivaService controlFechaRetroactiva;
     private final com.cloud_technological.aura_pos.contabilidad.application.port.PeriodoContablePort periodoContable;
+
+    /** Modo híbrido: lo que pasa en la caja de la tienda sube a la nube. */
+    @Autowired
+    private SyncOutboxService syncOutbox;
 
     @Autowired
     public TurnoCajaServiceImpl(TurnoCajaQueryRepository turnoRepository,
@@ -131,13 +140,17 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         CajaEntity caja = cajaJPARepository.findByIdAndSucursalEmpresaId(dto.getCajaId(), empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Caja no encontrada"));
 
-        if (!caja.getActiva())
+        // En replay (modo híbrido) el turno ya se abrió en la tienda: la nube lo
+        // registra aunque allá figure otro abierto para esa caja o ese cajero.
+        boolean replay = SyncContexto.enReplay();
+
+        if (!caja.getActiva() && !replay)
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La caja está inactiva");
 
-        if (turnoJPARepository.findByCajaIdAndEstado(dto.getCajaId(), "ABIERTA").isPresent())
+        if (!replay && turnoJPARepository.findByCajaIdAndEstado(dto.getCajaId(), "ABIERTA").isPresent())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "La caja ya tiene un turno abierto");
 
-        if (turnoJPARepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA").isPresent())
+        if (!replay && turnoJPARepository.findByUsuarioIdAndEstado(usuarioId, "ABIERTA").isPresent())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Ya tienes un turno abierto en otra caja");
 
         UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
@@ -147,10 +160,12 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         turno.setCaja(caja);
         turno.setUsuario(usuario);
         turno.setBaseInicial(dto.getBaseInicial());
-        turno.setFechaApertura(LocalDateTime.now());
+        turno.setFechaApertura(SyncContexto.ahora());
         turno.setEstado("ABIERTA");
 
-        return turnoMapper.toDto(turnoJPARepository.save(turno));
+        TurnoCajaEntity guardado = turnoJPARepository.save(turno);
+        syncOutbox.registrar(TiposComando.TURNO_ABRIR, guardado.getId(), empresaId, usuarioId, dto);
+        return turnoMapper.toDto(guardado);
     }
 
     @Override
@@ -183,7 +198,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 .subtract(egresos).subtract(movEgreso)
                 .subtract(comisiones);
 
-        turno.setFechaCierre(LocalDateTime.now());
+        turno.setFechaCierre(SyncContexto.ahora());
         turno.setTotalEfectivoSistema(totalSistema);
         turno.setTotalEfectivoReal(dto.getTotalEfectivoReal());
         turno.setDiferencia(dto.getTotalEfectivoReal().subtract(totalEsperado));
@@ -198,6 +213,8 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                             "DIFERENCIA_CAJA", turno.getId(), empresaId, null));
         }
 
+        syncOutbox.registrar(TiposComando.TURNO_CERRAR, turno.getId(), empresaId,
+                turno.getUsuario() != null ? Long.valueOf(turno.getUsuario().getId()) : null, dto);
         return construirResumen(id);
     }
 
@@ -211,10 +228,31 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
     @Override
     @Transactional
     public MovimientoCajaDto registrarMovimiento(Long turnoId, CreateMovimientoCajaDto dto, Integer empresaId, Long usuarioId) {
+        MovimientoCajaDto creado = registrarMovimientoEnTurno(turnoId, dto, empresaId, usuarioId);
+
+        // Modo híbrido: el movimiento de la caja de la tienda sube a la nube. El
+        // abono a una cuenta por cobrar creada en la tienda viaja con la venta que
+        // la originó: la cuenta no tiene id en la nube.
+        if (syncOutbox.activo()) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("turnoId", turnoId);
+            payload.put("movimiento", dto);
+            if (dto.getCuentaCobrarId() != null) {
+                cuentaCobrarRepository.findById(dto.getCuentaCobrarId())
+                        .map(CuentaCobrarEntity::getVenta)
+                        .ifPresent(v -> payload.put("ventaIdCuentaCobrar", v.getId()));
+            }
+            syncOutbox.registrar(TiposComando.MOVIMIENTO_CAJA, creado.getId(), empresaId, usuarioId, payload);
+        }
+        return creado;
+    }
+
+    private MovimientoCajaDto registrarMovimientoEnTurno(Long turnoId, CreateMovimientoCajaDto dto, Integer empresaId, Long usuarioId) {
         TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(turnoId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Turno no encontrado"));
 
-        if ("CERRADA".equals(turno.getEstado()))
+        // En replay el movimiento ya ocurrió en la tienda con el turno abierto.
+        if ("CERRADA".equals(turno.getEstado()) && !SyncContexto.enReplay())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se pueden registrar movimientos en un turno cerrado");
 
         UsuarioEntity usuario = usuarioJPARepository.findById(usuarioId.intValue())
@@ -235,7 +273,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                     .monto(dto.getMonto())
                     .metodoPago("efectivo")
                     .referencia(recortar(dto.getConcepto(), 255))
-                    .fechaPago(LocalDateTime.now())
+                    .fechaPago(SyncContexto.ahora())
                     .build();
             AbonoCobrarEntity saved = abonoCobrarRepository.save(abono);
 
@@ -278,7 +316,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                     .monto(dto.getMonto())
                     .metodoPago("efectivo")
                     .referencia(recortar(dto.getConcepto(), 255))
-                    .fechaPago(LocalDateTime.now())
+                    .fechaPago(SyncContexto.ahora())
                     .build();
             AbonoPagarEntity saved = abonoPagarRepository.save(abono);
 
@@ -316,7 +354,7 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
                 // Movimiento que el cajero registra a mano sobre su propio
                 // turno abierto: la fecha del dinero y la del documento son la
                 // misma, así que fechaDocumento se queda en null.
-                .fecha(java.time.LocalDate.now())
+                .fecha(SyncContexto.hoy())
                 .origenTipo(MovimientoCajaEntity.ORIGEN_MANUAL)
                 .conceptoCajaId(dto.getConceptoCajaId())
                 .metodoPago(dto.getMetodoPago())

@@ -58,6 +58,9 @@ public class SecurityConfig {
                     .requestMatchers("/api/auth/forgot-password").permitAll()
                     .requestMatchers("/api/auth/reset-password").permitAll()
                     .requestMatchers("/api/municipios/**").permitAll()
+                    // Modo híbrido: el nodo local se autentica con su token
+                    // (X-Sync-Token), que SyncController valida.
+                    .requestMatchers("/api/sync/push", "/api/sync/pull").permitAll()
                     .requestMatchers("/api/platform/**").hasAuthority("PLATFORM_ADMIN")
                     .requestMatchers("/api/auth/register").hasAuthority("PLATFORM_ADMIN");
 

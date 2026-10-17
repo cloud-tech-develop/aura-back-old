@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.factura_venta.FacturaVentaDtos;
+import com.cloud_technological.aura_pos.dto.factus.FacturaElectronicaResponseDto;
 import com.cloud_technological.aura_pos.services.implementations.FacturaVentaService;
+import com.cloud_technological.aura_pos.sync.local.FacturaElectronicaHibridaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -33,8 +35,9 @@ public class FacturaVentaController {
     @Autowired
     private SecurityUtils securityUtils;
 
+    /** En un servidor local (modo híbrido) la factura la emite la nube. */
     @Autowired
-    private com.cloud_technological.aura_pos.services.implementations.VentaFacturaService ventaFacturaService;
+    private FacturaElectronicaHibridaService facturaElectronica;
 
     private static <T> ResponseEntity<ApiResponse<T>> ok(String mensaje, T data) {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), mensaje, false, data), HttpStatus.OK);
@@ -120,7 +123,10 @@ public class FacturaVentaController {
         if (d.getVentaId() == null || !"EMITIDA".equals(d.getEstado()))
             throw new com.cloud_technological.aura_pos.utils.GlobalException(HttpStatus.BAD_REQUEST,
                     "Emita la factura antes de enviarla a la DIAN");
-        return ok("Factura electrónica enviada", ventaFacturaService.generarFacturaElectronica(d.getVentaId(), empresaId));
+        FacturaElectronicaResponseDto r = facturaElectronica.generar(d.getVentaId(), empresaId, securityUtils.getUsuarioId());
+        return ok(FacturaElectronicaHibridaService.PENDIENTE_SYNC.equals(r.getEstadoDian())
+                ? "Factura electrónica en cola: se emitirá cuando haya conexión con la nube"
+                : "Factura electrónica enviada", r);
     }
 
     // ── Condiciones de pago ─────────────────────────────────────────────

@@ -3,7 +3,9 @@ package com.cloud_technological.aura_pos.services.implementations;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -63,6 +65,10 @@ import com.cloud_technological.aura_pos.services.CarteraService;
 import com.cloud_technological.aura_pos.services.ComisionService;
 import com.cloud_technological.aura_pos.services.CuentaCobrarService;
 import com.cloud_technological.aura_pos.services.VentaService;
+import com.cloud_technological.aura_pos.sync.SeriesVenta;
+import com.cloud_technological.aura_pos.sync.SyncContexto;
+import com.cloud_technological.aura_pos.sync.TiposComando;
+import com.cloud_technological.aura_pos.sync.local.SyncOutboxService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PresentacionConversion;
 import com.cloud_technological.aura_pos.utils.MediosPago;
@@ -73,6 +79,13 @@ import com.cloud_technological.aura_pos.utils.TipoMovimientoInventario;
 
 @Service
 public class VentaServiceImpl implements VentaService {
+
+    /** Modo híbrido: numeración según nube/nodo y cola hacia la nube. */
+    @Autowired
+    private SeriesVenta seriesVenta;
+
+    @Autowired
+    private SyncOutboxService syncOutbox;
 
     /** Bloquea el saldo (bodega, producto) antes de moverlo: ver InventarioStockService. */
     @org.springframework.beans.factory.annotation.Autowired
@@ -217,9 +230,15 @@ public class VentaServiceImpl implements VentaService {
     @Transactional
     public VentaDto crear(CreateVentaDto dto, Integer empresaId, Long usuarioId) {
 
+        // Modo híbrido: la nube reproduce una venta que ya ocurrió en la tienda.
+        // Lo que el nodo validó (stock, cupo, permisos, turno abierto) no se
+        // vuelve a bloquear: la mercancía ya salió y el cliente ya pagó.
+        final boolean replay = SyncContexto.enReplay();
+
         // 0. Recargo por forma de pago (Sistecrédito, ADDI…): sube esos pagos y
-        // agrega la línea del recargo antes de validar y totalizar.
-        if (recargoFormaPago != null) recargoFormaPago.aplicar(dto, empresaId);
+        // agrega la línea del recargo antes de validar y totalizar. En replay ya
+        // viene aplicado desde el nodo.
+        if (recargoFormaPago != null && !replay) recargoFormaPago.aplicar(dto, empresaId);
 
         // 1. Validar turno. Sigue siendo opcional para vendedores sin caja, pero
         // el efectivo obliga: sin turno no hay dónde registrar el dinero físico
@@ -234,7 +253,7 @@ public class VentaServiceImpl implements VentaService {
         if (dto.getTurnoCajaId() != null) {
             turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(dto.getTurnoCajaId(), empresaId)
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Turno no encontrado"));
-            if (!turno.getEstado().equals("ABIERTA")) {
+            if (!turno.getEstado().equals("ABIERTA") && !replay) {
                 throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno de caja no está abierto");
             }
             sucursal = turno.getCaja().getSucursal();
@@ -281,7 +300,7 @@ public class VentaServiceImpl implements VentaService {
 
         // 2.3. Validar cupo de crédito disponible
         Long solicitudAutorizadaId = null;
-        if (tienePagoCredito && cliente != null) {
+        if (tienePagoCredito && cliente != null && !replay) {
             BigDecimal montoCredito = dto.getPagos().stream()
                     .filter(p -> "CREDITO".equalsIgnoreCase(p.getMetodoPago()))
                     .map(CreateVentaPagoDto::getMonto)
@@ -305,7 +324,8 @@ public class VentaServiceImpl implements VentaService {
         // no se revisa otra vez con el usuario del vendedor.
         // La factura de Facturación tampoco: el precio lo pone quien factura, con
         // el permiso de su módulo, no el límite de descuento del cajero.
-        boolean desdePedido = dto.getPedidoVendedorId() != null || dto.isDesdeFacturacion();
+        // La venta reproducida desde un nodo ya pasó por los límites en la tienda.
+        boolean desdePedido = dto.getPedidoVendedorId() != null || dto.isDesdeFacturacion() || replay;
         if (tienePagoCredito && controlPermisos != null && !desdePedido) {
             controlPermisos.exigirEspecial(usuarioId.intValue(), empresaId, securityUtils.getRol(),
                     com.cloud_technological.aura_pos.services.permisos.AutorizacionService.CLAVES_CREDITO,
@@ -333,13 +353,11 @@ public class VentaServiceImpl implements VentaService {
         venta.setUsuario(usuario);
         if (turno != null) venta.setTurnoCaja(turno);
         venta.setTipoDocumento(dto.getTipoDocumento());
-        venta.setPrefijo(sucursal.getPrefijoFacturacion());
-        /**
-         * TODO: posible error al tratar de obtener el siguiente consecutivo *
-         * porque varias instancias de la aplicacion podrian estar usando el
-         * mismo * consecutivo
-         */
-        venta.setConsecutivo(ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
+        // Prefijo y consecutivo: los de la sucursal en la nube, la serie propia en
+        // un nodo local, o los que trae el nodo cuando la nube reproduce su venta.
+        SeriesVenta.Numero numero = seriesVenta.siguiente(sucursal, empresaId);
+        venta.setPrefijo(numero.prefijo());
+        venta.setConsecutivo(numero.consecutivo());
         // Sin zona explícita: la JVM ya corre en America/Bogota (ver
         // AuraPosApplication).
         //
@@ -352,7 +370,8 @@ public class VentaServiceImpl implements VentaService {
         // Con la zona de la JVM ya fijada, el parche sobra y volverlo a poner
         // solo reintroduciría esa discrepancia. Los dos cambios van juntos: sin
         // la zona de la JVM, quitar esto manda las ventas cinco horas adelante.
-        venta.setFechaEmision(LocalDateTime.now());
+        // En replay, la hora en que se vendió en la tienda (SyncContexto).
+        venta.setFechaEmision(SyncContexto.ahora());
         venta.setObservaciones(dto.getObservaciones());
         venta.setEstadoVenta("COMPLETADA");
 
@@ -376,8 +395,9 @@ public class VentaServiceImpl implements VentaService {
 
         BigDecimal descGral = dto.getDescuentoGeneral() != null ? dto.getDescuentoGeneral() : BigDecimal.ZERO;
 
-        // Vender de un lote vencido lo decide la empresa (por defecto no).
-        final boolean permitirVencidos = !loteStock.bloqueaVencidos(empresaId);
+        // Vender de un lote vencido lo decide la empresa (por defecto no). En
+        // replay, el lote ya salió en la tienda.
+        final boolean permitirVencidos = replay || !loteStock.bloqueaVencidos(empresaId);
         final VentaEntity ventaFinal = venta;
         final SucursalEntity sucursalVenta = sucursal;
         final com.cloud_technological.aura_pos.entity.BodegaEntity bodegaVenta = bodega;
@@ -438,7 +458,7 @@ public class VentaServiceImpl implements VentaService {
                             "El componente '" + hijo.getNombre() + "' no tiene inventario en la bodega "
                             + bodega.getNombre()));
 
-                    if (!Boolean.TRUE.equals(hijo.getPermitirStockNegativo())
+                    if (!replay && !Boolean.TRUE.equals(hijo.getPermitirStockNegativo())
                             && invHijo.getStockActual().compareTo(cantidadRequerida) < 0) {
                         throw new GlobalException(HttpStatus.BAD_REQUEST,
                                 "Stock insuficiente del componente: " + hijo.getNombre()
@@ -453,7 +473,7 @@ public class VentaServiceImpl implements VentaService {
                         "El producto " + producto.getNombre() + " no tiene inventario en la bodega "
                         + bodega.getNombre()));
 
-                if (!Boolean.TRUE.equals(producto.getPermitirStockNegativo())
+                if (!replay && !Boolean.TRUE.equals(producto.getPermitirStockNegativo())
                         && inventario.getStockActual().compareTo(cantidadBase) < 0) {
                     throw new GlobalException(HttpStatus.BAD_REQUEST,
                             "Stock insuficiente para: " + producto.getNombre()
@@ -537,7 +557,7 @@ public class VentaServiceImpl implements VentaService {
                     List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotesHijo = loteStock.salidaDocumento(
                             com.cloud_technological.aura_pos.services.LoteStockService.VENTA_COMPONENTE, detalle.getId(), hijo, bodegaVenta, empresaId,
                             cantidadDescontar, null, permitirVencidos,
-                            Boolean.TRUE.equals(hijo.getPermitirStockNegativo()));
+                            replay || Boolean.TRUE.equals(hijo.getPermitirStockNegativo()));
                     final String refHijo = "Venta " + Documentos.numeroVenta(ventaFinal)
                             + " [componente de " + producto.getNombre() + "]";
                     loteStock.kardex(lotesHijo, cantidadDescontar.negate(), saldoAnt,
@@ -565,7 +585,7 @@ public class VentaServiceImpl implements VentaService {
                 // Lote: el que eligió el cajero o el que vence primero.
                 List<com.cloud_technological.aura_pos.services.LoteStockService.Asignacion> lotes = loteStock.salidaDocumento(com.cloud_technological.aura_pos.services.LoteStockService.VENTA,
                         detalle.getId(), producto, bodegaVenta, empresaId, cantidadBase, item.getLoteId(),
-                        permitirVencidos, Boolean.TRUE.equals(producto.getPermitirStockNegativo()));
+                        permitirVencidos, replay || Boolean.TRUE.equals(producto.getPermitirStockNegativo()));
                 if (lotes.size() == 1) {
                     detalle.setLote(lotes.get(0).lote());
                     detalleJPARepository.save(detalle);
@@ -752,6 +772,17 @@ public class VentaServiceImpl implements VentaService {
                 new com.cloud_technological.aura_pos.contabilidad.infrastructure.event.DocumentoContabilizableEvent(
                         "VENTA", venta.getId(), empresaId, usuarioId.intValue()));
 
+        // 12. Modo híbrido: en un nodo local la venta queda en la cola hacia la
+        //     nube, en la misma transacción. La de Facturación no: viaja como
+        //     FACTURA_EMITIR desde FacturaVentaService, con la factura completa.
+        if (!dto.isDesdeFacturacion()) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("venta", dto);
+            payload.put("prefijo", venta.getPrefijo());
+            payload.put("consecutivo", venta.getConsecutivo());
+            syncOutbox.registrar(TiposComando.VENTA_CREAR, venta.getId(), empresaId, usuarioId, payload);
+        }
+
         return ventaDto;
     }
 
@@ -933,6 +964,11 @@ public class VentaServiceImpl implements VentaService {
         eventPublisher.publishEvent(
                 new com.cloud_technological.aura_pos.event.ContabilidadReversaEvent(
                         "VENTA", venta.getId(), empresaId, null));
+
+        // Modo híbrido: la anulación hecha en la tienda sube a la nube. Si la
+        // venta salió de Facturación, la nube anula también la factura.
+        syncOutbox.registrar(TiposComando.VENTA_ANULAR, venta.getId(), empresaId, securityUtils.getUsuarioId(),
+                Map.of());
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────

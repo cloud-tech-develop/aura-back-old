@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoJPARep
 import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DiferidoAmortizacionJPARepository;
 import com.cloud_technological.aura_pos.repositories.gastos.GastoJPARepository;
+import com.cloud_technological.aura_pos.sync.SyncProperties;
 
 import lombok.RequiredArgsConstructor;
 
@@ -41,9 +43,14 @@ public class DiferidoService {
     private final DiferidoJPARepository diferidoRepo;
     private final DiferidoQueryRepository diferidoQuery;
 
+    @Autowired
+    private SyncProperties syncProperties;
+
     /** Día 1 de cada mes a las 03:00. */
     @Scheduled(cron = "0 0 3 1 * *")
     public void amortizarMesActual() {
+        // En un servidor local (modo híbrido) amortiza la nube.
+        if (syncProperties != null && syncProperties.esNodoLocal()) return;
         int generadas = amortizar(LocalDate.now());
         log.info("Amortización de diferidos: {} cuota(s) generada(s)", generadas);
     }
