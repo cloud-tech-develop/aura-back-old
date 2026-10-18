@@ -72,7 +72,7 @@ la venta se hubiera hecho allá, con la fecha y el número que tuvo en la tienda
 
 ## Instalación de un nodo
 
-1. **En la nube**: aplicar la migración V226 (Laravel `2026_10_17_000226_sync_hibrido`).
+1. **En la nube**: aplicar la migración V227 (Laravel `2026_07_03_000227_sync_hibrido`).
 2. **Registrar el nodo** (usuario ADMIN de la empresa):
    ```http
    POST /api/sync/nodos
@@ -121,12 +121,34 @@ la venta se hubiera hecho allá, con la fecha y el número que tuvo en la tienda
 
 | Qué | Estado |
 |---|---|
-| Implementación backend (paquete `sync/`, `SyncController`, cambios en servicios) | Hecha, **sin commit**, en `main` local |
-| Compilación | Compiló a mitad de la implementación; los últimos cambios en `ReplicadorLocal`, `SincronizadorLocal`, `SeriesVenta` y las pruebas `SeriesVentaTest` / `TraductorIdsTest` **no se han compilado** |
-| Prueba de punta a punta (nube ↔ tienda) | **No hecha**: el empaquetado se detuvo por falta de memoria en el equipo |
-| Bases de prueba | `aura_sync_nube` y `aura_sync_nodo` creadas con datos de prueba (`cajero@prueba.co` / `Aura2026!`, nodo `T1`, token `token-prueba-nodo-T1`). `aura_pos` no se tocó |
-| Migración Laravel | `2026_10_17_000226_sync_hibrido.php` creada; el repo Laravel llega a la 197 y el espejo SQL va en V225 (desfase previo a este trabajo) |
-| Frontend | Sin cambios |
+| Implementación backend (paquete `sync/`, `SyncController`, cambios en servicios) | Hecha, en la rama `feature/modo-hibrido` |
+| Compilación y pruebas unitarias | Compila; `SeriesVentaTest` y `TraductorIdsTest` pasan (8/8) |
+| Prueba de punta a punta (nube ↔ tienda) | **Hecha** (ver abajo) |
+| Bases de prueba | `aura_sync_nodo`: creada desde cero con las migraciones Laravel + `preparar_nodo.sql`. `aura_sync_nube`: mismas migraciones + datos de `aura-pos`. Nodo `T1` de FERRETOTAL (empresa 4, sucursal 5), token `token-prueba-nodo-T1` |
+| Entorno de prueba | `docker-compose.hibrido.yml`: nube en `:9001`, tienda en `:9002` |
+| Migración Laravel | `2026_07_03_000227_sync_hibrido.php` (espejo de `V227__sync_hibrido.sql`; la V226 es el historial de costos). Además, las migraciones ya instalan una base vacía (ver `2026_10_17_000001_alinear_esquema_base_nueva`) |
+| Frontend | Sin cambios (para probar, el front apunta a `http://localhost:9002/api/`) |
+
+### Prueba de punta a punta (17-oct-2026)
+
+Con internet: venta `T1-1` llegó a la nube en segundos. Sin internet (nube apagada):
+2 ventas, una anulada, cliente nuevo y cierre de turno quedaron en la cola. Al volver la
+nube, los 7 comandos se procesaron en orden y sin error:
+
+- Ventas con su número y hora de la tienda; turno abierto y cerrado con sus horas.
+- Inventario descontado (y devuelto en la anulación); 4 asientos cuadrados con fecha original.
+- Cliente creado en la nube y enlazado en `sync_id_map`.
+- **Reenvío de toda la cola: nada se duplicó.**
+
+Corregido durante la prueba:
+- `ReplicadorLocal`: un nodo nuevo no podía bajar `submodulos` (los sembrados por las
+  migraciones tienen otros ids que los de la nube y chocaban con el índice único). Con
+  las llaves apagadas, cada tabla con llave `id` se reemplaza completa.
+- El kardex de una venta reproducida quedaba con la hora de la sincronización; ahora
+  usa `SyncContexto.ahora()`.
+
+Visto y fuera del modo híbrido: al cerrar turno con una venta anulada, el total del
+sistema la incluye y la diferencia queda en 0.
 
 ### Impacto de estos cambios en la nube (si se despliegan)
 
@@ -136,7 +158,7 @@ Con `app.sync.modo=NUBE` (valor por defecto) el comportamiento es el mismo de ho
 - Las tareas programadas solo se apagan en el nodo.
 - El consecutivo de ventas excluye las series de los nodos; **sin nodos registrados no cambia nada**. Si la tabla `sync_nodo` no existe, la consulta lo detecta antes y sigue igual.
 - Las tablas `sync_*` se usan por JDBC, no hay entidades JPA: `ddl-auto=validate` no se afecta.
-- Riesgo real: lo que no se ha probado de punta a punta. **Recomendación: no descartar, pero no llevar a `main` ni a producción hasta compilar y hacer la prueba completa.** Moverlo a una rama `feature/modo-hibrido`.
+- La prueba de punta a punta ya pasó; antes de llevarlo a producción conviene repetirla con el front de tienda y el script de instalación.
 
 ## Cómo explicarlo al cliente
 

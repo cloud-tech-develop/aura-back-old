@@ -75,7 +75,7 @@ public class SyncNubeQueryRepository {
      * sus ventas ya están en la base con esa serie).
      *
      * @return prefijos; vacío si la empresa no tiene nodos o la base aún no
-     *         tiene la migración V226
+     *         tiene la migración V227
      */
     public List<String> prefijosNodos(Integer empresaId) {
         // Se pregunta antes de consultar: en Postgres una consulta fallida aborta

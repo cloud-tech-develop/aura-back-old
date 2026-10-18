@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Prueba del modo híbrido (docs/MODO_HIBRIDO.md): dos backends con la misma
+# imagen, uno como NUBE y otro como servidor de TIENDA (nodo LOCAL).
+#
+#   Arrancar:         docker compose -f docker-compose.hibrido.yml up -d --build
+#   Ver logs:         docker compose -f docker-compose.hibrido.yml logs -f
+#   Simular sin red:  docker compose -f docker-compose.hibrido.yml stop nube
+#   Volver la red:    docker compose -f docker-compose.hibrido.yml start nube
+#   Apagar:           docker compose -f docker-compose.hibrido.yml down
+#
+#   nube  → http://localhost:9001  base aura_sync_nube
+#   tienda→ http://localhost:9002  base aura_sync_nodo (el front de la tienda apunta aquí)
+#
+# Usa el mismo .env (llaves, Factus…); aquí solo se cambian base, puerto y modo.
+# Es un proyecto aparte (aura-hibrido): no toca el contenedor aura-backend de
+# desarrollo, pero los dos usan el 9001, así que no pueden estar arriba a la vez.
+# ─────────────────────────────────────────────────────────────────────────────
+name: aura-hibrido
+
+# La imagen la construye solo "nube"; "tienda" reutiliza la misma.
+x-backend: &backend
+  image: aura-backend:hibrido
+  env_file: .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  deploy:
+    resources:
+      limits:
+        memory: ${BACK_MEMORIA:-1g}
+        cpus: "${BACK_CPUS:-1.5}"
+
+services:
+  nube:
+    <<: *backend
+    build: .
+    container_name: aura-hibrido-nube
+    ports:
+      - "9001:9001"
+    environment:
+      SERVER_PORT: "9001"
+      DB_URL: jdbc:postgresql://host.docker.internal:5432/aura_sync_nube
+      APP_SYNC_MODO: NUBE
+
+  tienda:
+    <<: *backend
+    container_name: aura-hibrido-tienda
+    depends_on:
+      - nube
+    ports:
+      - "9002:9002"
+    environment:
+      SERVER_PORT: "9002"
+      DB_URL: jdbc:postgresql://host.docker.internal:5432/aura_sync_nodo
+      APP_SYNC_MODO: LOCAL
+      # Nombre del servicio dentro de la red de compose.
+      APP_SYNC_NUBE_URL: http://nube:9001
+      APP_SYNC_NODO_TOKEN: token-prueba-nodo-T1
+      # Para la prueba: subir la cola cada 10 s y bajar catálogo cada minuto.
+      APP_SYNC_INTERVALO_MS: "10000"
+      APP_SYNC_CATALOGO_CADA_MS: "60000"

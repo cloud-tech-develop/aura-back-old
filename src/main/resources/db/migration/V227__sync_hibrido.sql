@@ -1,4 +1,4 @@
--- V226 — Modo híbrido (docs/MODO_HIBRIDO.md): servidor local por tienda que
+-- V227 — Modo híbrido (docs/MODO_HIBRIDO.md): servidor local por tienda que
 -- trabaja sin internet y se sincroniza con la nube.
 --
 -- Las cinco tablas existen en las dos bases (mismo esquema), pero cada lado usa

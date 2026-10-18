@@ -1014,7 +1014,9 @@ public class VentaServiceImpl implements VentaService {
         movimiento.setSaldoNuevo(saldoNuevo);
         movimiento.setCostoHistorico(costo);
         movimiento.setReferenciaOrigen(referencia);
-        movimiento.setCreatedAt(LocalDateTime.now());
+        // Al reproducir una venta del nodo, el kardex queda con la hora en que se
+        // vendió en la tienda, no con la de la sincronización.
+        movimiento.setCreatedAt(SyncContexto.ahora());
         movimientoJPARepository.save(movimiento);
     }
 }

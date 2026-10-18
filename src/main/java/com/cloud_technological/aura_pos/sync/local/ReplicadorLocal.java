@@ -77,7 +77,7 @@ public class ReplicadorLocal {
      */
     @Transactional
     public List<String> aplicarCatalogo(SyncDtos.PullRespuesta r) {
-        desactivarLlaves();
+        boolean sinLlaves = desactivarLlaves();
         Integer empresaId = r.getNodo() != null ? r.getNodo().getEmpresaId() : null;
         List<String> fallidas = new ArrayList<>();
         // Primero la fusión: la copia local del cliente choca por documento con la
@@ -85,7 +85,7 @@ public class ReplicadorLocal {
         fusionar(r.getMapas());
         for (SyncTablas.Tabla t : SyncTablas.delGrupo(SyncTablas.Grupo.CATALOGO)) {
             JsonNode filas = r.getTablas().get(t.nombre());
-            if (filas != null && !aplicarTabla(t, filas, empresaId)) fallidas.add(t.nombre());
+            if (filas != null && !aplicarTabla(t, filas, empresaId, sinLlaves)) fallidas.add(t.nombre());
         }
         try {
             if (r.getNodo() != null)
@@ -111,14 +111,14 @@ public class ReplicadorLocal {
      */
     @Transactional
     public void aplicarSaldos(SyncDtos.PullRespuesta r) {
-        desactivarLlaves();
+        boolean sinLlaves = desactivarLlaves();
         Integer empresaId = r.getNodo() != null ? r.getNodo().getEmpresaId() : null;
         // La fila de inventario que el nodo creó para un producto ya existe en la
         // nube con otro id: la de la nube la reemplaza.
         jdbc.update("DELETE FROM inventario WHERE id >= :base", new MapSqlParameterSource("base", SyncIds.BASE_LOCAL));
         for (SyncTablas.Tabla t : SyncTablas.delGrupo(SyncTablas.Grupo.SALDO)) {
             JsonNode filas = r.getTablas().get(t.nombre());
-            if (filas != null) aplicarTabla(t, filas, empresaId);
+            if (filas != null) aplicarTabla(t, filas, empresaId, sinLlaves);
         }
         if (outbox.contarPorEnviar() > 0) throw new SaldosDesactualizados();
     }
@@ -126,9 +126,10 @@ public class ReplicadorLocal {
     /**
      * Aplica una tabla dentro de un savepoint.
      *
+     * @param sinLlaves las llaves foráneas están apagadas (ver {@link #desactivarLlaves()})
      * @return true si entró completa
      */
-    private boolean aplicarTabla(SyncTablas.Tabla t, JsonNode filas, Integer empresaId) {
+    private boolean aplicarTabla(SyncTablas.Tabla t, JsonNode filas, Integer empresaId, boolean sinLlaves) {
         Estructura e = estructura(t.nombre());
         if (e == null || !filas.isArray()) {
             log.warn("[SYNC] La tabla {} no existe o no tiene llave primaria en el nodo: se omite", t.nombre());
@@ -137,7 +138,7 @@ public class ReplicadorLocal {
         MapSqlParameterSource vacio = new MapSqlParameterSource();
         jdbc.update("SAVEPOINT sync_tabla", vacio);
         try {
-            borrarAusentes(t, e, filas, empresaId);
+            borrarDeLaNube(t, e, filas, empresaId, sinLlaves);
             upsert(t.nombre(), e, filas);
             jdbc.update("RELEASE SAVEPOINT sync_tabla", vacio);
             return true;
@@ -149,15 +150,23 @@ public class ReplicadorLocal {
     }
 
     /**
-     * Borra lo que el nodo tiene de la nube y la nube ya no tiene. Lo creado en
-     * el nodo (id del rango local) no se toca.
+     * Borra la copia que el nodo tiene de la nube antes de volver a insertarla. Lo
+     * creado en el nodo (id del rango local) no se toca.
+     *
+     * <p>Con las llaves apagadas se borra toda la copia: la tabla queda igual a la
+     * foto de la nube aunque un mismo id tenga allá otra llave única (en un nodo
+     * nuevo, los módulos que sembraron las migraciones tienen otros ids que los de
+     * la nube, y actualizar fila por fila choca con el índice único). Con las
+     * llaves activas borrar en cascada arrastraría datos del nodo, así que solo se
+     * borra lo que la nube ya no tiene.
      */
-    private void borrarAusentes(SyncTablas.Tabla t, Estructura e, JsonNode filas, Integer empresaId) {
+    private void borrarDeLaNube(SyncTablas.Tabla t, Estructura e, JsonNode filas, Integer empresaId, boolean sinLlaves) {
         if (!e.llaveEsId()) return;
         if (t.filtro() != null && empresaId == null) return;
         String sql = "DELETE FROM " + q(t.nombre()) + " WHERE id < :base"
                 + (t.filtro() == null ? "" : " AND " + t.filtro())
-                + " AND id NOT IN (SELECT CAST(x->>'id' AS bigint) FROM json_array_elements(CAST(:filas AS json)) x)";
+                + (sinLlaves ? ""
+                        : " AND id NOT IN (SELECT CAST(x->>'id' AS bigint) FROM json_array_elements(CAST(:filas AS json)) x)");
         jdbc.update(sql, new MapSqlParameterSource("base", SyncIds.BASE_LOCAL)
                 .addValue("empresaId", empresaId)
                 .addValue("filas", filas.toString()));
@@ -225,13 +234,15 @@ public class ReplicadorLocal {
      * Apaga llaves foráneas y triggers mientras dura la transacción, para no
      * depender del orden de las tablas. Requiere superusuario (la base del nodo
      * es nuestra); sin él, se confía en el orden de {@link SyncTablas}.
+     *
+     * @return true si quedaron apagadas
      */
-    private void desactivarLlaves() {
+    private boolean desactivarLlaves() {
         Boolean superusuario = jdbc.queryForObject(
                 "SELECT rolsuper FROM pg_roles WHERE rolname = current_user", new MapSqlParameterSource(), Boolean.class);
-        if (Boolean.TRUE.equals(superusuario)) {
-            jdbc.update("SET LOCAL session_replication_role = replica", new MapSqlParameterSource());
-        }
+        if (!Boolean.TRUE.equals(superusuario)) return false;
+        jdbc.update("SET LOCAL session_replication_role = replica", new MapSqlParameterSource());
+        return true;
     }
 
     private Estructura estructura(String tabla) {
