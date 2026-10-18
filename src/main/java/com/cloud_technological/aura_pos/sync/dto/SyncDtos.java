@@ -106,6 +106,8 @@ public final class SyncDtos {
         /** Último consecutivo de la serie del nodo, por sucursal. */
         private Map<String, Long> pisosConsecutivo = new LinkedHashMap<>();
         private boolean incluyeSaldos;
+        /** Trae los turnos de caja de la nube (grupo TURNOS). */
+        private boolean incluyeTurnos;
         private LocalDateTime generadoEn;
     }
 

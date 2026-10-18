@@ -64,9 +64,10 @@ public class SyncController {
     @GetMapping("/pull")
     public ResponseEntity<ApiResponse<SyncDtos.PullRespuesta>> pull(
             @RequestHeader(value = ClienteNube.HEADER_TOKEN, required = false) String token,
-            @RequestParam(defaultValue = "false") boolean saldos) {
+            @RequestParam(defaultValue = "false") boolean saldos,
+            @RequestParam(defaultValue = "false") boolean soloTurnos) {
         SyncDtos.NodoInfo nodo = nubeService.autenticar(token);
-        return ok("Catálogo", nubeService.pull(nodo, saldos));
+        return ok("Catálogo", nubeService.pull(nodo, saldos, soloTurnos));
     }
 
     // ── Administración de nodos (nube) ─────────────────────────────────

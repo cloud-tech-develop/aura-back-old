@@ -67,6 +67,11 @@ public class ClienteNube {
         return llamar(HttpMethod.GET, "/api/sync/pull?saldos=" + saldos, null, SyncDtos.PullRespuesta.class);
     }
 
+    /** Baja solo los turnos de caja de la nube (consulta liviana de cada ciclo). */
+    public SyncDtos.PullRespuesta pullTurnos() {
+        return llamar(HttpMethod.GET, "/api/sync/pull?soloTurnos=true", null, SyncDtos.PullRespuesta.class);
+    }
+
     private <T> T llamar(HttpMethod metodo, String ruta, Object cuerpo, Class<T> tipo) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

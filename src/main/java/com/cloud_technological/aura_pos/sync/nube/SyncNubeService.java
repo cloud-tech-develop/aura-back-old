@@ -26,13 +26,23 @@ public interface SyncNubeService {
     SyncDtos.PushRespuesta push(SyncDtos.NodoInfo nodo, SyncDtos.PushPeticion peticion);
 
     /**
-     * Catálogo de la empresa del nodo y, si se pide, sus existencias.
+     * Lo que el nodo debe tener de la nube.
      *
-     * @param nodo   nodo autenticado
-     * @param saldos true para incluir inventario, lotes y seriales
+     * <ul>
+     * <li>{@code saldos}: catálogo + existencias + turnos (el nodo lo pide con la
+     * cola vacía).</li>
+     * <li>{@code soloTurnos}: solo los turnos abiertos; bajada liviana de cada
+     * ciclo para que la tienda pueda seguir el turno de la nube si se cae
+     * internet.</li>
+     * <li>ninguno: solo el catálogo.</li>
+     * </ul>
+     *
+     * @param nodo       nodo autenticado
+     * @param saldos     true para incluir inventario, lotes, seriales y turnos
+     * @param soloTurnos true para devolver únicamente los turnos
      * @return lo que el nodo debe aplicar
      */
-    SyncDtos.PullRespuesta pull(SyncDtos.NodoInfo nodo, boolean saldos);
+    SyncDtos.PullRespuesta pull(SyncDtos.NodoInfo nodo, boolean saldos, boolean soloTurnos);
 
     /**
      * Registra un servidor local para la empresa.

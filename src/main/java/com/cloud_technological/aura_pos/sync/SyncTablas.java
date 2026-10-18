@@ -14,6 +14,11 @@ import java.util.List;
  * <li><b>SALDO</b>: existencias (inventario, lotes, seriales). El nodo las mueve
  * al vender, así que solo se bajan cuando la cola está vacía, es decir, cuando
  * la nube ya tiene todo lo que pasó en la tienda.</li>
+ * <li><b>TURNOS</b>: los turnos de caja abiertos en la nube. La nube es la
+ * principal y la tienda la contingencia: si se cae internet, el cajero sigue en
+ * el mismo turno que abrió en la nube. Como el nodo también los cierra, solo se
+ * bajan con la cola vacía; y en cada ciclo, para que un turno recién abierto ya
+ * esté en la tienda cuando falle la conexión.</li>
  * </ul>
  *
  * <p>El filtro es SQL fijo con un único parámetro {@code :empresaId}: nunca
@@ -21,7 +26,7 @@ import java.util.List;
  */
 public final class SyncTablas {
 
-    public enum Grupo { CATALOGO, SALDO }
+    public enum Grupo { CATALOGO, SALDO, TURNOS }
 
     /**
      * Una tabla replicada.
@@ -102,7 +107,16 @@ public final class SyncTablas {
             // Existencias
             saldo("inventario", "bodega_id IN (SELECT id FROM bodega WHERE empresa_id = :empresaId)"),
             saldo("lote", DE_EMPRESA),
-            saldo("serial_producto", DE_EMPRESA));
+            saldo("serial_producto", DE_EMPRESA),
+            // Turnos: los abiertos y los del último día (para que un turno que se
+            // cerró en la nube también quede cerrado en la tienda). Sin los que
+            // abrió un nodo: quien lo abrió ya lo tiene con su id, y otro nodo no
+            // lo necesita (en el nodo sync_id_map está vacía y no excluye nada).
+            new Tabla("turno_caja",
+                    "caja_id IN (SELECT c.id FROM caja c JOIN sucursal s ON s.id = c.sucursal_id WHERE s.empresa_id = :empresaId)"
+                            + " AND (estado = 'ABIERTA' OR fecha_apertura >= CURRENT_DATE - 1)"
+                            + " AND id NOT IN (SELECT m.id_nube FROM sync_id_map m WHERE m.tabla = 'turno_caja')",
+                    Grupo.TURNOS));
 
     private SyncTablas() {
     }

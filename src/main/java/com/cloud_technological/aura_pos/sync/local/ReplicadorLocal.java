@@ -116,11 +116,36 @@ public class ReplicadorLocal {
         // La fila de inventario que el nodo creó para un producto ya existe en la
         // nube con otro id: la de la nube la reemplaza.
         jdbc.update("DELETE FROM inventario WHERE id >= :base", new MapSqlParameterSource("base", SyncIds.BASE_LOCAL));
-        for (SyncTablas.Tabla t : SyncTablas.delGrupo(SyncTablas.Grupo.SALDO)) {
+        aplicarGrupo(SyncTablas.Grupo.SALDO, r, empresaId, sinLlaves);
+        if (r.isIncluyeTurnos()) aplicarGrupo(SyncTablas.Grupo.TURNOS, r, empresaId, sinLlaves);
+        if (outbox.contarPorEnviar() > 0) throw new SaldosDesactualizados();
+    }
+
+    /**
+     * Reemplaza la copia local de los turnos de la nube.
+     *
+     * <p>La nube es la principal y la tienda la contingencia: si se cae internet
+     * con un turno abierto en la nube, el cajero sigue vendiendo en ese mismo
+     * turno desde la tienda. Igual que las existencias, solo es correcto con la
+     * cola vacía: un cierre hecho en la tienda y todavía sin subir no se pisa con
+     * el turno abierto que la nube aún conserva.
+     *
+     * @param r lo bajado de la nube (solo turnos)
+     * @throws SaldosDesactualizados si apareció algo en la cola
+     */
+    @Transactional
+    public void aplicarTurnos(SyncDtos.PullRespuesta r) {
+        boolean sinLlaves = desactivarLlaves();
+        Integer empresaId = r.getNodo() != null ? r.getNodo().getEmpresaId() : null;
+        aplicarGrupo(SyncTablas.Grupo.TURNOS, r, empresaId, sinLlaves);
+        if (outbox.contarPorEnviar() > 0) throw new SaldosDesactualizados();
+    }
+
+    private void aplicarGrupo(SyncTablas.Grupo grupo, SyncDtos.PullRespuesta r, Integer empresaId, boolean sinLlaves) {
+        for (SyncTablas.Tabla t : SyncTablas.delGrupo(grupo)) {
             JsonNode filas = r.getTablas().get(t.nombre());
             if (filas != null) aplicarTabla(t, filas, empresaId, sinLlaves);
         }
-        if (outbox.contarPorEnviar() > 0) throw new SaldosDesactualizados();
     }
 
     /**

@@ -174,8 +174,12 @@ public class TurnoCajaServiceImpl implements TurnoCajaService {
         TurnoCajaEntity turno = turnoJPARepository.findByIdAndCajaSucursalEmpresaId(id, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Turno no encontrado"));
 
-        if (turno.getEstado().equals("CERRADA"))
+        if (turno.getEstado().equals("CERRADA")) {
+            // Modo híbrido: la tienda cerró en contingencia un turno de la nube
+            // que la nube ya cerró. Vale el cierre que ya está; la cola sigue.
+            if (SyncContexto.enReplay()) return construirResumen(id);
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El turno ya está cerrado");
+        }
 
         BigDecimal totalSistema = turnoRepository.calcularTotalEfectivoSistema(id);
         BigDecimal sumIngresos  = abonoCobrarRepository.sumMontoByTurnoCajaId(id);

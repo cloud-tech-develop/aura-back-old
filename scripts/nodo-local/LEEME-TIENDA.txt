@@ -1,0 +1,47 @@
+﻿AURA - SERVIDOR LOCAL DE LA TIENDA
+==================================
+
+La tienda sigue vendiendo aunque se caiga el internet. Cuando vuelve, todo se
+envía solo a la nube.
+
+ANTES DE INSTALAR
+  1. En la nube, un administrador registra la tienda y copia el TOKEN
+     (se muestra una sola vez):
+        POST /api/sync/nodos
+        { "codigo": "T1", "nombre": "Tienda centro", "sucursalId": 3, "prefijoVentas": "T1" }
+  2. El equipo servidor: Windows 10/11 de 64 bits, 8 GB de RAM, red por cable,
+     encendido durante la jornada (ideal con UPS).
+  3. Internet la primera vez: baja productos, precios, clientes y usuarios.
+
+INSTALAR (como administrador)
+  Abra PowerShell como administrador en esta carpeta y corra:
+
+    powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -NubeUrl https://back-v0.cloudtecnology.cloud -Token <TOKEN>
+
+  Al final muestra la dirección para las cajas, por ejemplo http://192.168.1.10
+  En cada caja: crear un acceso directo del navegador a esa dirección.
+
+ACTUALIZAR A UNA VERSIÓN NUEVA
+  Copie el paquete nuevo y corra, como administrador:
+
+    powershell -ExecutionPolicy Bypass -File .\instalar.ps1
+
+  Conserva la base de datos, las llaves y el token.
+
+DÓNDE QUEDA TODO (C:\AuraTienda)
+  config\tienda.json   URL de la nube, token y llaves (solo administradores)
+  datos\               base de datos
+  logs\                registros del backend y del servidor web
+  respaldos\           respaldo diario de la base (22:00, se guardan 14 días)
+
+SERVICIOS DE WINDOWS
+  AuraPostgres, AuraBackend, AuraWeb  (arrancan solos al encender el equipo)
+  Reiniciar todo:  Restart-Service AuraBackend, AuraWeb
+
+PROBLEMAS FRECUENTES
+  - Las cajas no abren la página: la red de Windows está como "Pública".
+    Cámbiela a "Privada" (el instalador muestra el comando).
+  - No deja iniciar sesión la primera vez: falta la primera sincronización.
+    Revise internet, la URL y el token; vuelva a correr instalar.ps1 con -Token.
+  - La IP del servidor cambió: fíjela en el router o en Windows y actualice
+    los accesos directos de las cajas.

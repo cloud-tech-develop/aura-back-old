@@ -20,10 +20,13 @@ import com.cloud_technological.aura_pos.sync.SyncTablas;
 import com.cloud_technological.aura_pos.sync.TiposComando;
 import com.cloud_technological.aura_pos.sync.dto.SyncDtos;
 import com.cloud_technological.aura_pos.utils.GlobalException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SyncNubeServiceImpl implements SyncNubeService {
@@ -63,21 +66,36 @@ public class SyncNubeServiceImpl implements SyncNubeService {
      */
     @Override
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public SyncDtos.PullRespuesta pull(SyncDtos.NodoInfo nodo, boolean saldos) {
+    public SyncDtos.PullRespuesta pull(SyncDtos.NodoInfo nodo, boolean saldos, boolean soloTurnos) {
         SyncDtos.PullRespuesta r = new SyncDtos.PullRespuesta();
         r.setNodo(nodo);
         r.setGeneradoEn(LocalDateTime.now());
-        r.setIncluyeSaldos(saldos);
+        r.setIncluyeSaldos(saldos && !soloTurnos);
+        r.setIncluyeTurnos(saldos || soloTurnos);
         for (SyncTablas.Tabla t : SyncTablas.TODAS) {
-            if (t.grupo() == SyncTablas.Grupo.SALDO && !saldos) continue;
+            boolean va = switch (t.grupo()) {
+                case CATALOGO -> !soloTurnos;
+                case SALDO -> r.isIncluyeSaldos();
+                case TURNOS -> r.isIncluyeTurnos();
+            };
+            if (!va) continue;
             String json = repo.extraer(t, nodo.getEmpresaId());
             if (json == null) continue;
+            JsonNode filas;
             try {
-                r.getTablas().put(t.nombre(), objectMapper.readTree(json));
+                filas = objectMapper.readTree(json);
             } catch (Exception e) {
                 throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo leer la tabla " + t.nombre());
             }
+            try {
+                GuardaEmpresa.verificar(t.nombre(), filas, nodo.getEmpresaId());
+            } catch (GuardaEmpresa.DatosDeOtraEmpresa e) {
+                log.error("[SYNC] Nodo {} (empresa {}): {}", nodo.getCodigo(), nodo.getEmpresaId(), e.getMessage());
+                throw new GlobalException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+            }
+            r.getTablas().put(t.nombre(), filas);
         }
+        if (soloTurnos) return r;
         r.setMapas(repo.mapas(nodo.getId(), TiposComando.T_TERCERO));
         r.setPisosConsecutivo(repo.pisosConsecutivo(nodo.getEmpresaId(), nodo.getPrefijoVentas()));
         return r;

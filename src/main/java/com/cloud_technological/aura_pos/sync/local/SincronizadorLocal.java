@@ -29,6 +29,8 @@ import lombok.extern.slf4j.Slf4j;
  * pueden depender de él (la venta necesita su turno, la anulación su venta).</li>
  * <li>Cada {@code app.sync.catalogo-cada-ms} baja el catálogo; las existencias
  * solo cuando la cola quedó vacía.</li>
+ * <li>En los demás ciclos, con la cola vacía, baja solo los turnos abiertos de
+ * la nube (la tienda es la contingencia de la nube).</li>
  * </ol>
  *
  * <p>Sin conexión no pasa nada: la tienda sigue trabajando y el siguiente ciclo
@@ -67,6 +69,7 @@ public class SincronizadorLocal {
         try {
             boolean colaVacia = empujar();
             if (bajar) bajar(colaVacia);
+            else if (colaVacia) bajarTurnos();
             outbox.guardarEstado(EstadoNodoLocal.EN_LINEA, "true");
             return true;
         } catch (ResourceAccessException e) {
@@ -157,6 +160,19 @@ public class SincronizadorLocal {
             }
         }
         ultimaBajadaMs = System.currentTimeMillis();
+    }
+
+    /**
+     * Baja solo los turnos de la nube. Corre en cada ciclo con la cola vacía:
+     * así un turno que se abrió en la nube hace un momento ya está en la tienda
+     * cuando se cae internet, y el cajero sigue en él.
+     */
+    private void bajarTurnos() {
+        try {
+            replicador.aplicarTurnos(nube.pullTurnos());
+        } catch (ReplicadorLocal.SaldosDesactualizados e) {
+            log.debug("[SYNC] Turnos no aplicados: {}", e.getMessage());
+        }
     }
 
     /**

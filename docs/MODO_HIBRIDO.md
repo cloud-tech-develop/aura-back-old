@@ -1,11 +1,16 @@
-# Modo híbrido: servidor local por tienda
+# Modo híbrido: la nube es la principal, la tienda la contingencia
+
+> **Decisión (18-oct-2026).** AURA es "en la nube": los usuarios entran por
+> `https://www.aura-pos.tech` y trabajan contra la nube. El servidor local de la tienda
+> es la **contingencia**: cuando se cae internet, la tienda sigue vendiendo en él, en el
+> mismo turno que tenía abierto en la nube, y al volver la conexión todo sube solo.
 
 AURA puede correr en dos papeles con el **mismo código**:
 
 | Papel | `app.sync.modo` | Qué hace |
 |---|---|---|
-| **Nube** | `NUBE` (por defecto) | El servidor de siempre. Recibe lo que hacen las tiendas y les entrega el catálogo. |
-| **Nodo local** | `LOCAL` | Un backend + Postgres instalado en la tienda. El front de la tienda apunta a él. Trabaja igual con o sin internet y sincroniza cuando hay conexión. |
+| **Nube** | `NUBE` (por defecto) | El servidor de siempre. Recibe lo que hacen las tiendas y les entrega catálogo, existencias y turnos. |
+| **Nodo local** | `LOCAL` | Backend + Postgres instalados en la tienda. Trabaja igual con o sin internet y sincroniza cuando hay conexión. |
 
 El nodo no es una réplica de la base: **reproduce operaciones**. Cada venta, turno o
 cliente que se crea en la tienda queda en una cola (`sync_outbox`) y, cuando hay
@@ -21,230 +26,231 @@ la venta se hubiera hecho allá, con la fecha y el número que tuvo en la tienda
                                + sync_outbox  ── push ──► ProcesadorComandos
                                                            └► VentaService.crear (replay)
                                                               inventario, cartera, asiento
-          catálogo, saldos  ◄── pull ──────────────────── SyncTablas (row_to_json)
+   catálogo, saldos, turnos ◄── pull ─────────── SyncTablas (row_to_json) + GuardaEmpresa
 ```
 
-## Qué sincroniza hoy
+## Cómo se usa en la tienda (modelo de contingencia)
+
+1. **Con internet**: todos entran a `aura-pos.tech` y trabajan en la nube, como siempre.
+   Mientras tanto el servidor de la tienda baja, cada 15 s, los turnos abiertos de la
+   nube y, cada 5 min, el catálogo y las existencias.
+2. **Se cae internet**: el front de `aura-pos.tech` (que abre desde la caché del
+   navegador) avisa "Sin internet: siga en el servidor de la tienda" y lleva al cajero a
+   `http://<IP del servidor>`. Allí está la última información sincronizada y **el mismo
+   turno** que tenía abierto en la nube: sigue vendiendo sin abrir otro. *(El aviso del
+   front está por hacer, ver Pendientes.)*
+3. **Vuelve internet**: la tienda sube la cola en orden; las ventas de contingencia
+   quedan en el turno de la nube y el cierre lo recalcula la nube con todas las ventas
+   del día. El cajero regresa a `aura-pos.tech`.
+
+**Regla para el cliente:** en una misma caja, todos los equipos trabajan a la vez en el
+mismo sistema (todos en la nube, o todos en la tienda durante el corte). Mezclar —unos en
+la nube y otros en la tienda al mismo tiempo— parte el turno y el efectivo en dos.
+
+## Qué sincroniza
 
 **Tienda → nube** (en orden; si un comando falla, la cola se detiene ahí):
 
 | Comando | Origen | En la nube |
 |---|---|---|
 | `TERCERO_CREAR` | `TerceroServiceImpl.crear` | Crea el tercero, o enlaza el existente con el mismo documento |
-| `TURNO_ABRIR` / `TURNO_CERRAR` | `TurnoCajaServiceImpl` | Abre / cierra el turno con la fecha original |
+| `TURNO_ABRIR` / `TURNO_CERRAR` | `TurnoCajaServiceImpl` | Abre / cierra con la fecha original. El cierre se recalcula en la nube; si la nube ya lo cerró, se acepta sin error |
 | `MOVIMIENTO_CAJA` | `TurnoCajaServiceImpl.registrarMovimiento` | Ingreso/egreso; el abono a CxC se ubica por su venta |
-| `VENTA_CREAR` | `VentaServiceImpl.crear` (POS) | Misma venta, mismo prefijo y consecutivo; descuenta inventario y contabiliza |
+| `VENTA_CREAR` | `VentaServiceImpl.crear` (POS) | Misma venta, mismo prefijo y consecutivo; descuenta inventario (kardex con la hora original) y contabiliza |
 | `VENTA_ANULAR` | `VentaServiceImpl.anular` | Anula la venta (o la factura de Facturación que la originó) |
 | `FACTURA_EMITIR` | `FacturaVentaService.emitir` | Crea y emite la factura ERP con la numeración del nodo |
 | `FE_EMITIR` | `FacturaElectronicaHibridaService` | Envía la factura electrónica a Factus y devuelve el CUFE al nodo |
 
-**Nube → tienda** (`SyncTablas`):
+**Nube → tienda** (`SyncTablas`, tres grupos):
 
-- **Catálogo**, cada `app.sync.catalogo-cada-ms` (5 min): empresa, sucursales, cajas,
-  bodegas, usuarios y permisos, terceros, productos, presentaciones, precios, descuentos,
-  impuestos, formas de pago, cuentas bancarias, plan de cuentas y configuración contable.
-- **Existencias** (inventario, lotes, seriales): solo cuando la cola está vacía, es decir,
-  cuando la nube ya tiene todo lo que pasó en la tienda.
+| Grupo | Cuándo | Qué |
+|---|---|---|
+| `CATALOGO` | cada `app.sync.catalogo-cada-ms` (5 min) | empresa, sucursales, cajas, bodegas, usuarios y permisos, terceros, productos, presentaciones, precios, descuentos, impuestos, formas de pago, cuentas bancarias, plan de cuentas, configuración contable |
+| `SALDO` | con la bajada del catálogo, **solo con la cola vacía** | inventario, lotes, seriales |
+| `TURNOS` | **cada ciclo (15 s) con la cola vacía** (`/api/sync/pull?soloTurnos=true`) y con los saldos | turnos de caja abiertos y del último día de la empresa, salvo los que abrió un nodo (esos ya los tiene quien los abrió) |
 
 ## Reglas de diseño
 
 1. **Ids sin choques.** La base del nodo arranca sus secuencias en 1.500.000.000
-   (`SyncIds.BASE_LOCAL`, `scripts/nodo-local/preparar_nodo.sql`). Lo que baja de la nube
-   conserva su id; lo creado en la tienda queda por encima. La nube traduce esos ids con
-   `sync_id_map`.
+   (`SyncIds.BASE_LOCAL`, `preparar_nodo.sql`). Lo que baja de la nube conserva su id; lo
+   creado en la tienda queda por encima. La nube traduce esos ids con `sync_id_map`; un id
+   de la nube (por ejemplo, el turno de la nube en contingencia) pasa sin traducir.
 2. **Numeración propia.** Cada nodo tiene un prefijo de ventas (`sync_nodo.prefijo_ventas`,
    ej. `T1`) que la nube nunca usa: `T1-1, T1-2…`. La nube excluye esas series al
-   calcular el consecutivo de la sucursal. El nodo no vende hasta haber sincronizado una
-   vez (necesita su prefijo y el último consecutivo conocido).
+   calcular el consecutivo de la sucursal. El nodo no vende hasta haber sincronizado una vez.
 3. **Idempotencia.** Cada comando lleva un uuid; la nube guarda los procesados en
-   `sync_recibido`. Si el nodo reintenta un lote que la nube alcanzó a procesar, no se
-   duplica nada.
+   `sync_recibido`. Reenviar un lote no duplica nada (probado).
 4. **Lo que ya pasó no se bloquea.** Al reproducir (`SyncContexto.enReplay()`), la nube no
-   vuelve a exigir stock, cupo de crédito, permisos, turno abierto ni vencimientos: la
-   mercancía ya salió. El stock puede quedar negativo en la nube y se ve en el kardex.
-5. **Fecha original.** `SyncContexto.ahora()` devuelve la hora en que ocurrió en la tienda;
-   el asiento cae en el período correcto aunque la sincronización llegue días después.
-6. **Solo la nube habla con Factus.** En el nodo, pedir la factura electrónica deja la venta
-   en `PENDIENTE_SYNC` y encola `FE_EMITIR`; con internet se sube de inmediato y vuelve el
-   CUFE. Un rechazo de la DIAN no detiene la cola: se corrige y reenvía desde la nube.
+   vuelve a exigir stock, cupo, permisos, turno abierto ni vencimientos.
+5. **Fecha original.** `SyncContexto.ahora()` devuelve la hora de la tienda: venta, turno,
+   kardex y asiento caen en el período correcto aunque la sincronización llegue días después.
+6. **Solo la nube habla con Factus.** En el nodo, la factura electrónica queda
+   `PENDIENTE_SYNC` y encola `FE_EMITIR`; con internet vuelve el CUFE de inmediato.
 7. **Tareas programadas.** En el nodo no corren reintentos de Factus, causaciones,
-   diferidos ni evaluación de acuerdos de pago: las hace la nube.
+   diferidos ni acuerdos de pago: las hace la nube.
+8. **Aislamiento por empresa (estricto).** La empresa la define el **token del nodo**, nunca
+   lo que envía la tienda: al bajar, cada tabla tiene un filtro SQL fijo; al subir, cada
+   comando se procesa con la empresa del nodo y se rechaza un usuario de otra empresa.
+   Segunda barrera, `GuardaEmpresa`: antes de enviar, la nube revisa fila por fila que
+   `empresa_id` sea el del nodo (o vacío en plantillas globales); si aparece otra empresa,
+   **cancela toda la bajada** y lo registra. La base del nodo tiene una sola empresa
+   (auditado: 0 filas ajenas, incluidas las tablas hijas sin `empresa_id`).
+9. **Turno compartido.** Los turnos de la nube bajan con su id. En contingencia, el POS de
+   la tienda encuentra el turno abierto (`obtenerTurnoActivo`) y vende en él; las ventas
+   suben pegadas a ese turno. Los turnos solo se aplican con la cola vacía, así un cierre
+   hecho en la tienda y aún sin subir nunca se pisa con el turno que la nube aún tiene abierto.
+10. **Réplica por foto completa.** Con las llaves apagadas (superusuario), cada tabla con
+    llave `id` se reemplaza completa: un nodo nuevo, con ids sembrados por las migraciones
+    distintos a los de la nube, no choca con los índices únicos.
 
-## Instalación de un nodo
+## Instalación de una tienda
 
-1. **En la nube**: aplicar la migración V227 (Laravel `2026_07_03_000227_sync_hibrido`).
-2. **Registrar el nodo** (usuario ADMIN de la empresa):
-   ```http
-   POST /api/sync/nodos
-   { "codigo": "T1", "nombre": "Tienda centro", "sucursalId": 3, "prefijoVentas": "T1" }
-   ```
-   La respuesta trae el **token**: se muestra una sola vez.
-3. **En el equipo de la tienda**: instalar Postgres y crear la base del nodo con el
-   esquema de la nube (mismas migraciones, o `pg_dump --schema-only`).
-4. Correr **una vez** `scripts/nodo-local/preparar_nodo.sql` en la base del nodo.
-5. Configurar el backend con `scripts/nodo-local/nodo.env.example`
-   (`APP_SYNC_MODO=LOCAL`, URL de la nube y token) y arrancarlo **con internet** la
-   primera vez: baja el catálogo y los usuarios pueden iniciar sesión.
-6. Apuntar el front de la tienda al backend local.
+**Antes, en la nube:** la migración V227 (Laravel `2026_07_03_000227_sync_hibrido`) y
+registrar la tienda (usuario ADMIN de la empresa):
+
+```http
+POST /api/sync/nodos
+{ "codigo": "T1", "nombre": "Tienda centro", "sucursalId": 3, "prefijoVentas": "T1" }
+```
+
+La respuesta trae el **token** (se muestra una sola vez).
+
+**En el servidor de la tienda: `AuraTienda-Setup-<versión>.exe`** (Inno Setup, ~234 MB).
+El asistente pide la URL de la nube y el token, muestra el avance en una consola y al
+final la dirección para las cajas y si el catálogo quedó sincronizado. Sin asistente:
+`AuraTienda-Setup.exe /VERYSILENT /NUBE=<url> /TOKEN=<token>`. Volver a correrlo actualiza
+backend y front y conserva base, llaves y token.
+
+Lo que deja en `C:\AuraTienda`:
+
+| Servicio / pieza | Detalle |
+|---|---|
+| `AuraPostgres` | PostgreSQL 17 (sin pgAdmin), solo `localhost`, puerto **5433** |
+| `AuraBackend` | Java 17 + `aura.jar` en modo `LOCAL`, solo `127.0.0.1`, puerto **9091** |
+| `AuraWeb` | nginx en el puerto **80**: sirve el front (`--configuration tienda`, `apiUrl: '/api/'`) y pasa `/api` al backend |
+| Llaves | JWT, AES y clave de Postgres propias, generadas al azar en `config\tienda.json` (solo administradores) |
+| Firewall | Puerto 80 abierto en redes privadas/dominio (avisa si la red está como Pública) |
+| Respaldo | Tarea diaria 22:00, `pg_dump` en `respaldos\`, 14 días |
+| Logs | `logs\instalacion.log`, `logs\AuraBackend.*.log`, `logs\resumen.txt` |
+
+Desinstalar desde "Agregar o quitar programas": quita servicios, firewall y tarea; la base
+y los respaldos **se conservan** (puede haber ventas sin subir).
+
+**Armar el instalador** (equipo de desarrollo):
+
+```powershell
+.\scripts\nodo-local\empaquetar.ps1 -Instalador
+```
+
+Descarga una vez PostgreSQL, Java, nginx y WinSW (`dist\cache-empaquetar`), saca el esquema
+de una base **recién migrada con Laravel** (`-BaseReferencia`, por defecto `aura_sync_nodo`),
+compila backend (`mvn clean package`) y front, y compila el `.exe` en `dist\`. Requiere Inno
+Setup 6 (`winget install --id JRSoftware.InnoSetup -e --scope user`).
+
+Archivos: `scripts/nodo-local/` → `empaquetar.ps1`, `instalar.ps1`, `desinstalar.ps1`,
+`respaldar.ps1`, `preparar_nodo.sql`, `LEEME-TIENDA.txt`, `instalador/aura-tienda.iss`.
+
+**Requisitos del servidor:** Windows 10/11 64 bits, 8 GB RAM, red por cable, IP fija,
+encendido en la jornada, ideal con UPS. **En las cajas no se instala nada.**
+
+## Migraciones (Laravel) para una base nueva
+
+Una base vacía ya se instala completa con `php artisan migrate` y el backend arranca con
+`ddl-auto=validate`. Para lograrlo (17-oct-2026):
+
+- 29 migraciones `2024_*` ahora agregan columnas solo si no existen.
+- Nuevas: `pedido_vendedor` (V27) y precios dinámicos (V14), que no tenían espejo;
+  `cuenta_config` y obligaciones financieras, y `tercero.es_banco` (las creó Hibernate).
+- `2026_10_17_000001_alinear_esquema_base_nueva`: columnas faltantes, 44 tipos
+  integer/bigint, `venta.fecha_emision` con zona, `dv` varchar y 165 nulos. Todo
+  condicional: en las bases en uso no hace nada.
+
+Para verificar una base nueva: comparar `information_schema.columns` contra `aura-pos`.
 
 ## Operación
 
 | Endpoint | Dónde | Para |
 |---|---|---|
-| `GET /api/sync/local/estado` | nodo | Indicador en línea / pendientes / errores |
+| `GET /api/sync/local/estado` | nodo | En línea / pendientes / errores |
 | `GET /api/sync/local/cola` | nodo | Ver la cola (ADMIN) |
 | `POST /api/sync/local/sincronizar` | nodo | Sincronizar ya |
 | `POST /api/sync/local/cola/{id}/descartar` | nodo | Sacar un comando en error que no se resolverá (ADMIN) |
+| `GET /api/sync/pull?saldos=&soloTurnos=` | nube | Bajada del nodo (token) |
 | `GET /api/sync/nodos`, `PATCH /api/sync/nodos/{id}/activo` | nube | Administrar nodos (ADMIN) |
 
-## Límites conocidos (siguientes fases)
+## Límites conocidos
 
-- **El catálogo se edita en la nube.** Lo que se cambie de productos, precios o terceros en
-  el nodo se sobrescribe en la siguiente bajada. Lo único que el nodo crea y sube es el
-  tercero nuevo (se fusiona con la copia de la nube al bajar).
-- **Borrados**: un registro borrado físicamente en la nube sigue en el nodo; el catálogo
-  usa borrado lógico (`activo`, `deleted_at`), que sí baja.
-- **Cupo de crédito**: el nodo valida con la cartera que conoce (la creada en la tienda);
-  la cartera de la nube todavía no baja.
-- **No sincronizan aún**: compras, devoluciones, traslados, ajustes de inventario, recibos
-  de caja, cotizaciones, pedidos, nómina y documentos contables manuales. Se hacen en la
-  nube. Cada uno se agrega como un comando nuevo (`ManejadorComando`) siguiendo el mismo
-  patrón.
-- **Contabilidad del nodo**: el nodo genera sus asientos para sus propios reportes, pero los
-  oficiales son los de la nube.
+- **El catálogo se edita en la nube.** Lo que se cambie en el nodo se sobrescribe en la
+  siguiente bajada; lo único que el nodo crea y sube es el tercero nuevo.
+- **Cupo de crédito**: el nodo valida con la cartera que conoce; la de la nube no baja.
+- **No sincronizan aún**: compras, devoluciones, traslados, ajustes, recibos de caja,
+  cotizaciones, pedidos, nómina y documentos contables manuales (se hacen en la nube).
+- **Cierre en contingencia**: el total que ve el cajero en la tienda solo incluye lo vendido
+  sin internet; el definitivo lo recalcula la nube al sincronizar.
+- **Contabilidad del nodo**: solo para sus reportes; los oficiales son los de la nube.
+- **Actualizar una tienda** con migraciones nuevas: el instalador conserva la base pero aún
+  no le aplica migraciones (hoy se hace a mano).
 
 ---
 
-# Análisis y decisiones (17-oct-2026)
+# Estado y bitácora
 
-## Estado actual del código
+## Estado (18-oct-2026)
 
 | Qué | Estado |
 |---|---|
-| Implementación backend (paquete `sync/`, `SyncController`, cambios en servicios) | Hecha, en la rama `feature/modo-hibrido` |
-| Compilación y pruebas unitarias | Compila; `SeriesVentaTest` y `TraductorIdsTest` pasan (8/8) |
-| Prueba de punta a punta (nube ↔ tienda) | **Hecha** (ver abajo) |
-| Bases de prueba | `aura_sync_nodo`: creada desde cero con las migraciones Laravel + `preparar_nodo.sql`. `aura_sync_nube`: mismas migraciones + datos de `aura-pos`. Nodo `T1` de FERRETOTAL (empresa 4, sucursal 5), token `token-prueba-nodo-T1` |
-| Entorno de prueba | `docker-compose.hibrido.yml`: nube en `:9001`, tienda en `:9002` |
-| Migración Laravel | `2026_07_03_000227_sync_hibrido.php` (espejo de `V227__sync_hibrido.sql`; la V226 es el historial de costos). Además, las migraciones ya instalan una base vacía (ver `2026_10_17_000001_alinear_esquema_base_nueva`) |
-| Frontend | Sin cambios (para probar, el front apunta a `http://localhost:9002/api/`) |
+| Rama | `feature/modo-hibrido` (backend). Front: `environment.tienda.ts` + configuración `tienda` en `angular.json` (repo aura-frontend, sin commit) |
+| Pruebas unitarias | `SeriesVentaTest`, `TraductorIdsTest`, `GuardaEmpresaTest`: 12/12 |
+| Entorno de prueba | `docker-compose.hibrido.yml`: nube `:9001` (`aura_sync_nube`, datos de `aura-pos`), tienda T1 `:9002` (`aura_sync_nodo`, base creada desde cero). FERRETOTAL (empresa 4, sucursal 5) |
+| Nodos de prueba | `T1` (Docker, token `token-prueba-nodo-T1`), `T2` (instalado con el `.exe` en el equipo de desarrollo, token `token-prueba-nodo-T2`) |
 
-### Prueba de punta a punta (17-oct-2026)
+## Pruebas hechas
 
-Con internet: venta `T1-1` llegó a la nube en segundos. Sin internet (nube apagada):
-2 ventas, una anulada, cliente nuevo y cierre de turno quedaron en la cola. Al volver la
-nube, los 7 comandos se procesaron en orden y sin error:
+- **17-oct, nube ↔ tienda T1:** venta con internet; sin internet 2 ventas, anulación,
+  cliente y cierre de turno; al volver, 7 comandos en orden y sin error, ventas con su
+  número y hora, inventario y 4 asientos cuadrados; **reenvío de toda la cola sin duplicar**.
+- **17-oct, instalador:** T2 instalado con el `.exe`, catálogo sincronizado y venta `T2-1`
+  en la nube.
+- **18-oct, aislamiento:** base de T1 sin una sola fila de otra empresa; `GuardaEmpresa` no
+  frena una bajada legítima.
+- **18-oct, turnos:** T1 bajó los 4 turnos abiertos nacidos en la nube; los abiertos por un
+  nodo no se duplican.
 
-- Ventas con su número y hora de la tienda; turno abierto y cerrado con sus horas.
-- Inventario descontado (y devuelto en la anulación); 4 asientos cuadrados con fecha original.
-- Cliente creado en la nube y enlazado en `sync_id_map`.
-- **Reenvío de toda la cola: nada se duplicó.**
+## Corregido en el camino
 
-Corregido durante la prueba:
-- `ReplicadorLocal`: un nodo nuevo no podía bajar `submodulos` (los sembrados por las
-  migraciones tienen otros ids que los de la nube y chocaban con el índice único). Con
-  las llaves apagadas, cada tabla con llave `id` se reemplaza completa.
-- El kardex de una venta reproducida quedaba con la hora de la sincronización; ahora
-  usa `SyncContexto.ahora()`.
+- `ReplicadorLocal`: un nodo nuevo no podía bajar `submodulos` (ids distintos a los de la nube).
+- Kardex de una venta reproducida con la hora de la sincronización → `SyncContexto.ahora()`.
+- Empaquetado: el IDE dejaba clases rotas en `target/classes` → `mvn clean package`.
+- Instalador: PostgreSQL sin pgAdmin (de 315 a 45 MB, se descomprime en 1,4 s con el
+  `tar.exe` de Windows —el de Git falla con rutas `D:`—), backend en 9091 (el 9001 choca),
+  consola con el avance, solo IPs de adaptadores físicos.
 
-Visto y fuera del modo híbrido: al cerrar turno con una venta anulada, el total del
-sistema la incluye y la diferencia queda en 0.
+## Pendientes
 
-### Impacto de estos cambios en la nube (si se despliegan)
+1. **Prueba de contingencia con el turno de la nube**: abrir turno en la nube (usuario
+   `jota@gmail.com`, turno 59), vender, apagar la nube, seguir en la tienda en el mismo
+   turno, prender y revisar ventas y cierre recalculado en la nube.
+2. **Aviso de contingencia en `aura-pos.tech`**:
+   - backend: el nodo informa a la nube sus direcciones locales; endpoint para el front;
+   - front nube: revisar conexión con la nube cada 10–15 s (no basta `navigator.onLine`),
+     aviso "Sin internet → siga en el servidor de la tienda" con botón; la dirección se
+     guarda en el navegador mientras hay internet;
+   - front tienda: "Volvió internet, todo sincronizado → volver a aura-pos.tech" con la cola
+     vacía; aviso de cierre parcial en contingencia.
+3. **Indicador de conexión** en la tienda (`/api/sync/local/estado`; falta la bandera
+   "sincronizando ahora").
+4. **DIAN (con el contador)**: la serie de la tienda (`T1`) necesita su propio rango de
+   numeración autorizado; plazo de transmisión en contingencia y comprobante sin CUFE.
+5. Revisar la diferencia en 0 del cierre de turno (no es del modo híbrido).
+6. Migraciones al actualizar una tienda; actualizador automático.
+7. Siguientes operaciones sin internet: devoluciones, recibos de caja, ajustes, traslados, compras.
 
-Con `app.sync.modo=NUBE` (valor por defecto) el comportamiento es el mismo de hoy:
+## Decisiones
 
-- Los servicios solo encolan operaciones cuando corren como nodo local.
-- Las tareas programadas solo se apagan en el nodo.
-- El consecutivo de ventas excluye las series de los nodos; **sin nodos registrados no cambia nada**. Si la tabla `sync_nodo` no existe, la consulta lo detecta antes y sigue igual.
-- Las tablas `sync_*` se usan por JDBC, no hay entidades JPA: `ddl-auto=validate` no se afecta.
-- La prueba de punta a punta ya pasó; antes de llevarlo a producción conviene repetirla con el front de tienda y el script de instalación.
-
-## Cómo explicarlo al cliente
-
-**En una frase:** la tienda sigue vendiendo aunque se caiga el internet, y cuando vuelve, todo se envía solo a la nube.
-
-- **Qué se instala:** un computador por tienda que hace de servidor local (AURA + base de datos). Las cajas trabajan contra él. La nube sigue siendo la central (todas las sedes, contabilidad, reportes).
-- **Con internet:** todo normal; cada venta sube en segundos, la factura electrónica sale de inmediato con CUFE y QR, y los cambios de la nube (productos, precios, clientes, usuarios) bajan cada pocos minutos.
-- **Sin internet:** se abre y cierra caja, se vende, se crean clientes, se anula, se imprime y se descuenta inventario. Todo queda en una cola de pendientes que no se pierde aunque se apague el equipo. La factura electrónica queda "en cola" y el CUFE llega al volver la conexión.
-- **Cuando vuelve el internet:** la cola se envía sola y en orden. Las ventas llegan con su fecha y número originales, el inventario se descuenta en la central, la contabilidad se genera con la fecha real y las facturas electrónicas se envían a la DIAN.
-- **Números de factura:** cada tienda tiene su serie (`T1-1`, `T1-2`…), distinta a la de la nube; nunca se repiten.
-
-**Reglas para el cliente:**
-1. Productos, precios, usuarios y configuración se administran desde la nube.
-2. La primera vez el servidor de la tienda necesita internet para descargar los datos; sin eso no vende.
-3. Sin internet, la tienda no ve las otras sedes (el cupo de crédito se valida solo con lo vendido en esa tienda).
-4. Si la DIAN rechaza una factura, la tienda no se bloquea; se corrige desde la nube.
-
-| Funciona sin internet | Por ahora requiere internet |
-|---|---|
-| Ventas POS, facturas, anulaciones | Compras y recepción de mercancía |
-| Apertura/cierre de caja, ingresos y egresos | Devoluciones, traslados, ajustes de inventario |
-| Crear clientes | Recibos de caja, cotizaciones, pedidos |
-| Factura electrónica (queda en cola) | Nómina y comprobantes contables manuales |
-
-**Pendiente legal (validar con el contador):** reglas DIAN de facturación en contingencia, en particular el plazo de transmisión (se entiende que son 48 horas después de superado el problema) y los requisitos del comprobante impreso sin CUFE.
-
-## Instalación: qué va en cada equipo
-
-- **PCs de los cajeros: nada.** Usan el navegador apuntando a la dirección del servidor de la tienda en la red local (ej. `http://192.168.1.10`), con un acceso directo en el escritorio. Abre aunque no haya internet.
-- **Servidor de la tienda (una vez):** PostgreSQL, backend AURA en modo `LOCAL`, el frontend servido desde ese mismo equipo y el archivo de configuración (URL de la nube + token). Todo como servicio de Windows. Si la tienda tiene una sola caja, esa caja puede ser el servidor.
-- **Requisitos del servidor:** encendido durante la jornada, red por cable, IP fija, idealmente UPS.
-
-**Puesta en marcha de una tienda:**
-1. Un administrador registra la tienda en la nube (`POST /api/sync/nodos`, prefijo `T1`) y obtiene el token.
-2. El técnico instala el paquete en el servidor de la tienda y pega el token.
-3. Primera sincronización con internet (catálogo, usuarios, existencias).
-4. Acceso directo a la dirección local en cada caja.
-
-**Actualizaciones:** cada versión nueva hay que llevarla también a cada servidor de tienda. La nube y las tiendas no deben quedar con versiones muy distintas, porque los comandos de la cola tienen que entenderse en ambos lados.
-
-## Empaquetado: opciones y esfuerzo
-
-| Nivel | Qué incluye | Esfuerzo aprox. |
-|---|---|---|
-| 1. Script de instalación (técnico) | Instala PostgreSQL, crea la base, corre `preparar_nodo.sql`, copia backend + frontend, servicio de Windows, pide token | 2–3 días |
-| 2. Instalador `.exe` (Inno Setup) | Lo mismo con asistente y Java incluido | ~1 semana |
-| 3. Actualización automática | Descarga e instala versiones nuevas desde la nube | 1–2 semanas más |
-
-Recomendación: nivel 1 para las primeras tiendas; nivel 2 cuando el proceso esté probado; nivel 3 antes de tener muchas tiendas.
-
-## Indicador de conexión (por hacer)
-
-Barra superior, solo visible cuando AURA corre en un servidor de tienda:
-
-- 🟢 **En línea**: todo sincronizado.
-- 🔵 **Sincronizando… (N pendientes)**.
-- 🟠 **Sin internet: trabajando local (N pendientes)**.
-- 🔴 **Error de sincronización**: clic para ver el detalle y reintentar.
-
-Panel al hacer clic: última sincronización, pendientes, último error y botón **Sincronizar ahora**.
-
-- Backend: `/api/sync/local/estado` ya da `modo`, `enLinea`, `pendientes`, `conError`, `ultimoEnvio`, `ultimaBajada` y `ultimoError`. **Falta** el campo "sincronizando ahora" (una bandera en `SincronizadorLocal`).
-- Frontend: consulta periódica del estado + componente en la barra. ~1 día.
-
-## ¿Kafka o RabbitMQ? Decisión: no
-
-1. Lo implementado (cola en PostgreSQL guardada en la misma transacción que la venta + envío HTTP por lotes) es el patrón recomendado para conexión intermitente. Con un broker igual habría que tener esa cola para no perder mensajes sin red.
-2. Sería otro servicio que instalar, mantener y actualizar en cada tienda (Kafka es pesado; RabbitMQ es más liviano, pero es una pieza más que puede fallar).
-3. El volumen de una tienda (cientos o miles de operaciones al día) no lo justifica.
-4. Lo difícil (orden, no duplicar, traducir ids de la tienda a la nube) ya está resuelto y ningún broker lo hace.
-
-Podría tener sentido más adelante **dentro de la nube** (notificaciones, reportes en tiempo real), no entre la tienda y la nube.
-
-## Pendientes del frontend
-
-1. Versión del frontend para tienda: hoy `src/environments/environment.prod.ts` tiene fija la URL de la nube (`https://back-v0.cloudtecnology.cloud/api/`). Crear un entorno con `apiUrl: '/api/'` para que una misma compilación sirva en todas las tiendas.
-2. Servir el frontend desde el servidor de la tienda (backend o nginx).
-3. Indicador de conexión (ver arriba).
-4. Las notificaciones en tiempo real (`socket.cloudtecnology.cloud`) no llegan sin internet; no afectan la venta.
-
-## Roadmap propuesto
-
-1. Mover los cambios a la rama `feature/modo-hibrido`.
-2. Compilar, correr las pruebas unitarias y hacer la prueba completa nube ↔ tienda (requiere memoria libre).
-3. Indicador de conexión (backend + frontend) y entorno de frontend para tienda.
-4. Script de instalación (nivel 1) y copias de seguridad automáticas de la base de la tienda.
-5. Validar la contingencia DIAN con el contador.
-6. Siguientes módulos sin internet: devoluciones, recibos de caja, ajustes y traslados, compras.
-7. Instalador `.exe` y actualizador automático.
+- **Kafka/RabbitMQ: no.** La cola en PostgreSQL (misma transacción que la venta) + HTTP por
+  lotes es el patrón para conexión intermitente; un broker sería otra pieza por tienda y no
+  resuelve orden, idempotencia ni traducción de ids.
+- **El front de la nube no puede usar el servidor local como API** (https → http y acceso a
+  la red local los bloquea el navegador; un nombre DNS no resuelve sin internet). Por eso el
+  paso a la tienda es una **navegación** a su dirección, no llamadas desde `aura-pos.tech`.
+- **App de escritorio en las cajas: no por ahora** (iría contra "AURA en la nube").
