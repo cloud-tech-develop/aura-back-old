@@ -30,6 +30,7 @@ import com.cloud_technological.aura_pos.repositories.importacion.CatalogoImporta
 import com.cloud_technological.aura_pos.repositories.marcas.MarcaJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoQueryRepository;
+import com.cloud_technological.aura_pos.services.CostoHistorialService;
 import com.cloud_technological.aura_pos.services.ProductoService;
 
 import jakarta.persistence.EntityManager;
@@ -50,7 +51,8 @@ class CatalogoImportacionServiceTest {
         productoQuery = mock(ProductoQueryRepository.class);
         productoService = mock(ProductoService.class);
         service = new CatalogoImportacionService(query, mock(CategoriaJPARepository.class), mock(MarcaJPARepository.class),
-                mock(ProductoJPARepository.class), productoQuery, productoService, mock(EntityManager.class));
+                mock(ProductoJPARepository.class), productoQuery, productoService, mock(EntityManager.class),
+                mock(CostoHistorialService.class));
         when(query.unidades()).thenReturn(Map.of("unidad", 1L, "und", 1L, "kg", 2L));
         when(query.productosPorSku(EMPRESA)).thenReturn(Map.of("p-001", 50L));
         when(query.productosPorCodigoBarras(EMPRESA)).thenReturn(Map.of("7701", 60L));

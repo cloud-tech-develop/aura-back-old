@@ -37,6 +37,8 @@ import com.cloud_technological.aura_pos.repositories.productos.ProductoJPAReposi
 import com.cloud_technological.aura_pos.repositories.productos_composicion.ProductoComposicionJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos_composicion.ProductoComposicionQueryRepository;
 import com.cloud_technological.aura_pos.repositories.unidad_medida.UnidadMedidaJPARepository;
+import com.cloud_technological.aura_pos.services.CostoHistorialService;
+import com.cloud_technological.aura_pos.services.OrigenCosto;
 import com.cloud_technological.aura_pos.services.ProductoComposicionService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PresentacionConversion;
@@ -64,6 +66,7 @@ public class ProductoComposicionServiceImpl implements ProductoComposicionServic
     private final UnidadMedidaJPARepository unidadMedidaJPARepository;
     private final ProductoPresentacionJPARepository presentacionJPARepository;
     private final ProductoComposicionMapper composicionMapper;
+    private final CostoHistorialService costoHistorial;
 
     @Autowired
     public ProductoComposicionServiceImpl(
@@ -72,13 +75,15 @@ public class ProductoComposicionServiceImpl implements ProductoComposicionServic
             ProductoJPARepository productoJPARepository,
             UnidadMedidaJPARepository unidadMedidaJPARepository,
             ProductoPresentacionJPARepository presentacionJPARepository,
-            ProductoComposicionMapper composicionMapper) {
+            ProductoComposicionMapper composicionMapper,
+            CostoHistorialService costoHistorial) {
         this.composicionRepository = composicionRepository;
         this.composicionJPARepository = composicionJPARepository;
         this.productoJPARepository = productoJPARepository;
         this.unidadMedidaJPARepository = unidadMedidaJPARepository;
         this.presentacionJPARepository = presentacionJPARepository;
         this.composicionMapper = composicionMapper;
+        this.costoHistorial = costoHistorial;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -311,8 +316,11 @@ public class ProductoComposicionServiceImpl implements ProductoComposicionServic
                     "No se puede aplicar el costo: hay componentes sin costo cargado. "
                     + "Revise el detalle del costeo antes de aplicarlo.");
 
+        BigDecimal costoAntes = padre.getCosto();
         padre.setCosto(costeo.getCostoUnitario());
         productoJPARepository.save(padre);
+        costoHistorial.registrarCambio(padre, costoAntes,
+                OrigenCosto.de(OrigenCosto.RECETA, "Costo aplicado desde la receta"));
 
         costeo.setCostoActual(costeo.getCostoUnitario());
         return costeo;

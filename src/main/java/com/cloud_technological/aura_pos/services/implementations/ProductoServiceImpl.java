@@ -34,6 +34,8 @@ import com.cloud_technological.aura_pos.repositories.productos.ProductoQueryRepo
 import com.cloud_technological.aura_pos.repositories.unidad_medida.UnidadMedidaJPARepository;
 import com.cloud_technological.aura_pos.services.CategoriaContableProductoService;
 import com.cloud_technological.aura_pos.services.ConsumoComposicionService;
+import com.cloud_technological.aura_pos.services.CostoHistorialService;
+import com.cloud_technological.aura_pos.services.OrigenCosto;
 import com.cloud_technological.aura_pos.services.ProductoService;
 import com.cloud_technological.aura_pos.utils.ClasificacionItem;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -60,6 +62,7 @@ public class ProductoServiceImpl implements ProductoService {
     private final ProductoMapper productoMapper;
     private final CategoriaContableProductoService categoriaContableService;
     private final ConsumoComposicionService consumoComposicion;
+    private final CostoHistorialService costoHistorial;
 
     @Autowired
     private com.cloud_technological.aura_pos.services.LoteStockService loteStock;
@@ -73,7 +76,8 @@ public class ProductoServiceImpl implements ProductoService {
             UnidadMedidaJPARepository unidadMedidaRepository,
             ProductoMapper productoMapper,
             CategoriaContableProductoService categoriaContableService,
-            ConsumoComposicionService consumoComposicion) {
+            ConsumoComposicionService consumoComposicion,
+            CostoHistorialService costoHistorial) {
         this.productoRepository = productoRepository;
         this.productoJPARepository = productoJPARepository;
         this.empresaRepository = empresaRepository;
@@ -83,6 +87,7 @@ public class ProductoServiceImpl implements ProductoService {
         this.productoMapper = productoMapper;
         this.categoriaContableService = categoriaContableService;
         this.consumoComposicion = consumoComposicion;
+        this.costoHistorial = costoHistorial;
     }
 
     @Override
@@ -142,7 +147,10 @@ public class ProductoServiceImpl implements ProductoService {
                     .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST, "Unidad de medida no encontrada"));
             entity.setUnidadMedidaBase(unidad);
 
-            return productoMapper.toDto(productoJPARepository.save(entity));
+            ProductoEntity guardado = productoJPARepository.save(entity);
+            costoHistorial.registrarCambio(guardado, null,
+                    OrigenCosto.de(OrigenCosto.CREACION, "Costo inicial al crear el producto"));
+            return productoMapper.toDto(guardado);
 
         } catch (DataIntegrityViolationException e) {
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El código de barras ya está registrado");
@@ -184,6 +192,7 @@ public class ProductoServiceImpl implements ProductoService {
         Integer mesesGarantiaActual = entity.getMesesGarantia();
         // Bitácora (PLAN_PERMISOS P7): precios y costo antes del cambio.
         java.util.Map<String, Object> preciosAntes = preciosDe(entity);
+        BigDecimal costoAntes = entity.getCosto();
         productoMapper.updateEntityFromDto(dto, entity);
         // Igual con la garantía: una pantalla que no la maneja no la borra.
         if (dto.getMesesGarantia() == null)
@@ -219,6 +228,8 @@ public class ProductoServiceImpl implements ProductoService {
 
         ProductoEntity guardado = productoJPARepository.save(entity);
         java.util.Map<String, Object> preciosDespues = preciosDe(guardado);
+        costoHistorial.registrarCambio(guardado, costoAntes,
+                OrigenCosto.de(OrigenCosto.AJUSTE_MANUAL, "Editado en la ficha del producto"));
         if (bitacora != null && !preciosAntes.equals(preciosDespues)) {
             bitacora.registrar("catalogo.productos", "CAMBIO_PRECIO", "producto", guardado.getId(),
                     "Cambió precios/costo de " + guardado.getNombre(), preciosAntes, preciosDespues);
