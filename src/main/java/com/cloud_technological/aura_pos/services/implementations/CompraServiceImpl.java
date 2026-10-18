@@ -47,6 +47,7 @@ import com.cloud_technological.aura_pos.repositories.tesoreria.CuentaBancariaJPA
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.CompraService;
+import com.cloud_technological.aura_pos.services.OrigenCosto;
 import com.cloud_technological.aura_pos.services.CuentaPagarService;
 import com.cloud_technological.aura_pos.services.NotaContableService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -730,7 +731,8 @@ public class CompraServiceImpl implements CompraService {
             //     crédito sale al costo al que la devuelve (ambos con signo).
             acumularCosto(costoPorProducto, producto.getId(), cantidad, netoLinea);
         }
-        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento);
+        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento,
+                origenCosto(compra, esNC ? OrigenCosto.NOTA_CREDITO_COMPRA : OrigenCosto.COMPRA));
 
         // 2.8 Fichas de activo y diferidos de las líneas que los crean (V185).
         if (!esNC) {
@@ -1370,7 +1372,9 @@ public class CompraServiceImpl implements CompraService {
 
         // Costo promedio: se deshace lo que la línea mezcló (la compra saca su
         // entrada; la nota crédito devuelve lo que había sacado).
-        aplicarCostoPromedio(reversionDeCosto(detalles), nz(compra.getFletes()).negate(), netoAReversar(detalles));
+        aplicarCostoPromedio(reversionDeCosto(detalles), nz(compra.getFletes()).negate(), netoAReversar(detalles),
+                origenCosto(compra, esNotaCredito(compra.getTipoDocumento())
+                        ? OrigenCosto.ANULACION_NOTA_CREDITO : OrigenCosto.ANULACION_COMPRA));
 
         // El crédito que la nota otorgó deja de existir con ella: hay que
         // devolverle la deuda al proveedor (o sacar de nuevo la plata que
@@ -1477,7 +1481,7 @@ public class CompraServiceImpl implements CompraService {
         // Costo promedio: sale la versión anterior de la compra (con sus fletes
         // anteriores) antes de mezclar la nueva.
         aplicarCostoPromedio(reversionDeCosto(detallesAnteriores), nz(compra.getFletes()).negate(),
-                netoAReversar(detallesAnteriores));
+                netoAReversar(detallesAnteriores), origenCosto(compra, OrigenCosto.EDICION_COMPRA_REVERSION));
 
         // 2. Eliminar detalles anteriores
         detalleJPARepository.deleteAll(detallesAnteriores);
@@ -1582,7 +1586,8 @@ public class CompraServiceImpl implements CompraService {
 
             acumularCosto(costoPorProducto, producto.getId(), item.getCantidad(), netoLinea);
         }
-        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento);
+        aplicarCostoPromedio(costoPorProducto, nz(compra.getFletes()), netoDocumento,
+                origenCosto(compra, OrigenCosto.EDICION_COMPRA));
         compraClasificacion.crearDesdeCompra(compra, lineasGuardadas, nz(compra.getFletes()),
                 netoDocumento, empresaId);
 
@@ -1801,7 +1806,7 @@ public class CompraServiceImpl implements CompraService {
      * cuadraría con la cuenta 1435.
      */
     private void aplicarCostoPromedio(java.util.Map<Long, BigDecimal[]> porProducto, BigDecimal fletes,
-            BigDecimal netoDocumento) {
+            BigDecimal netoDocumento, OrigenCosto origen) {
         // Los fletes se reparten sobre el neto de TODAS las líneas (V185): la
         // parte de un activo o de un gasto de la misma factura va a su cuenta,
         // no al costo de la mercancía. Es el mismo reparto del asiento.
@@ -1811,8 +1816,16 @@ public class CompraServiceImpl implements CompraService {
             BigDecimal flete = fletes.signum() != 0 && sumaNeto.signum() != 0
                     ? fletes.multiply(neto).divide(sumaNeto, 6, java.math.RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
-            costoPromedio.aplicar(e.getKey(), e.getValue()[0], neto.add(flete));
+            costoPromedio.aplicar(e.getKey(), e.getValue()[0], neto.add(flete), origen);
         }
+    }
+
+    /** Documento que mueve el costo, para el historial de costos del producto (V226). */
+    private static OrigenCosto origenCosto(CompraEntity compra, String tipo) {
+        String numero = compra.getNumeroCompra() != null && !compra.getNumeroCompra().isBlank()
+                ? compra.getNumeroCompra() : "#" + compra.getId();
+        Long proveedorId = compra.getProveedor() != null ? compra.getProveedor().getId() : null;
+        return new OrigenCosto(tipo, compra.getId(), numero, proveedorId, null);
     }
 
     /**

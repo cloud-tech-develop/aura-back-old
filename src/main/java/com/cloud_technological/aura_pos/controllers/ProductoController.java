@@ -24,6 +24,7 @@ import com.cloud_technological.aura_pos.dto.productos.CambioUnidadPreviewDto;
 import com.cloud_technological.aura_pos.dto.productos.CambioUnidadRequestDto;
 import com.cloud_technological.aura_pos.dto.productos.ConsumoComponenteDto;
 import com.cloud_technological.aura_pos.dto.productos.CreateProductoDto;
+import com.cloud_technological.aura_pos.dto.productos.HistorialCostoProductoDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoInventarioDto;
 import com.cloud_technological.aura_pos.dto.productos.ProductoListDto;
@@ -32,6 +33,7 @@ import com.cloud_technological.aura_pos.dto.productos.ProductoTableDto;
 import com.cloud_technological.aura_pos.dto.productos.UpdateCodigoBarrasDto;
 import com.cloud_technological.aura_pos.dto.productos.UpdateProductoDto;
 import com.cloud_technological.aura_pos.services.CambioUnidadProductoService;
+import com.cloud_technological.aura_pos.services.CostoHistorialService;
 import com.cloud_technological.aura_pos.services.ProductoService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -50,6 +52,9 @@ public class ProductoController {
 
     @Autowired
     private CambioUnidadProductoService cambioUnidadProductoService;
+
+    @Autowired
+    private CostoHistorialService costoHistorialService;
 
 
     @PostMapping("/page")
@@ -159,6 +164,18 @@ public class ProductoController {
         Integer empresaId = securityUtils.getEmpresaId();
         List<ConsumoComponenteDto> result = productoService.explosion(
                 id, cantidad, resolverSucursal(sucursalId), empresaId);
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "OK", false, result), HttpStatus.OK);
+    }
+
+    /**
+     * Historial de costos del producto: cada cambio del costo promedio con el
+     * documento que lo movió, y todas sus líneas de compra (también las
+     * anteriores al historial).
+     */
+    @GetMapping("/{id}/historial-costos")
+    public ResponseEntity<ApiResponse<HistorialCostoProductoDto>> historialCostos(@PathVariable Long id) {
+        Integer empresaId = securityUtils.getEmpresaId();
+        HistorialCostoProductoDto result = costoHistorialService.obtener(id, empresaId);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "OK", false, result), HttpStatus.OK);
     }
 

@@ -33,6 +33,8 @@ import com.cloud_technological.aura_pos.repositories.importacion.CatalogoImporta
 import com.cloud_technological.aura_pos.repositories.marcas.MarcaJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoJPARepository;
 import com.cloud_technological.aura_pos.repositories.productos.ProductoQueryRepository;
+import com.cloud_technological.aura_pos.services.CostoHistorialService;
+import com.cloud_technological.aura_pos.services.OrigenCosto;
 import com.cloud_technological.aura_pos.services.ProductoService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
@@ -64,6 +66,7 @@ public class CatalogoImportacionService {
     private final ProductoQueryRepository productoQuery;
     private final ProductoService productoService;
     private final EntityManager em;
+    private final CostoHistorialService costoHistorial;
 
     // ════════════════════════════════════════════════════════════════════════
     // Categorías
@@ -337,9 +340,12 @@ public class CatalogoImportacionService {
         if (f.getIvaIncluido() != null) p.setIvaIncluido(f.getIvaIncluido());
         if (f.getImpoconsumo() != null) p.setImpoconsumo(f.getImpoconsumo());
         if (f.getActivo() != null) p.setActivo(f.getActivo());
+        BigDecimal costoAntes = p.getCosto();
         if (f.getCosto() != null && !conStock) p.setCosto(f.getCosto());
         p.setUpdatedAt(LocalDateTime.now());
         productoRepo.save(p);
+        costoHistorial.registrarCambio(p, costoAntes,
+                OrigenCosto.de(OrigenCosto.IMPORTACION, "Importación del catálogo desde Excel"));
     }
 
     private Long asegurarCategoria(Map<String, Long> categorias, String nombre, EmpresaEntity empresa) {

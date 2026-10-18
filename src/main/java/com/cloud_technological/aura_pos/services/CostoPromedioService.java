@@ -40,10 +40,13 @@ public class CostoPromedioService {
 
     private final CostoPromedioQueryRepository queryRepo;
     private final ProductoJPARepository productoRepo;
+    private final CostoHistorialService historial;
 
-    public CostoPromedioService(CostoPromedioQueryRepository queryRepo, ProductoJPARepository productoRepo) {
+    public CostoPromedioService(CostoPromedioQueryRepository queryRepo, ProductoJPARepository productoRepo,
+            CostoHistorialService historial) {
         this.queryRepo = queryRepo;
         this.productoRepo = productoRepo;
+        this.historial = historial;
     }
 
     /**
@@ -52,8 +55,9 @@ public class CostoPromedioService {
      * @param productoId producto
      * @param cantidad   unidades base del movimiento, con signo (+ entra, − sale)
      * @param valor      valor total del movimiento, con el mismo signo
+     * @param origen     documento que lo mueve: queda en el historial de costos
      */
-    public void aplicar(Long productoId, BigDecimal cantidad, BigDecimal valor) {
+    public void aplicar(Long productoId, BigDecimal cantidad, BigDecimal valor, OrigenCosto origen) {
         if (productoId == null || cantidad == null || cantidad.signum() == 0) return;
 
         // El inventario del documento puede estar aún en el contexto de JPA:
@@ -64,12 +68,15 @@ public class CostoPromedioService {
         BigDecimal stockDespues = queryRepo.stockTotal(productoId);
 
         BigDecimal nuevo = calcular(stockDespues, cantidad, valor != null ? valor : BigDecimal.ZERO, costoActual);
-        if (nuevo.compareTo(costoActual) == 0) return;
 
         ProductoEntity producto = productoRepo.findById(productoId).orElse(null);
         if (producto == null) return;
-        producto.setCosto(nuevo);
-        productoRepo.save(producto);
+        if (nuevo.compareTo(costoActual) != 0) {
+            producto.setCosto(nuevo);
+            productoRepo.save(producto);
+        }
+        // Aunque el promedio no cambie, la entrada queda en el rastro.
+        historial.registrarMovimiento(producto, origen, cantidad, valor, stockDespues, costoActual);
     }
 
     /**

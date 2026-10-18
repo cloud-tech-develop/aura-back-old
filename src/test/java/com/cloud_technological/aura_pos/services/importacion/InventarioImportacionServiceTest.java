@@ -190,7 +190,7 @@ class InventarioImportacionServiceTest {
         verify(movimientoRepo).save(mov.capture());
         assertEquals(0, new BigDecimal("15").compareTo(mov.getValue().getCantidad()));
         // 10 × 2000 + 5 × 3000 = 35.000 → costo promedio de la entrada
-        verify(costoPromedio).aplicar(eq(2L), eq(new BigDecimal("15")), eq(new BigDecimal("35000")));
+        verify(costoPromedio).aplicar(eq(2L), eq(new BigDecimal("15")), eq(new BigDecimal("35000")), any());
         verify(loteStock).entradaDocumento(eq(LoteStockService.AJUSTE_INVENTARIO), eq(500L), eq(leche), any(), eq(EMPRESA),
                 eq(new BigDecimal("10")), any(), eq(new BigDecimal("2000")));
     }
@@ -202,7 +202,7 @@ class InventarioImportacionServiceTest {
         Resultado r = service.confirmarSaldos(EMPRESA, SEDE, req);
         assertEquals(1, r.getErrores());
         verify(inventarioRepo, never()).saveAndFlush(any());
-        verify(costoPromedio, never()).aplicar(any(), any(), any());
+        verify(costoPromedio, never()).aplicar(any(), any(), any(), any());
     }
 
     // ── Conteo ───────────────────────────────────────────────────────────

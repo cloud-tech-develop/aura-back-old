@@ -51,6 +51,7 @@ import com.cloud_technological.aura_pos.repositories.reconteo.ReconteoJPAReposit
 import com.cloud_technological.aura_pos.services.BodegaService;
 import com.cloud_technological.aura_pos.services.CostoPromedioService;
 import com.cloud_technological.aura_pos.services.LoteStockService;
+import com.cloud_technological.aura_pos.services.OrigenCosto;
 import com.cloud_technological.aura_pos.services.ReconteoService;
 import com.cloud_technological.aura_pos.services.SerialStockService;
 import com.cloud_technological.aura_pos.utils.ClasificacionItem;
@@ -336,7 +337,8 @@ public class InventarioImportacionService {
             if (!l.seriales().isEmpty())
                 serialStock.entradaSaldoInicial(p, bodega, empresaId, inv.getId(), l.seriales(), l.cantidad(), l.costo());
         }
-        costoPromedio.aplicar(p.getId(), total, valor);
+        costoPromedio.aplicar(p.getId(), total, valor,
+                OrigenCosto.de(OrigenCosto.SALDO_INICIAL, "Saldo inicial importado desde Excel"));
     }
 
     private static BodegaFila buscarBodega(List<BodegaFila> bodegas, String nombre, BodegaFila principal) {
