@@ -55,6 +55,7 @@ public class EmpresaEntity {
      * sociedades (V225).
      */
     @Column(name = "tipo_persona", nullable = false, length = 10)
+    @lombok.Builder.Default
     private String tipoPersona = "JURIDICA";
 
     @JdbcTypeCode(SqlTypes.JSON)
