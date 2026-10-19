@@ -33,6 +33,10 @@ public final class FacturaVentaDtos {
     /** Crear o editar un borrador. */
     @Data
     public static class Guardar {
+        /** FACTURA (por defecto) o CUENTA_COBRO. */
+        private String tipo;
+        /** Cuenta de cobro: declaración del art. 383 ET; null = no declara. */
+        private Boolean contratoDosTrabajadores;
         private Integer sucursalId;
         private Long bodegaId;
         private Long clienteId;
@@ -84,6 +88,9 @@ public final class FacturaVentaDtos {
     public static class Detalle {
         private Long id;
         private String estado;
+        /** FACTURA | CUENTA_COBRO. */
+        private String tipo;
+        private Boolean contratoDosTrabajadores;
         private Integer sucursalId;
         private String sucursalNombre;
         private Long bodegaId;
@@ -143,6 +150,8 @@ public final class FacturaVentaDtos {
     public static class Fila {
         private Long id;
         private String estado;
+        /** FACTURA | CUENTA_COBRO. */
+        private String tipo;
         private String numero;
         private LocalDateTime fecha;
         private String clienteNombre;
@@ -168,6 +177,8 @@ public final class FacturaVentaDtos {
     @Data
     public static class Emitir {
         private List<AnticipoAplicar> anticipos = new ArrayList<>();
+        /** Cuenta de cobro: número elegido (el sistema propone el siguiente); null = el siguiente. */
+        private Long numero;
     }
 
     @Data

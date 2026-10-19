@@ -234,3 +234,23 @@ Revisados sin problema: borrados (`deleteById` precedidos de `findByIdAndEmpresa
 - **F10:** `/api/firma/buscar?nit=`, `/api/firma/solicitud` (GET/POST/DELETE), `/api/firma/solicitudes` + aceptar/rechazar. Campana: `SOLICITUDES_FIRMA` (firma) y `RESPUESTA_FIRMA` (cliente, 7 días). Front: bloque "Solicitar firma" en Caja → Usuarios.
 - **F11:** plataforma: cupo editable, sub-renglón con gestionados/cupo y "Gestionada (la paga)". **Arreglado:** Create/Update de empresa ahora guardan facturación electrónica y credenciales de Factus (antes se perdían); el detalle las devuelve; un campo vacío no borra lo guardado; credenciales nuevas invalidan el token de Factus.
 - **F12:** `GestionadoServiceTest` (7), `FirmaContableServiceTest` (18), `PermisoUsuarioServiceTest` (21), `JwtFirmaContableFilterTest` (4). Manual /ayuda: gestionados, solicitudes y errores.
+
+## 10. Identidad y documentos electrónicos del gestionado (2026-10-19, local, sin commit)
+
+Decisiones del usuario (2026-10-19):
+- La firma maneja la identidad de sus gestionados: persona **natural o jurídica**, nombre, tipo de documento y DV. El NIT no cambia.
+- Las credenciales de Factus (client id, secret, usuario y clave) y el `factus_prefijo` **solo los pone la plataforma**: Factus se los entrega a Aura.
+- La firma **solicita** la activación electrónica (factura de venta, nómina electrónica, documento soporte); la solicitud llega a la **campana del panel de plataforma**; Aura pone las credenciales y la firma recibe el aviso.
+- Resolución DIAN, rangos de factura y nómina, logo y contacto: el admin de la firma (ADMIN en el gestionado, perfil Administrador con `EDITAR_EMPRESA`) los edita en "Mi perfil" del cliente. Ya funcionaba.
+
+Hecho:
+- **V228** (+ Laravel 000228): `solicitud_activacion_electronica` (PENDIENTE/ATENDIDA/RECHAZADA/CANCELADA, una pendiente por cliente). **Sin correr** → con `ddl-auto=validate` el back no arranca hasta correrla.
+- `IdentidadTributaria`: valida y escribe la identidad en la empresa (`tipo_persona`, que lee la exógena) y en su tercero (natural → nombres/apellidos y nombre1..apellido2; jurídica → razón social). DV vacío se calcula (`DocumentoSoporteArmador.digitoVerificacion`). La cédula sin RUT no lleva DV.
+- `GestionadoService.crear` acepta tipo de persona; `identidad` / `cambiarIdentidad` (bitácora del cliente).
+- `ActivacionElectronicaService`: estado, solicitar, cancelar; plataforma: pendientes, contar, atender, rechazar (motivo obligatorio). `atenderSiQuedoActiva` se llama al guardar la empresa en la plataforma: FE activa + las 4 credenciales → la pendiente queda ATENDIDA sola.
+- API firma: `GET/PUT /api/firma/gestionados/{id}/identidad`, `GET /api/firma/gestionados/{id}/electronica`, `POST/DELETE .../electronica/solicitud`. API plataforma: `GET /api/platform/solicitudes-electronica`, `GET .../pendientes`, `POST .../{id}/atender`, `POST .../{id}/rechazar`.
+- Campana de la firma: `ACTIVACION_ELECTRONICA` (atendida o rechazada, 7 días).
+- Front: tipo de persona en "Nuevo cliente gestionado"; botones "Datos" y "Electrónica" por gestionado en `/firma/clientes`; plataforma: campana con contador (cada 60 s) y página `/platform/solicitudes-electronica` (Configurar credenciales → editar empresa, Marcar atendida, Rechazar). Manual /ayuda actualizado.
+- Tests: `IdentidadTributariaTest` (3).
+
+Pruebas pendientes (navegador): crear gestionado natural con CC y con NIT; pasar uno de jurídica a natural y revisar el tercero; pedir activación → campana de plataforma → guardar credenciales con FE activa → aviso en la firma; rechazar con motivo; generar exógena de un gestionado natural (no debe pedir 1010).

@@ -32,6 +32,7 @@ import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.EmpresaPlataformaService;
 import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
 import com.cloud_technological.aura_pos.services.empresa.LineaUso;
+import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
 
@@ -73,6 +74,9 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.cloud_technological.aura_pos.utils.SecurityUtils securityUtils;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ActivacionElectronicaService activacionElectronica;
 
     public EmpresaPlataformaServiceImpl(EmpresaPlataformaQueryRepository queryRepo,
                                         EmpresaJPARepository empresaRepo,
@@ -258,6 +262,8 @@ public class EmpresaPlataformaServiceImpl implements EmpresaPlataformaService {
                 dto.getFactusUsername(), dto.getFactusPassword(), dto.getFactusNumberingRangeId(), dto.getFactusPrefijo());
         empresaRepo.save(empresa);
         if (dto.getEsFirmaContable() != null) firmaContable.marcarFirma(empresa, dto.getEsFirmaContable());
+        // Credenciales puestas con la FE activa: la solicitud de la firma queda atendida.
+        activacionElectronica.atenderSiQuedoActiva(empresa, actorId());
 
         return obtenerPorId(id);
     }

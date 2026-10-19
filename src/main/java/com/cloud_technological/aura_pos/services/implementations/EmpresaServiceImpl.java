@@ -28,6 +28,7 @@ public class EmpresaServiceImpl implements IEmpresaService {
     private final UsuarioJPARepository usuarioRepository;
     private final TerceroJPARepository terceroRepository;
     private final BitacoraService bitacora;
+    private final CuentaCobroReglas cuentaCobro;
 
     @Override
     public EmpresaDto obtenerEmpresaActual(Integer empresaId, Long sucursalId, Long usuarioId) {
@@ -77,6 +78,8 @@ public class EmpresaServiceImpl implements IEmpresaService {
                 .direccion(direccion)
                 .municipio(municipio)
                 .facturaElectronica(empresa.isFacturaElectronica())
+                .tipoPersona(empresa.getTipoPersona())
+                .puedeCuentaCobro(cuentaCobro.puedeEmitir(empresaId))
                 .resolucionNumero(empresa.getResolucionNumero())
                 .resolucionPrefijo(empresa.getResolucionPrefijo())
                 .resolucionDesde(empresa.getResolucionDesde())

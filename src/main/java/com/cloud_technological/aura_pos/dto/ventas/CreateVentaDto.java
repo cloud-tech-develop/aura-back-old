@@ -50,5 +50,11 @@ public class CreateVentaDto {
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     private boolean desdeFacturacion;
+
+    /**
+     * Cuenta de cobro: número que eligió el usuario al confirmar (el sistema propone el
+     * siguiente). Null = el siguiente libre.
+     */
+    private Long consecutivoManual;
 }
 

@@ -72,6 +72,8 @@ public class FacturaVentaService {
     private final com.cloud_technological.aura_pos.repositories.cuentas_cobrar.CuentaCobrarJPARepository cxcRepo;
     private final com.cloud_technological.aura_pos.repositories.centros_costos.CentroCostoJPARepository centroCostoRepo;
     private final com.cloud_technological.aura_pos.contabilidad.infrastructure.devengo.AnticipoService anticipoService;
+    private final CuentaCobroReglas cuentaCobro;
+    private final com.cloud_technological.aura_pos.repositories.ventas.VentaQueryRepository ventaQuery;
 
     // ── Consultas ──────────────────────────────────────────────────────
 
@@ -186,6 +188,17 @@ public class FacturaVentaService {
         if (dto.getLineas() == null || dto.getLineas().isEmpty())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "Agregue al menos una línea a la factura");
 
+        // Cuenta de cobro: persona natural no responsable de IVA; sin IVA, sin AIU y sin DIAN.
+        String tipo = tipoDocumento(dto.getTipo(), f, empresaId);
+        boolean cuentaDeCobro = FacturaVentaEntity.TIPO_CUENTA_COBRO.equals(tipo);
+        if (cuentaDeCobro) {
+            cuentaCobro.exigir(empresaId);
+            if (Boolean.TRUE.equals(dto.getAiu()))
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "La cuenta de cobro no lleva AIU");
+        }
+        f.setTipo(tipo);
+        f.setContratoDosTrabajadores(cuentaDeCobro ? dto.getContratoDosTrabajadores() : null);
+
         f.setSucursalId(dto.getSucursalId());
         f.setBodegaId(dto.getBodegaId());
         f.setClienteId(dto.getClienteId());
@@ -215,7 +228,7 @@ public class FacturaVentaService {
         List<FacturaVentaDetalleEntity> lineas = new ArrayList<>();
         int orden = 0;
         for (FacturaVentaDtos.Linea l : dto.getLineas()) {
-            lineas.add(linea(l, empresaId, ++orden, esAiu));
+            lineas.add(linea(l, empresaId, ++orden, esAiu || cuentaDeCobro));
         }
         if (esAiu) {
             BigDecimal costoDirecto = sumar(lineas, Campo.BASE);
@@ -237,7 +250,8 @@ public class FacturaVentaService {
         repo.flush();
     }
 
-    private FacturaVentaDetalleEntity linea(FacturaVentaDtos.Linea l, Integer empresaId, int orden, boolean esAiu) {
+    /** @param sinIva AIU (el IVA va solo sobre la utilidad) o cuenta de cobro (no lleva IVA). */
+    private FacturaVentaDetalleEntity linea(FacturaVentaDtos.Linea l, Integer empresaId, int orden, boolean sinIva) {
         if (l.getProductoId() == null)
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Línea " + orden + ": elija el producto o servicio");
@@ -255,8 +269,8 @@ public class FacturaVentaService {
         if (descuento.signum() < 0 || descuento.compareTo(bruto) > 0)
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Línea " + orden + ": el descuento no puede ser negativo ni mayor que el valor de la línea");
-        // En AIU la obra es costo directo: el IVA va solo sobre la Utilidad.
-        BigDecimal pct = esAiu ? BigDecimal.ZERO
+        // En AIU la obra es costo directo (IVA solo sobre la Utilidad); la cuenta de cobro no lleva IVA.
+        BigDecimal pct = sinIva ? BigDecimal.ZERO
                 : l.getImpuestoPorcentaje() != null ? l.getImpuestoPorcentaje()
                 : p.getIvaPorcentaje() != null ? p.getIvaPorcentaje() : BigDecimal.ZERO;
 
@@ -274,6 +288,19 @@ public class FacturaVentaService {
                 .orden(orden)
                 .cotizacionDetalleId(l.getCotizacionDetalleId())
                 .build();
+    }
+
+    /**
+     * FACTURA o CUENTA_COBRO. Sin tipo pedido: el que ya tenía el borrador o, si es
+     * nuevo, el que le corresponde a la empresa ({@link CuentaCobroReglas#tipoPorDefecto}).
+     */
+    private String tipoDocumento(String pedido, FacturaVentaEntity f, Integer empresaId) {
+        if (pedido == null || pedido.isBlank())
+            return f.getId() != null && f.getTipo() != null ? f.getTipo() : cuentaCobro.tipoPorDefecto(empresaId);
+        String t = pedido.trim().toUpperCase();
+        if (!FacturaVentaEntity.TIPO_FACTURA.equals(t) && !FacturaVentaEntity.TIPO_CUENTA_COBRO.equals(t))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Tipo de documento inválido: use FACTURA o CUENTA_COBRO");
+        return t;
     }
 
     /** Base neta e impuesto de una línea, redondeados como los redondea la venta. */
@@ -399,6 +426,11 @@ public class FacturaVentaService {
         return crear(g, empresaId, usuarioId, null, pedidoId);
     }
 
+    /** El número que se le propone a la próxima cuenta de cobro (el último + 1). */
+    public Long proximoNumeroCuentaCobro(Integer empresaId) {
+        return ventaQuery.proximoCuentaCobro(empresaId);
+    }
+
     /** Anticipos activos del cliente con saldo, para elegir cuáles cruzar al emitir. */
     public List<java.util.Map<String, Object>> anticiposCliente(Long clienteId, Integer empresaId) {
         List<java.util.Map<String, Object>> r = new ArrayList<>();
@@ -439,6 +471,8 @@ public class FacturaVentaService {
     public FacturaVentaDtos.Detalle copiar(Long id, Integer empresaId, Long usuarioId) {
         FacturaVentaEntity o = cargar(id, empresaId);
         FacturaVentaDtos.Guardar g = new FacturaVentaDtos.Guardar();
+        g.setTipo(o.getTipo());
+        g.setContratoDosTrabajadores(o.getContratoDosTrabajadores());
         g.setSucursalId(o.getSucursalId());
         g.setBodegaId(o.getBodegaId());
         g.setClienteId(o.getClienteId());
@@ -491,6 +525,7 @@ public class FacturaVentaService {
     public FacturaVentaDtos.Detalle emitir(Long id, Integer empresaId, Long usuarioId,
             FacturaVentaDtos.Emitir opciones) {
         FacturaVentaEntity f = borrador(id, empresaId);
+        if (FacturaVentaEntity.TIPO_CUENTA_COBRO.equals(f.getTipo())) cuentaCobro.exigir(empresaId);
         if (f.getPedidoVendedorId() != null) pedidoVendible(f.getPedidoVendedorId(), empresaId);
         List<FacturaVentaDtos.AnticipoAplicar> anticipos = opciones != null && opciones.getAnticipos() != null
                 ? opciones.getAnticipos().stream()
@@ -509,6 +544,8 @@ public class FacturaVentaService {
                     "El vencimiento ya pasó: corríjalo en el borrador antes de emitir");
 
         CreateVentaDto venta = armarVenta(f, actual);
+        if (FacturaVentaEntity.TIPO_CUENTA_COBRO.equals(f.getTipo()) && opciones != null)
+            venta.setConsecutivoManual(opciones.getNumero());
         VentaDto creada = ventaService.crear(venta, empresaId, usuarioId);
 
         // Centro de costo de la factura: el asiento (después del commit) lo lee de la venta.
@@ -547,7 +584,8 @@ public class FacturaVentaService {
     static CreateVentaDto armarVenta(FacturaVentaEntity f, FacturaVentaDtos.Detalle actual) {
         CreateVentaDto v = new CreateVentaDto();
         v.setDesdeFacturacion(true);
-        v.setTipoDocumento("FACTURA");
+        v.setTipoDocumento(FacturaVentaEntity.TIPO_CUENTA_COBRO.equals(f.getTipo())
+                ? CuentaCobroReglas.TIPO_VENTA : "FACTURA");
         v.setSucursalId(f.getSucursalId());
         v.setBodegaId(f.getBodegaId());
         v.setClienteId(f.getClienteId());

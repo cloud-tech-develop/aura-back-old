@@ -90,6 +90,12 @@ public class FacturaVentaController {
                 service.desdePedido(pedidoId, securityUtils.getEmpresaId(), securityUtils.getUsuarioId()));
     }
 
+    /** Número que se le propone a la próxima cuenta de cobro (el último + 1); se puede cambiar al confirmar. */
+    @GetMapping("/cuenta-cobro/siguiente")
+    public ResponseEntity<ApiResponse<Long>> siguienteCuentaCobro() {
+        return ok("OK", service.proximoNumeroCuentaCobro(securityUtils.getEmpresaId()));
+    }
+
     /** Anticipos activos del cliente, para cruzarlos al emitir a crédito. */
     @GetMapping("/anticipos-cliente/{clienteId}")
     public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> anticiposCliente(@PathVariable Long clienteId) {

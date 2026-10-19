@@ -67,6 +67,11 @@ public class VentaFacturaService {
                 .orElseThrow(() -> new GlobalException(
                         HttpStatus.NOT_FOUND, "Venta no encontrada"));
 
+        // 1.b La cuenta de cobro no es factura: nunca va a la DIAN.
+        if (CuentaCobroReglas.TIPO_VENTA.equals(venta.getTipoDocumento()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Una cuenta de cobro no se envía a la DIAN: la persona natural no responsable de IVA no factura electrónicamente");
+
         // 2. Empresa tiene FE habilitada?
         EmpresaEntity empresa = venta.getEmpresa();
         if (!empresa.isFacturaElectronica())

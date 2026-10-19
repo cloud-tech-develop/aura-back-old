@@ -3,6 +3,8 @@ package com.cloud_technological.aura_pos.controllers;
 import java.util.List;
 import java.util.Map;
 
+import javax.validation.Valid;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,9 +19,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.firma_contable.CrearGestionadoDto;
+import com.cloud_technological.aura_pos.dto.firma_contable.IdentidadGestionadoDto;
+import com.cloud_technological.aura_pos.dto.firma_contable.SolicitarActivacionDto;
 import com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.EmpresaDisponible;
 import com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.SolicitudFila;
 import com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository.VinculoFila;
+import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService;
+import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService.EstadoElectronica;
 import com.cloud_technological.aura_pos.services.firma_contable.GestionadoService;
 import com.cloud_technological.aura_pos.services.firma_contable.FirmaContableService;
 import com.cloud_technological.aura_pos.services.firma_contable.FirmaContableService.AccesoDelCliente;
@@ -48,6 +54,9 @@ public class FirmaContableController {
 
     @Autowired
     private GestionadoService gestionados;
+
+    @Autowired
+    private ActivacionElectronicaService electronica;
 
     // ── F4: la firma ─────────────────────────────────────────────────────
 
@@ -109,7 +118,7 @@ public class FirmaContableController {
 
     @PostMapping("/gestionados")
     public ResponseEntity<ApiResponse<VinculoFila>> crearGestionado(
-            @javax.validation.Valid @RequestBody CrearGestionadoDto dto) {
+            @Valid @RequestBody CrearGestionadoDto dto) {
         exigirAdministrador();
         return ok("Cliente gestionado creado", gestionados.crear(securityUtils.getEmpresaId(), dto, actor()));
     }
@@ -126,6 +135,46 @@ public class FirmaContableController {
         exigirAdministrador();
         return ok("Módulos actualizados", gestionados.cambiarPaquetes(securityUtils.getEmpresaId(), clienteId,
                 body != null ? body.get("paquetes") : null, actor()));
+    }
+
+    /** Tipo de persona, nombre, documento y DV del gestionado. */
+    @GetMapping("/gestionados/{clienteId}/identidad")
+    public ResponseEntity<ApiResponse<IdentidadGestionadoDto>> identidad(@PathVariable Integer clienteId) {
+        exigirAdministrador();
+        return ok("Identidad del cliente", gestionados.identidad(securityUtils.getEmpresaId(), clienteId));
+    }
+
+    /** La firma cambia la identidad del gestionado (natural ↔ jurídica); el NIT no cambia. */
+    @PutMapping("/gestionados/{clienteId}/identidad")
+    public ResponseEntity<ApiResponse<IdentidadGestionadoDto>> cambiarIdentidad(@PathVariable Integer clienteId,
+            @Valid @RequestBody IdentidadGestionadoDto dto) {
+        exigirAdministrador();
+        return ok("Datos del cliente actualizados",
+                gestionados.cambiarIdentidad(securityUtils.getEmpresaId(), clienteId, dto, actor()));
+    }
+
+    // ── Documentos electrónicos del gestionado (§10 del plan) ────────────────
+
+    /** Si ya tiene la facturación electrónica activa, sus rangos y la última solicitud. */
+    @GetMapping("/gestionados/{clienteId}/electronica")
+    public ResponseEntity<ApiResponse<EstadoElectronica>> estadoElectronica(@PathVariable Integer clienteId) {
+        exigirAdministrador();
+        return ok("Documentos electrónicos", electronica.estado(securityUtils.getEmpresaId(), clienteId));
+    }
+
+    /** Pide a Aura que active los documentos electrónicos (llega a la campana de la plataforma). */
+    @PostMapping("/gestionados/{clienteId}/electronica/solicitud")
+    public ResponseEntity<ApiResponse<EstadoElectronica>> solicitarElectronica(@PathVariable Integer clienteId,
+            @Valid @RequestBody SolicitarActivacionDto dto) {
+        exigirAdministrador();
+        return ok("Solicitud enviada a Aura",
+                electronica.solicitar(securityUtils.getEmpresaId(), clienteId, dto, actor()));
+    }
+
+    @DeleteMapping("/gestionados/{clienteId}/electronica/solicitud")
+    public ResponseEntity<ApiResponse<EstadoElectronica>> cancelarElectronica(@PathVariable Integer clienteId) {
+        exigirAdministrador();
+        return ok("Solicitud cancelada", electronica.cancelar(securityUtils.getEmpresaId(), clienteId, actor()));
     }
 
     // ── Solicitudes cliente → firma (§9 del plan) ────────────────────────────

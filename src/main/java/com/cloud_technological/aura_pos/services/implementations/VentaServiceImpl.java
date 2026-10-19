@@ -333,13 +333,15 @@ public class VentaServiceImpl implements VentaService {
         venta.setUsuario(usuario);
         if (turno != null) venta.setTurnoCaja(turno);
         venta.setTipoDocumento(dto.getTipoDocumento());
-        venta.setPrefijo(sucursal.getPrefijoFacturacion());
+        boolean cuentaDeCobro = CuentaCobroReglas.TIPO_VENTA.equals(dto.getTipoDocumento());
+        venta.setPrefijo(cuentaDeCobro ? CuentaCobroReglas.PREFIJO : sucursal.getPrefijoFacturacion());
         /**
          * TODO: posible error al tratar de obtener el siguiente consecutivo *
          * porque varias instancias de la aplicacion podrian estar usando el
          * mismo * consecutivo
          */
-        venta.setConsecutivo(ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
+        venta.setConsecutivo(cuentaDeCobro ? consecutivoCuentaCobro(dto.getConsecutivoManual(), empresaId)
+                : ventaRepository.obtenerSiguienteConsecutivo(Long.valueOf(sucursal.getId())));
         // Sin zona explícita: la JVM ya corre en America/Bogota (ver
         // AuraPosApplication).
         //
@@ -980,5 +982,19 @@ public class VentaServiceImpl implements VentaService {
         movimiento.setReferenciaOrigen(referencia);
         movimiento.setCreatedAt(LocalDateTime.now());
         movimientoJPARepository.save(movimiento);
+    }
+
+    /**
+     * Número de la cuenta de cobro: el que eligió el usuario (si no está usado) o el
+     * siguiente libre. Los dos caminos bloquean la numeración de la empresa.
+     */
+    private Long consecutivoCuentaCobro(Long manual, Integer empresaId) {
+        if (manual == null) return ventaRepository.siguienteConsecutivoCuentaCobro(empresaId);
+        if (manual <= 0)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El número de la cuenta de cobro debe ser mayor que cero");
+        if (ventaRepository.cuentaCobroUsada(empresaId, manual))
+            throw new GlobalException(HttpStatus.CONFLICT, "Ya existe la cuenta de cobro "
+                    + CuentaCobroReglas.PREFIJO + "-" + String.format("%03d", manual) + ": elija otro número");
+        return manual;
     }
 }

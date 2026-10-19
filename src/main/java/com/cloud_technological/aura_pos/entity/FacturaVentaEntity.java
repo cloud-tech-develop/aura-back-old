@@ -22,6 +22,10 @@ public class FacturaVentaEntity {
     public static final String EMITIDA = "EMITIDA";
     public static final String ANULADA = "ANULADA";
 
+    /** Tipo de documento (V229): factura de venta o cuenta de cobro. */
+    public static final String TIPO_FACTURA = "FACTURA";
+    public static final String TIPO_CUENTA_COBRO = "CUENTA_COBRO";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -68,6 +72,18 @@ public class FacturaVentaEntity {
     @Column(nullable = false, length = 10)
     @Builder.Default
     private String estado = BORRADOR;
+
+    /**
+     * FACTURA | CUENTA_COBRO (V229). La cuenta de cobro la emite la persona natural
+     * no responsable de IVA: sin IVA, sin DIAN y con consecutivo propio (prefijo CC).
+     */
+    @Column(nullable = false, length = 15)
+    @Builder.Default
+    private String tipo = TIPO_FACTURA;
+
+    /** Declaración del art. 383 ET en la cuenta de cobro; null = no declara. */
+    @Column(name = "contrato_dos_trabajadores")
+    private Boolean contratoDosTrabajadores;
 
     @Column(name = "venta_id")
     private Long ventaId;

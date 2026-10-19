@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import com.cloud_technological.aura_pos.dto.factura_venta.FacturaVentaDtos;
 import com.cloud_technological.aura_pos.services.permisos.AlcanceSede;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.services.implementations.CuentaCobroReglas;
 
 /**
  * Consultas de Facturación. Cuidado: los RowMapper son por nombre de columna,
@@ -46,8 +47,8 @@ public class FacturaVentaQueryRepository {
         }
 
         StringBuilder sql = new StringBuilder("""
-            SELECT f.id, f.estado,
-                   CASE WHEN v.id IS NOT NULL THEN COALESCE(v.prefijo, '') || v.consecutivo END AS numero,
+            SELECT f.id, f.estado, f.tipo,
+            """ + "       CASE WHEN v.id IS NOT NULL THEN " + CuentaCobroReglas.SQL_NUMERO + " END AS numero,\n" + """
                    COALESCE(v.fecha_emision, f.created_at) AS fecha,
             """ + CLIENTE + """
                    AS cliente_nombre,
@@ -75,10 +76,16 @@ public class FacturaVentaQueryRepository {
             sql.append(" AND f.estado = :estado ");
             params.addValue("estado", estado);
         }
+        if (pageable.getParams() instanceof Map<?, ?> p && p.get("tipo") != null
+                && !String.valueOf(p.get("tipo")).isBlank()) {
+            sql.append(" AND f.tipo = :tipo ");
+            params.addValue("tipo", String.valueOf(p.get("tipo")).trim().toUpperCase());
+        }
         if (!search.isEmpty()) {
             sql.append(" AND (LOWER(").append(CLIENTE).append(") LIKE :search")
                .append(" OR t.numero_documento LIKE :search")
                .append(" OR LOWER(COALESCE(v.prefijo, '') || COALESCE(v.consecutivo::text, '')) LIKE :search")
+               .append(" OR LOWER(COALESCE(").append(CuentaCobroReglas.SQL_NUMERO).append(", '')) LIKE :search")
                .append(" OR LOWER(COALESCE(f.orden_compra, '')) LIKE :search) ");
             params.addValue("search", "%" + search + "%");
         }
@@ -94,7 +101,8 @@ public class FacturaVentaQueryRepository {
 
     public Optional<FacturaVentaDtos.Detalle> detalle(Long id, Integer empresaId) {
         String sql = """
-            SELECT f.id, f.estado, f.sucursal_id, s.nombre AS sucursal_nombre,
+            SELECT f.id, f.estado, f.tipo, f.contrato_dos_trabajadores,
+                   f.sucursal_id, s.nombre AS sucursal_nombre,
                    f.bodega_id, b.nombre AS bodega_nombre,
                    f.cliente_id,
             """ + CLIENTE + """
@@ -117,7 +125,7 @@ public class FacturaVentaQueryRepository {
                    f.subtotal, f.descuento_total, f.impuestos_total, f.total,
                    f.created_at, f.emitida_at,
                    f.venta_id,
-                   CASE WHEN v.id IS NOT NULL THEN COALESCE(v.prefijo, '') || v.consecutivo END AS numero,
+            """ + "       CASE WHEN v.id IS NOT NULL THEN " + CuentaCobroReglas.SQL_NUMERO + " END AS numero,\n" + """
                    v.estado_venta, v.saldo_pendiente, v.cufe, v.estado_dian, v.factus_numero,
                    v.qr_data, v.factus_url, v.fecha_emision
               FROM factura_venta f

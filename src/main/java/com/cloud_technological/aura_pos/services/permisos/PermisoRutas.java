@@ -107,6 +107,12 @@ public final class PermisoRutas {
         m.put("/api/ventas", List.of("ventas.ventas", POS));
         m.put("/api/facturas", List.of("ventas.ventas", POS));
         m.put("/api/facturas-venta", List.of("ventas.facturas"));
+        // Envío por correo: el permiso de la pantalla del documento ("enviar" = editar).
+        m.put("/api/correos/facturas", List.of("ventas.facturas"));
+        m.put("/api/correos/cotizaciones", List.of("ventas.cotizaciones", POS));
+        m.put("/api/correos/cartera", List.of("cartera.cartera"));
+        m.put("/api/correos/nomina", List.of("recursos-humanos.liquidacion-nomina", "recursos-humanos.prenomina",
+                "recursos-humanos.nomina-documento"));
         m.put("/api/cotizaciones", List.of("ventas.cotizaciones", POS));
         m.put("/api/devoluciones", List.of("ventas.devoluciones"));
         m.put("/api/nota-electronica", List.of("ventas.notas-credito/debito"));

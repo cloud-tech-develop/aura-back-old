@@ -5,6 +5,7 @@ import java.util.List;
 import javax.validation.Valid;
 import javax.validation.constraints.Email;
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
 
 import lombok.Getter;
@@ -19,17 +20,33 @@ import lombok.Setter;
 @Setter
 public class CrearGestionadoDto {
 
-    @NotBlank(message = "La razón social es obligatoria")
+    /** NATURAL | JURIDICA (null = JURIDICA). */
+    @Pattern(regexp = "^$|NATURAL|JURIDICA", message = "El tipo de persona debe ser NATURAL o JURIDICA")
+    private String tipoPersona;
+
+    /** NIT o, para persona natural, CC (null = NIT). */
+    @Pattern(regexp = "^$|NIT|CC|CE|PA|PPT", message = "Tipo de documento no válido")
+    private String tipoDocumento;
+
+    /** Obligatoria para la jurídica; la natural la arma con nombres y apellidos. */
     @Size(max = 200, message = "La razón social no puede superar 200 caracteres")
     private String razonSocial;
+
+    @Size(max = 120, message = "Los nombres no pueden superar 120 caracteres")
+    private String nombres;
+
+    @Size(max = 120, message = "Los apellidos no pueden superar 120 caracteres")
+    private String apellidos;
 
     @Size(max = 200, message = "El nombre comercial no puede superar 200 caracteres")
     private String nombreComercial;
 
-    @NotBlank(message = "El NIT es obligatorio")
+    /** NIT o número de cédula; no se cambia después. */
+    @NotBlank(message = "El NIT o número de documento es obligatorio")
     @Size(max = 20, message = "El NIT no puede superar 20 caracteres")
     private String nit;
 
+    /** Vacío = se calcula con el NIT. */
     @Size(max = 2, message = "El dígito de verificación es de un dígito")
     private String dv;
 

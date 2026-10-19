@@ -51,6 +51,16 @@ class FacturaVentaServiceTest {
     }
 
     @Test
+    void laCuentaDeCobroCreaLaVentaComoCuentaDeCobro() {
+        FacturaVentaEntity f = FacturaVentaEntity.builder().id(6L).sucursalId(1).clienteId(77L)
+                .tipo(FacturaVentaEntity.TIPO_CUENTA_COBRO).formaPago("CREDITO")
+                .fechaVencimiento(LocalDate.of(2026, 10, 15)).build();
+        CreateVentaDto v = FacturaVentaService.armarVenta(f, conLinea("2250000.00"));
+        assertEquals(CuentaCobroReglas.TIPO_VENTA, v.getTipoDocumento());
+        assertEquals("CREDITO", v.getPagos().get(0).getMetodoPago());
+    }
+
+    @Test
     void aCreditoLaVentaVaACarteraConElVencimiento() {
         FacturaVentaEntity f = FacturaVentaEntity.builder().id(5L).sucursalId(1).clienteId(77L)
                 .formaPago("CREDITO").fechaVencimiento(LocalDate.of(2026, 11, 2)).ordenCompra("OC-123").build();

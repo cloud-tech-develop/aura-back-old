@@ -37,6 +37,10 @@ public class EmpresaDto {
     private Boolean puedeEditar;
     /** La empresa es una firma contable (menú "Clientes de la firma"). */
     private Boolean esFirmaContable;
+    /** NATURAL | JURIDICA. */
+    private String tipoPersona;
+    /** Persona natural no responsable de IVA: puede emitir cuentas de cobro. */
+    private Boolean puedeCuentaCobro;
     private Integer sucursalId;
     private String sucursalNombre;
     private String sucursalDireccion;

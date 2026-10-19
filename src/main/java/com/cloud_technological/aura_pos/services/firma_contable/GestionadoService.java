@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.cloud_technological.aura_pos.dto.firma_contable.CrearGestionadoDto;
+import com.cloud_technological.aura_pos.dto.firma_contable.IdentidadGestionadoDto;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaFirmaClienteEntity;
 import com.cloud_technological.aura_pos.entity.PerfilEntity;
@@ -106,29 +107,25 @@ public class GestionadoService {
         if (consulta != null && usuarioRepo.findByUsername(consulta.getEmail().trim()).isPresent())
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El correo del usuario de consulta ya está registrado");
         List<PaqueteGestionado> paquetes = parsear(dto.getPaquetes());
+        IdentidadTributaria identidad = IdentidadTributaria.resolver(dto.getTipoPersona(), dto.getTipoDocumento(),
+                dto.getRazonSocial(), dto.getNombres(), dto.getApellidos(), dto.getNombreComercial(), dto.getDv(), nit);
 
         // 1. Empresa, sede principal con su bodega y su tercero (el que sale en la factura).
-        EmpresaEntity empresa = empresaRepo.save(EmpresaEntity.builder()
-                .razonSocial(dto.getRazonSocial().trim())
-                .nombreComercial(limpiar(dto.getNombreComercial()))
+        EmpresaEntity nueva = EmpresaEntity.builder()
                 .nit(nit)
-                .dv(limpiar(dto.getDv()))
                 .telefono(limpiar(dto.getTelefono()))
                 .municipio(limpiar(dto.getMunicipio()))
                 .municipioId(dto.getMunicipioId())
                 .activa(true)
-                .build());
+                .build();
+        identidad.aplicarA(nueva);
+        EmpresaEntity empresa = empresaRepo.save(nueva);
         SucursalEntity sede = sucursalRepo.save(SucursalEntity.builder()
                 .empresa(empresa).nombre("Principal").codigo("001").activa(true).build());
         bodegaService.crearPrincipal(sede);
-        terceroRepo.save(TerceroEntity.builder()
+        TerceroEntity terceroEmpresa = TerceroEntity.builder()
                 .empresa(empresa)
-                .tipoDocumento("NIT")
                 .numeroDocumento(nit)
-                .dv(limpiar(dto.getDv()))
-                .razonSocial(dto.getRazonSocial().trim())
-                .nombreComercial(limpiar(dto.getNombreComercial()))
-                .tipoPersona("JURIDICA")
                 .email(limpiar(dto.getCorreo()))
                 .telefono(limpiar(dto.getTelefono()))
                 .direccion(limpiar(dto.getDireccion()))
@@ -137,7 +134,9 @@ public class GestionadoService {
                 .pais("Colombia").codigoPais("CO")
                 .esCliente(false).esProveedor(false).esEmpleado(false)
                 .activo(true)
-                .build());
+                .build();
+        identidad.aplicarA(terceroEmpresa);
+        terceroRepo.save(terceroEmpresa);
 
         // 2. Módulos de los paquetes, líneas de uso y arranque (PUC + configuración contable).
         permisoService.activarSubmodulos(empresa.getId(), configuracion.submodulosPorPatron(
@@ -191,6 +190,51 @@ public class GestionadoService {
                 "La firma dejó los módulos: " + String.join(", ", paquetes.stream().map(PaqueteGestionado::getNombre).toList()),
                 null, null);
         return paquetesDe(firmaId, clienteId);
+    }
+
+    /** Identidad tributaria del gestionado: tipo de persona, nombre, documento y DV. */
+    public IdentidadGestionadoDto identidad(Integer firmaId, Integer clienteId) {
+        exigirGestionado(firmaId, clienteId);
+        EmpresaEntity empresa = empresaRepo.findById(clienteId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Cliente gestionado no encontrado"));
+        TerceroEntity tercero = terceroRepo.findEmpresaTerceroByNit(clienteId, empresa.getNit()).orElse(null);
+        IdentidadGestionadoDto dto = new IdentidadGestionadoDto();
+        dto.setNit(empresa.getNit());
+        dto.setTipoPersona(empresa.getTipoPersona());
+        dto.setTipoDocumento(tercero != null && tercero.getTipoDocumento() != null ? tercero.getTipoDocumento() : "NIT");
+        dto.setRazonSocial(empresa.getRazonSocial());
+        dto.setNombres(tercero != null ? tercero.getNombres() : null);
+        dto.setApellidos(tercero != null ? tercero.getApellidos() : null);
+        dto.setNombreComercial(empresa.getNombreComercial());
+        dto.setDv(empresa.getDv());
+        return dto;
+    }
+
+    /**
+     * La firma cambia la identidad del gestionado (natural ↔ jurídica, nombre, DV) en la
+     * empresa y en su tercero. El NIT no cambia. Queda en la bitácora del cliente.
+     */
+    @Transactional
+    public IdentidadGestionadoDto cambiarIdentidad(Integer firmaId, Integer clienteId, IdentidadGestionadoDto dto,
+            Integer actorId) {
+        IdentidadGestionadoDto antes = identidad(firmaId, clienteId);
+        EmpresaEntity empresa = empresaRepo.findById(clienteId).orElseThrow();
+        IdentidadTributaria identidad = IdentidadTributaria.resolver(dto.getTipoPersona(), dto.getTipoDocumento(),
+                dto.getRazonSocial(), dto.getNombres(), dto.getApellidos(), dto.getNombreComercial(), dto.getDv(),
+                empresa.getNit());
+        identidad.aplicarA(empresa);
+        empresaRepo.save(empresa);
+        TerceroEntity tercero = terceroRepo.findEmpresaTerceroByNit(clienteId, empresa.getNit()).orElse(null);
+        if (tercero != null) {
+            identidad.aplicarA(tercero);
+            terceroRepo.save(tercero);
+        }
+        IdentidadGestionadoDto despues = identidad(firmaId, clienteId);
+        bitacora.registrarEnEmpresa(clienteId, CLAVE_BITACORA, "IDENTIDAD_GESTIONADO", "empresa", clienteId,
+                "La firma cambió la identidad del cliente: " + identidad.razonSocial() + " ("
+                        + (IdentidadTributaria.NATURAL.equals(identidad.tipoPersona()) ? "persona natural" : "persona jurídica")
+                        + ")", antes, despues);
+        return despues;
     }
 
     // ── Apoyo ────────────────────────────────────────────────────────────────
@@ -255,7 +299,8 @@ public class GestionadoService {
         return p.getId();
     }
 
-    private void exigirGestionado(Integer firmaId, Integer clienteId) {
+    /** 404 si el cliente no es un gestionado activo de esa firma. */
+    void exigirGestionado(Integer firmaId, Integer clienteId) {
         VinculoFila v = query.vinculoActivoDelCliente(clienteId);
         if (v == null || !firmaId.equals(v.firmaEmpresaId())
                 || !EmpresaFirmaClienteEntity.MODALIDAD_GESTIONADO.equals(v.modalidad()))

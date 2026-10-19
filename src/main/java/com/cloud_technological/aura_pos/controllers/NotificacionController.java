@@ -13,8 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.inventario.VencimientoLoteDto;
 import com.cloud_technological.aura_pos.dto.notificacion.NotificacionDto;
+import com.cloud_technological.aura_pos.entity.SolicitudActivacionElectronicaEntity;
 import com.cloud_technological.aura_pos.repositories.dashboard.DashboardQueryRepository;
+import com.cloud_technological.aura_pos.repositories.firma_contable.ActivacionElectronicaQueryRepository.SolicitudActivacionFila;
 import com.cloud_technological.aura_pos.repositories.inventario.LoteQueryRepository;
+import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
@@ -101,6 +104,9 @@ public class NotificacionController {
     @Autowired
     private com.cloud_technological.aura_pos.repositories.firma_contable.FirmaContableQueryRepository firmaQuery;
 
+    @Autowired
+    private ActivacionElectronicaService activacionElectronica;
+
     /**
      * Firma contable (docs/PLAN_FIRMA_CONTABLE.md §9), solo para administradores de la
      * empresa de la sesión: la firma ve las solicitudes de clientes que esperan respuesta;
@@ -118,6 +124,7 @@ public class NotificacionController {
                     "Revise la solicitud y acéptela o recházela.",
                     pendientes.size(), null, "/firma/clientes", "Responder"));
         }
+        agregarActivacionesElectronicas(empresaId, notificaciones);
         var ultima = firmaQuery.ultimaSolicitudDelCliente(empresaId);
         if (ultima != null && ultima.respondidoAt() != null
                 && ultima.respondidoAt().isAfter(java.time.LocalDateTime.now().minusDays(7))
@@ -128,6 +135,22 @@ public class NotificacionController {
                     acepto ? "Ya puede trabajar con su firma contable."
                             : ultima.motivo() != null ? "Motivo: " + ultima.motivo() : "Puede solicitar otra firma.",
                     1, null, "/admin/usuarios", "Ver"));
+        }
+    }
+
+    /**
+     * La firma ve durante 7 días qué solicitudes de activación electrónica de sus
+     * gestionados respondió Aura (docs/PLAN_FIRMA_CONTABLE.md §10).
+     */
+    private void agregarActivacionesElectronicas(Integer firmaId, List<NotificacionDto> notificaciones) {
+        for (SolicitudActivacionFila s : activacionElectronica.respondidasALaFirma(firmaId, 7)) {
+            boolean atendida = SolicitudActivacionElectronicaEntity.ATENDIDA.equals(s.estado());
+            notificaciones.add(new NotificacionDto("ACTIVACION_ELECTRONICA", atendida ? "info" : "warn",
+                    atendida ? "Documentos electrónicos activos: " + s.clienteNombre()
+                            : "Aura rechazó la activación de " + s.clienteNombre(),
+                    atendida ? "Entre al cliente y complete en Mi perfil la resolución y los rangos de numeración."
+                            : s.motivo() != null ? "Motivo: " + s.motivo() : "Revise la solicitud y vuelva a enviarla.",
+                    1, null, "/firma/clientes", "Ver cliente"));
         }
     }
 

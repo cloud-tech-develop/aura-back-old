@@ -201,11 +201,51 @@ public class VentaQueryRepository {
     public Long obtenerSiguienteConsecutivo(Long sucursalId) {
         MapSqlParameterSource params = new MapSqlParameterSource("sucursalId", sucursalId);
         jdbcTemplate.query("SELECT pg_advisory_xact_lock(175175, CAST(:sucursalId AS INTEGER))", params, rs -> null);
+        // Las cuentas de cobro llevan su propia numeración (prefijo CC).
         String sql = """
             SELECT COALESCE(MAX(consecutivo), 0) + 1
             FROM venta
             WHERE sucursal_id = :sucursalId
+              AND COALESCE(tipo_documento, '') <> 'CUENTA_COBRO'
         """;
         return jdbcTemplate.queryForObject(sql, params, Long.class);
+    }
+
+    /** El siguiente número libre de cuenta de cobro, sin bloquear (para proponerlo en pantalla). */
+    public Long proximoCuentaCobro(Integer empresaId) {
+        return jdbcTemplate.queryForObject("""
+            SELECT COALESCE(MAX(consecutivo), 0) + 1
+            FROM venta
+            WHERE empresa_id = :empresaId AND tipo_documento = 'CUENTA_COBRO'
+            """, new MapSqlParameterSource("empresaId", empresaId), Long.class);
+    }
+
+    /**
+     * Bloquea la numeración de cuentas de cobro de la empresa hasta el fin de la
+     * transacción y dice si el número ya lo tiene otra (también una anulada).
+     */
+    public boolean cuentaCobroUsada(Integer empresaId, Long numero) {
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId).addValue("numero", numero);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(175176, CAST(:empresaId AS INTEGER))", params, rs -> null);
+        Boolean usada = jdbcTemplate.queryForObject("""
+            SELECT EXISTS (SELECT 1 FROM venta
+                            WHERE empresa_id = :empresaId AND tipo_documento = 'CUENTA_COBRO'
+                              AND consecutivo = :numero)
+            """, params, Boolean.class);
+        return Boolean.TRUE.equals(usada);
+    }
+
+    /**
+     * Siguiente número de cuenta de cobro de la empresa (una sola serie CC para todas
+     * sus sedes). Bloquea hasta el fin de la transacción, como el de las ventas.
+     */
+    public Long siguienteConsecutivoCuentaCobro(Integer empresaId) {
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId);
+        jdbcTemplate.query("SELECT pg_advisory_xact_lock(175176, CAST(:empresaId AS INTEGER))", params, rs -> null);
+        return jdbcTemplate.queryForObject("""
+            SELECT COALESCE(MAX(consecutivo), 0) + 1
+            FROM venta
+            WHERE empresa_id = :empresaId AND tipo_documento = 'CUENTA_COBRO'
+            """, params, Long.class);
     }
 }

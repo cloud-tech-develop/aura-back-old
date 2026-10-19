@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
 import java.util.List;
+import java.util.Map;
 
 import javax.validation.Valid;
 
@@ -31,12 +32,17 @@ import com.cloud_technological.aura_pos.dto.super_admin.DashboardPlataformaDto;
 import com.cloud_technological.aura_pos.dto.super_admin.EmpresaPlataformaDto;
 import com.cloud_technological.aura_pos.dto.super_admin.EmpresaTableDto;
 import com.cloud_technological.aura_pos.dto.super_admin.UpdateEmpresaPlataformaDto;
+import com.cloud_technological.aura_pos.repositories.firma_contable.ActivacionElectronicaQueryRepository.SolicitudActivacionFila;
 import com.cloud_technological.aura_pos.services.EmpresaPlataformaService;
 import com.cloud_technological.aura_pos.services.ErrorLogService;
 import com.cloud_technological.aura_pos.services.empresa.ConfiguracionEmpresaService;
+import com.cloud_technological.aura_pos.services.correo.AccesoCorreoService;
+import com.cloud_technological.aura_pos.services.correo.AccesoCorreoService.EnvioAcceso;
+import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.cloud_technological.aura_pos.utils.PageableDto;
+import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
 @RestController
 @RequestMapping("/api/platform")
@@ -51,6 +57,15 @@ public class PlatformAdminController {
 
     @Autowired
     private ConfiguracionEmpresaService configuracionService;
+
+    @Autowired
+    private ActivacionElectronicaService activacionElectronica;
+
+    @Autowired
+    private SecurityUtils securityUtils;
+
+    @Autowired
+    private AccesoCorreoService accesoCorreo;
 
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<DashboardPlataformaDto>> dashboard() {
@@ -77,6 +92,12 @@ public class PlatformAdminController {
     public ResponseEntity<ApiResponse<CreateEmpresaResponseDto>> crear(
             @Valid @RequestBody CreateEmpresaPlataformaDto dto) {
         CreateEmpresaResponseDto result = empresaService.crear(dto);
+        // Ya creada (transacción confirmada): el administrador recibe su acceso por correo.
+        // Si el correo falla, la empresa queda creada y se puede reenviar desde el panel.
+        EnvioAcceso envio = accesoCorreo.enviarAccesoInicial(result.getEmpresa().getId(), result.getEmailAdmin(),
+                result.getPasswordTemporal(), result.getResetLink(), actor());
+        result.setCorreoEnviado(envio.enviado());
+        result.setCorreoError(envio.error());
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.CREATED.value(), "Empresa creada exitosamente", false, result), HttpStatus.CREATED);
     }
 
@@ -86,6 +107,14 @@ public class PlatformAdminController {
             @Valid @RequestBody UpdateEmpresaPlataformaDto dto) {
         EmpresaPlataformaDto result = empresaService.actualizar(id, dto);
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Empresa actualizada exitosamente", false, result), HttpStatus.OK);
+    }
+
+    /** Nuevo enlace para que el administrador cree su contraseña, enviado a su correo. */
+    @PostMapping("/empresas/{id}/reenviar-acceso")
+    public ResponseEntity<ApiResponse<EnvioAcceso>> reenviarAcceso(@PathVariable Integer id) {
+        EnvioAcceso r = accesoCorreo.reenviarAcceso(id, actor());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(),
+                r.enviado() ? "Acceso enviado a " + r.email() : "No se pudo enviar el correo", false, r), HttpStatus.OK);
     }
 
     @PatchMapping("/empresas/{id}/suspender")
@@ -147,6 +176,43 @@ public class PlatformAdminController {
     public ResponseEntity<ApiResponse<ConfiguracionEmpresaDto>> reintentarArranque(@PathVariable Integer id) {
         return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Arranque ejecutado", false,
                 configuracionService.reintentarArranque(id)), HttpStatus.OK);
+    }
+
+    // ─── Activación electrónica de gestionados (docs/PLAN_FIRMA_CONTABLE.md §10) ──
+
+    /** Solicitudes de las firmas que esperan las credenciales de Factus, la más antigua primero. */
+    @GetMapping("/solicitudes-electronica")
+    public ResponseEntity<ApiResponse<List<SolicitudActivacionFila>>> solicitudesElectronica() {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Solicitudes", false,
+                activacionElectronica.pendientes()), HttpStatus.OK);
+    }
+
+    /** Cuántas hay pendientes (campana del panel). */
+    @GetMapping("/solicitudes-electronica/pendientes")
+    public ResponseEntity<ApiResponse<Integer>> solicitudesElectronicaPendientes() {
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Pendientes", false,
+                activacionElectronica.contarPendientes()), HttpStatus.OK);
+    }
+
+    /** Marca atendida a mano (la empresa ya debe tener la facturación electrónica activa). */
+    @PostMapping("/solicitudes-electronica/{id}/atender")
+    public ResponseEntity<ApiResponse<Boolean>> atenderSolicitudElectronica(@PathVariable Long id) {
+        activacionElectronica.atender(id, actor());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Solicitud atendida", false, true),
+                HttpStatus.OK);
+    }
+
+    @PostMapping("/solicitudes-electronica/{id}/rechazar")
+    public ResponseEntity<ApiResponse<Boolean>> rechazarSolicitudElectronica(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        activacionElectronica.rechazar(id, body != null ? body.get("motivo") : null, actor());
+        return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "Solicitud rechazada", false, true),
+                HttpStatus.OK);
+    }
+
+    private Integer actor() {
+        Long id = securityUtils.getUsuarioId();
+        return id != null ? id.intValue() : null;
     }
 
     // ─── Error Logs ───────────────────────────────────────────
