@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.services.correo;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashSet;
@@ -174,7 +175,7 @@ public class CorreoService {
         c.setIntentos(1);
         String html = CorreoPlantilla.html("Aura", null, mensaje, null, null, botonTexto, botonUrl);
         ResendClient.Resultado r = resend.enviar(new ResendClient.Mensaje("Aura", List.of(c.getDestinatario()), List.of(),
-                null, c.getAsunto(), html, null, null, "correo-" + c.getId()));
+                null, c.getAsunto(), html, null, null, llave(c)));
         registrar(c, r);
         repo.save(c);
         return r;
@@ -271,7 +272,17 @@ public class CorreoService {
                 e != null ? e.correo() : null, null, null);
         return resend.enviar(new ResendClient.Mensaje(nombre, separar(c.getDestinatario()), separar(c.getCc()),
                 e != null ? e.correo() : null, c.getAsunto(), html, c.getAdjuntoNombre(), c.getAdjunto(),
-                "correo-" + c.getId()));
+                llave(c)));
+    }
+
+    /**
+     * Llave de idempotencia del envío. El id solo es único dentro de una base: si otra
+     * base (local, pruebas) usa la misma llave de Resend, "correo-123" choca y Resend
+     * responde 409. La fecha de creación (en segundos, igual en cada reintento) la
+     * vuelve única entre bases.
+     */
+    private static String llave(CorreoEnvioEntity c) {
+        return "correo-" + c.getId() + "-" + c.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
     }
 
     /** Deja el resultado final; el PDF ya no hace falta y se borra. */
