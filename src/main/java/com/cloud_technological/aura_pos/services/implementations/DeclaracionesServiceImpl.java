@@ -15,10 +15,12 @@ import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorD
 import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto.Renglon;
 import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto.Seccion;
 import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto.Tarifa;
+import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.CertificadoRetencionDto;
 import com.cloud_technological.aura_pos.entity.ConceptoContable;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository.Movimiento;
 import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository.PorTarifa;
+import com.cloud_technological.aura_pos.repositories.contabilidad.DeclaracionesQueryRepository.RetencionTercero;
 import com.cloud_technological.aura_pos.repositories.empresas.EmpresaJPARepository;
 import com.cloud_technological.aura_pos.services.ConfiguracionContableService;
 import com.cloud_technological.aura_pos.services.DeclaracionesService;
@@ -339,6 +341,104 @@ public class DeclaracionesServiceImpl implements DeclaracionesService {
         a.setDescripcion(desc);
         a.setDetalles(List.of(d1, d2));
         return asientos.crear(empresaId, usuarioId, a).getNumeroComprobante();
+    }
+
+    // ── Certificados de retención ───────────────────────────────────────────
+
+    @Override
+    public CertificadoRetencionDto certificados(Integer empresaId, String tipo, LocalDate desde,
+            LocalDate hasta, Long terceroId) {
+        validar(desde, hasta);
+        String t = tipo != null ? tipo.trim().toUpperCase(Locale.ROOT) : "";
+        if (!List.of("FUENTE", "IVA", "ICA").contains(t)) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "Tipo de certificado no válido: use FUENTE, IVA o ICA");
+        }
+        CertificadoRetencionDto dto = new CertificadoRetencionDto();
+        dto.setTipo(t);
+        dto.setDesde(desde);
+        dto.setHasta(hasta);
+        empresaRepo.findById(empresaId).ifPresent(e -> {
+            dto.setEmpresaNombre(e.getRazonSocial());
+            dto.setNit(e.getNit());
+            dto.setDv(e.getDv());
+        });
+
+        Map<Long, CertificadoRetencionDto.Certificado> porTercero = new LinkedHashMap<>();
+        boolean sinBase = false;
+        for (RetencionTercero r : repo.retencionesPorTercero(empresaId, desde, hasta, t, terceroId)) {
+            CertificadoRetencionDto.Certificado c = porTercero.computeIfAbsent(r.terceroId(), id -> {
+                CertificadoRetencionDto.Certificado n = new CertificadoRetencionDto.Certificado();
+                n.setTerceroId(id);
+                n.setTerceroNombre(r.terceroNombre());
+                n.setTipoDocumento(r.tipoDocumento());
+                n.setNumeroDocumento(r.numeroDocumento());
+                n.setDv(r.dv());
+                n.setDireccion(r.direccion());
+                n.setMunicipio(r.municipio());
+                n.setCorreo(r.correo());
+                return n;
+            });
+            // Una línea por concepto y tarifa: varios documentos se suman.
+            CertificadoRetencionDto.Linea linea = c.getLineas().stream()
+                    .filter(l -> l.getConcepto().equals(r.concepto())
+                            && l.getCuentaCodigo().equals(r.cuentaCodigo())
+                            && mismaTarifa(l.getTarifa(), r.tarifa()))
+                    .findFirst().orElseGet(() -> {
+                        CertificadoRetencionDto.Linea n = new CertificadoRetencionDto.Linea();
+                        n.setConcepto(r.concepto());
+                        n.setCuentaCodigo(r.cuentaCodigo());
+                        n.setTarifa(r.tarifa());
+                        c.getLineas().add(n);
+                        return n;
+                    });
+            linea.setRetenido(linea.getRetenido().add(nz(r.valor())));
+            if (r.base() != null) {
+                linea.setBase(nz(linea.getBase()).add(r.base()));
+            } else {
+                sinBase = true;
+            }
+        }
+        for (CertificadoRetencionDto.Certificado c : porTercero.values()) {
+            c.getLineas().removeIf(l -> l.getRetenido().signum() == 0);
+            for (CertificadoRetencionDto.Linea l : c.getLineas()) {
+                c.setTotalRetenido(c.getTotalRetenido().add(l.getRetenido()));
+                c.setTotalBase(c.getTotalBase().add(nz(l.getBase())));
+            }
+            // Un tercero con saldo a su favor (devoluciones mayores) no recibe certificado.
+            if (c.getTotalRetenido().signum() > 0) dto.getCertificados().add(c);
+        }
+
+        if (sinBase) {
+            dto.getAdvertencias().add("Hay retenciones registradas en notas o comprobantes contables: "
+                    + "el sistema no conoce su base y el certificado la muestra en blanco. "
+                    + "Complétela antes de entregarlo");
+        }
+        String prefijo = switch (t) {
+            case "IVA" -> "2367";
+            case "ICA" -> "2368";
+            default -> "2365";
+        };
+        BigDecimal huerfanas = repo.retencionesSinTercero(empresaId, desde, hasta, prefijo);
+        if (huerfanas.signum() != 0) {
+            dto.getAdvertencias().add("Hay " + pesos(huerfanas) + " retenidos en la " + prefijo
+                    + " sin tercero: no se pueden certificar. Asigne el tercero en el asiento");
+        }
+        if ("FUENTE".equals(t)) {
+            dto.getAdvertencias().add("La retención a empleados no entra aquí: se certifica con el "
+                    + "formulario 220 desde Nómina");
+        }
+        int borradores = repo.borradores(empresaId, desde, hasta);
+        if (borradores > 0) {
+            dto.getAdvertencias().add(0, "Hay " + borradores + " asiento(s) en borrador en el período: "
+                    + "no están incluidos. Apruébelos en Revisión de Comprobantes antes de certificar");
+        }
+        return dto;
+    }
+
+    private static boolean mismaTarifa(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null) return a == b;
+        return a.compareTo(b) == 0;
     }
 
     // ── Comunes ─────────────────────────────────────────────────────────────

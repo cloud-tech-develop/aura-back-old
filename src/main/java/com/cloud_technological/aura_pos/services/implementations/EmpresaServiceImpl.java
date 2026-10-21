@@ -160,6 +160,20 @@ public class EmpresaServiceImpl implements IEmpresaService {
             empresa = empresaRepository.findById(empresaId).orElse(empresa);
         }
 
+        if (dto.getRazonSocial() != null) {
+            String razonSocial = limpiar(dto.getRazonSocial());
+            if (razonSocial == null)
+                throw new GlobalException(HttpStatus.BAD_REQUEST, "La razón social es obligatoria");
+            empresa.setRazonSocial(razonSocial);
+            // El tercero de la empresa sale en sus propios documentos: mismo nombre.
+            TerceroEntity tercero = terceroDeLaEmpresa(empresa, empresaId);
+            if (tercero != null && empresa.getNit() != null
+                    && empresa.getNit().equals(tercero.getNumeroDocumento())
+                    && tercero.getRazonSocial() != null && !tercero.getRazonSocial().isBlank()) {
+                tercero.setRazonSocial(razonSocial);
+                terceroRepository.save(tercero);
+            }
+        }
         empresa.setNombreComercial(limpiar(dto.getNombreComercial()));
         empresa.setLogoUrl(limpiar(dto.getLogoUrl()));
         empresa.setResolucionNumero(limpiar(dto.getResolucionNumero()));
@@ -174,7 +188,7 @@ public class EmpresaServiceImpl implements IEmpresaService {
 
         EmpresaDto despues = obtenerEmpresaActual(empresaId, sucursalId, usuarioId);
         bitacora.registrar("caja.usuarios", "EDITAR_EMPRESA", "empresa", empresaId,
-                "Actualizó los datos de la empresa (resolución, rangos, logo o contacto)", antes, despues);
+                "Actualizó los datos de la empresa (razón social, resolución, rangos, logo o contacto)", antes, despues);
         return despues;
     }
 

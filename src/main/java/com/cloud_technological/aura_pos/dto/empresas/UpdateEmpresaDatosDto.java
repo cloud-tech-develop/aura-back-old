@@ -10,13 +10,18 @@ import lombok.Setter;
 
 /**
  * Lo que el administrador de la empresa edita desde "Mi perfil" con la acción
- * especial caja.usuarios:EDITAR_EMPRESA (V198). No toca razón social ni NIT
- * (identidad tributaria) ni las credenciales de Factus: eso sigue en la plataforma.
+ * especial caja.usuarios:EDITAR_EMPRESA (V198). Incluye la razón social (2026-10-20:
+ * cambia el nombre en el RUT y el usuario la debe poder corregir); el NIT y las
+ * credenciales de Factus siguen solo en la plataforma.
  * El formulario manda todos los campos: lo que llega vacío o null queda vacío.
  */
 @Getter
 @Setter
 public class UpdateEmpresaDatosDto {
+
+    /** null = no cambia (clientes que aún no mandan el campo). */
+    @Size(max = 255, message = "La razón social no puede superar 255 caracteres")
+    private String razonSocial;
 
     @Size(max = 255, message = "El nombre comercial no puede superar 255 caracteres")
     private String nombreComercial;

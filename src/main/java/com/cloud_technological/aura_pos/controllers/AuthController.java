@@ -17,12 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.auth.LoginRequestDto;
 import com.cloud_technological.aura_pos.dto.auth.LoginResponseDto;
+import com.cloud_technological.aura_pos.dto.auth.RecuperarClaveDto;
 import com.cloud_technological.aura_pos.dto.auth.RegisterRequestDto;
 import com.cloud_technological.aura_pos.dto.auth.ResetPasswordDto;
 import com.cloud_technological.aura_pos.entity.PasswordResetTokenEntity;
 import com.cloud_technological.aura_pos.repositories.users.PasswordResetTokenRepository;
 import com.cloud_technological.aura_pos.repositories.users.UsuarioJPARepository;
 import com.cloud_technological.aura_pos.services.AuthService;
+import com.cloud_technological.aura_pos.services.correo.RecuperarClaveService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.BusinessException;
 import com.cloud_technological.aura_pos.utils.GlobalException;
@@ -35,6 +37,7 @@ public class AuthController {
     @Autowired private UsuarioJPARepository usuarioRepo;
     @Autowired private PasswordResetTokenRepository tokenRepo;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private RecuperarClaveService recuperarClave;
     @Autowired private com.cloud_technological.aura_pos.security.SesionService sesiones;
 
     @PostMapping("/login")
@@ -77,6 +80,23 @@ public class AuthController {
                 HttpStatus.CREATED);
     }
 
+    // ── Olvidé mi contraseña: enlace por correo ─────────────────
+    /**
+     * Envía al correo del usuario un enlace para cambiar la contraseña. Responde
+     * siempre lo mismo, exista o no el usuario, para no revelar quién está registrado.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody RecuperarClaveDto dto) {
+        try {
+            recuperarClave.solicitar(dto.getUsuario());
+        } catch (Exception ignored) {
+            // Cualquier fallo se calla: la respuesta no debe distinguir casos.
+        }
+        return ResponseEntity.ok(new ApiResponse<>(200,
+                "Si el usuario existe y tiene correo registrado, le enviamos un enlace para cambiar la contraseña",
+                false, null));
+    }
+
     // ── Cambiar contraseña con token ──────────────────────────────
     @PostMapping("/reset-password")
     @Transactional
@@ -96,6 +116,11 @@ public class AuthController {
 
         resetToken.setUsado(true);
         tokenRepo.save(resetToken);
+        try {
+            recuperarClave.avisarCambio(resetToken.getUsuario().getId());
+        } catch (Exception ignored) {
+            // El aviso es cortesía: si falla, la contraseña ya quedó cambiada.
+        }
 
         return ResponseEntity.ok(new ApiResponse<>(200, "Contraseña actualizada correctamente", false, null));
     }

@@ -174,6 +174,141 @@ public class DeclaracionesQueryRepository {
                 rs.getInt("docs")));
     }
 
+    /**
+     * Lo retenido a un tercero, por documento de origen: el valor del mayor y,
+     * si el origen es una compra o un gasto, su base, tarifa y concepto.
+     */
+    public record RetencionTercero(Long terceroId, String terceroNombre, String tipoDocumento,
+            String numeroDocumento, String dv, String direccion, String municipio, String correo,
+            String cuentaCodigo, String concepto, BigDecimal tarifa, BigDecimal base, BigDecimal valor) {
+    }
+
+    /**
+     * Retenciones practicadas por tercero en el período, leídas del mayor
+     * (crédito − débito de la cuenta). La anulación de un documento se suma a
+     * su original (mismo origen_id), así un documento anulado no aparece.
+     * Lo de nómina no entra: al empleado se le certifica con el formulario 220.
+     *
+     * @param tipo      FUENTE (2365), IVA (2367) o ICA (2368)
+     * @param terceroId null = todos los terceros
+     */
+    public List<RetencionTercero> retencionesPorTercero(Integer empresaId, LocalDate desde,
+            LocalDate hasta, String tipo, Long terceroId) {
+        String prefijo;
+        String baseCompra;
+        String tarifaCompra;
+        String tarifaIdCompra;
+        String baseGasto;
+        String tarifaGasto;
+        String tarifaIdGasto;
+        switch (tipo) {
+            case "IVA" -> {
+                prefijo = "2367";
+                baseCompra = "c.impuestos_total";
+                tarifaCompra = "c.reteiva_pct";
+                tarifaIdCompra = "c.reteiva_tarifa_id";
+                // El gasto no practica reteIVA: si aparece fue por un ajuste.
+                baseGasto = "NULL::numeric";
+                tarifaGasto = "NULL::numeric";
+                tarifaIdGasto = "NULL::bigint";
+            }
+            case "ICA" -> {
+                prefijo = "2368";
+                baseCompra = "COALESCE(c.subtotal, 0) - COALESCE(c.descuento_total, 0)";
+                tarifaCompra = "c.reteica_pct";
+                tarifaIdCompra = "c.reteica_tarifa_id";
+                baseGasto = "COALESCE(NULLIF(g.base_reteica, 0), g.monto)";
+                tarifaGasto = "g.tarifa_reteica";
+                tarifaIdGasto = "g.reteica_tarifa_id";
+            }
+            default -> {
+                prefijo = "2365";
+                baseCompra = "COALESCE(c.subtotal, 0) - COALESCE(c.descuento_total, 0)";
+                tarifaCompra = "c.retefuente_pct";
+                tarifaIdCompra = "c.retefuente_tarifa_id";
+                baseGasto = "COALESCE(NULLIF(g.base_retefuente, 0), g.monto)";
+                tarifaGasto = "g.tarifa_retefuente";
+                tarifaIdGasto = "g.retefuente_tarifa_id";
+            }
+        }
+        MapSqlParameterSource p = rango(empresaId, desde, hasta)
+                .addValue("prefijo", prefijo + "%")
+                .addValue("terceroId", terceroId);
+        String sql = """
+            WITH mov AS (
+                SELECT ad.tercero_id, pc.codigo, pc.nombre AS cuenta_nombre,
+                       regexp_replace(COALESCE(a.tipo_origen, ''), '^ANULACION_', '') AS origen,
+                       a.origen_id,
+                       SUM(ad.credito - ad.debito) AS valor
+                FROM asiento_detalle ad
+                JOIN asiento_contable a ON a.id = ad.asiento_id
+                JOIN plan_cuenta pc     ON pc.id = ad.cuenta_id
+                WHERE a.empresa_id = :empresaId
+                  AND a.estado = 'CONTABILIZADO'
+                  AND a.fecha BETWEEN :desde AND :hasta
+                  AND pc.codigo LIKE :prefijo
+                  AND ad.tercero_id IS NOT NULL
+                  AND COALESCE(a.tipo_origen, '') NOT IN ('DECLARACION_PAGO', 'ANULACION_DECLARACION_PAGO')
+                  AND regexp_replace(COALESCE(a.tipo_origen, ''), '^ANULACION_', '') NOT LIKE 'NOMINA%'
+                  AND (CAST(:terceroId AS bigint) IS NULL OR ad.tercero_id = :terceroId)
+                GROUP BY ad.tercero_id, pc.codigo, pc.nombre,
+                         regexp_replace(COALESCE(a.tipo_origen, ''), '^ANULACION_', ''), a.origen_id
+                HAVING SUM(ad.credito - ad.debito) <> 0
+            )
+            SELECT m.tercero_id,
+                   COALESCE(NULLIF(TRIM(t.razon_social), ''), TRIM(CONCAT(t.nombres, ' ', t.apellidos))) AS tercero_nombre,
+                   t.tipo_documento, t.numero_documento, t.dv, t.direccion, t.municipio, t.email,
+                   m.codigo,
+                   COALESCE(tr.concepto, m.cuenta_nombre) AS concepto,
+                   CASE WHEN c.id IS NOT NULL THEN {TARIFA_COMPRA}
+                        WHEN g.id IS NOT NULL THEN {TARIFA_GASTO}
+                   END AS tarifa,
+                   SIGN(m.valor) * CASE WHEN c.id IS NOT NULL THEN {BASE_COMPRA}
+                                        WHEN g.id IS NOT NULL THEN {BASE_GASTO}
+                                   END AS base,
+                   m.valor
+            FROM mov m
+            JOIN tercero t ON t.id = m.tercero_id
+            LEFT JOIN compra c ON m.origen = 'COMPRA' AND c.id = m.origen_id
+            LEFT JOIN gasto g  ON m.origen = 'GASTO'  AND g.id = m.origen_id
+            LEFT JOIN tarifa_retencion tr ON tr.id = CASE
+                WHEN c.id IS NOT NULL THEN {TARIFA_ID_COMPRA}
+                WHEN g.id IS NOT NULL THEN {TARIFA_ID_GASTO}
+                END
+            ORDER BY tercero_nombre, m.tercero_id, m.codigo
+            """
+                // Marcadores en vez de concatenar: el text block se come los espacios
+                // de los bordes y pegaba "c.retefuente_pctWHEN".
+                .replace("{TARIFA_COMPRA}", tarifaCompra)
+                .replace("{TARIFA_GASTO}", tarifaGasto)
+                .replace("{BASE_COMPRA}", baseCompra)
+                .replace("{BASE_GASTO}", baseGasto)
+                .replace("{TARIFA_ID_COMPRA}", tarifaIdCompra)
+                .replace("{TARIFA_ID_GASTO}", tarifaIdGasto);
+        return jdbc.query(sql, p, (rs, i) -> new RetencionTercero(
+                rs.getLong("tercero_id"), rs.getString("tercero_nombre"),
+                rs.getString("tipo_documento"), rs.getString("numero_documento"), rs.getString("dv"),
+                rs.getString("direccion"), rs.getString("municipio"), rs.getString("email"),
+                rs.getString("codigo"), rs.getString("concepto"), rs.getBigDecimal("tarifa"),
+                rs.getBigDecimal("base"), rs.getBigDecimal("valor")));
+    }
+
+    /** Retenciones del período registradas sin tercero: no se pueden certificar. */
+    public BigDecimal retencionesSinTercero(Integer empresaId, LocalDate desde, LocalDate hasta,
+            String prefijo) {
+        BigDecimal v = jdbc.queryForObject("""
+            SELECT COALESCE(SUM(ad.credito - ad.debito), 0)
+              FROM asiento_detalle ad
+              JOIN asiento_contable a ON a.id = ad.asiento_id
+              JOIN plan_cuenta pc ON pc.id = ad.cuenta_id
+             WHERE a.empresa_id = :empresaId AND a.estado = 'CONTABILIZADO'
+               AND a.fecha BETWEEN :desde AND :hasta AND pc.codigo LIKE :prefijo
+               AND ad.tercero_id IS NULL
+               AND COALESCE(a.tipo_origen, '') NOT IN ('DECLARACION_PAGO', 'ANULACION_DECLARACION_PAGO')
+            """, rango(empresaId, desde, hasta).addValue("prefijo", prefijo + "%"), BigDecimal.class);
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
     /** Cuentas de impuestos parametrizadas (E5): para saber cuál es generado y cuál descontable. */
     public record CuentaImpuesto(String tipo, Long cuentaGeneradoId, Long cuentaDescontableId) {
     }

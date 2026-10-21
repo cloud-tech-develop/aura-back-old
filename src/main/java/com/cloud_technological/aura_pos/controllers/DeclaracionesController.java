@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.BorradorDeclaracionDto;
+import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.CertificadoRetencionDto;
 import com.cloud_technological.aura_pos.dto.contabilidad.declaraciones.RegistrarPagoDeclaracionDto;
 import com.cloud_technological.aura_pos.services.implementations.DeclaracionPagoService;
 import com.cloud_technological.aura_pos.services.DeclaracionesService;
@@ -53,6 +54,20 @@ public class DeclaracionesController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
         return ResponseEntity.ok(new ApiResponse<>(200, "Borrador retención", false,
                 service.retencion(securityUtils.getEmpresaId(), desde, hasta)));
+    }
+
+    /**
+     * Certificados de retención por tercero: tipo FUENTE, IVA o ICA. Sin
+     * terceroId trae a todos los terceros a los que se les retuvo en el período.
+     */
+    @GetMapping("/certificados")
+    public ResponseEntity<ApiResponse<CertificadoRetencionDto>> certificados(
+            @RequestParam String tipo,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(required = false) Long terceroId) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "Certificados de retención", false,
+                service.certificados(securityUtils.getEmpresaId(), tipo, desde, hasta, terceroId)));
     }
 
     /** Industria y comercio (municipal): la tarifa y las deducciones las escribe el contador. */

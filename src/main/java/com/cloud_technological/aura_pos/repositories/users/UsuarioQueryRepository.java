@@ -1,5 +1,6 @@
 package com.cloud_technological.aura_pos.repositories.users;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.PageImpl;
@@ -98,6 +99,14 @@ public class UsuarioQueryRepository {
                 LIMIT 1
                 """, new MapSqlParameterSource().addValue("terceroId", terceroId).addValue("excepto", exceptoId),
                 String.class);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Cuándo se pidió el último enlace para cambiar la contraseña del usuario; null si nunca. */
+    public LocalDateTime ultimoEnlaceClave(Integer usuarioId) {
+        List<LocalDateTime> r = jdbc.queryForList(
+                "SELECT MAX(created_at) FROM password_reset_token WHERE usuario_id = :id",
+                new MapSqlParameterSource("id", usuarioId), LocalDateTime.class);
         return r.isEmpty() ? null : r.get(0);
     }
 }
