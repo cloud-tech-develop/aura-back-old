@@ -172,6 +172,9 @@ public class MotorLiquidacion {
         // Deducciones manuales (préstamos, embargos): vienen de novedades.
         lineas.addAll(lineasDeduccionesNovedades(nomina, config, fechaLiquidacion));
 
+        // Días como cantidad del salario, el auxilio, la salud y la pensión.
+        DiasLiquidacion.asignar(lineas, nomina);
+
         // Distribución por proyecto/frente (Fase 4.a). Va AL FINAL: reparte las
         // líneas ya calculadas. Para una empresa sin proyectos, la cascada cae
         // al paso 3 y esto devuelve las mismas líneas sin tocar — el resultado
@@ -300,19 +303,15 @@ public class MotorLiquidacion {
                                            BigDecimal propioIbc,
                                            BigDecimal propioNoIbc,
                                            AcumuladoMes acumulado) {
-        int diasBase = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
-
         // F0 — conciliación de días. Las novedades de ausencia (incapacidad,
         // licencia no remunerada, vacaciones) restan días al salario ordinario;
         // su pago propio va como línea aparte, no aquí.
-        int diasAusencia = diasAusencia(nomina);
-        int dias = Math.max(0, diasBase - diasAusencia);
+        int dias = DiasLiquidacion.diasSalario(nomina);
 
         // B-05 — el IBC no baja por incapacidad/maternidad/vacaciones: la cotización
         // a pensión y salud se mantiene sobre el salario pleno. Solo la licencia no
         // remunerada y la suspensión reducen la base de cotización.
-        int diasAusenciaIbc = diasAusenciaQueReducenIbc(nomina);
-        int diasIbc = Math.max(0, diasBase - diasAusenciaIbc);
+        int diasIbc = DiasLiquidacion.diasIbc(nomina);
 
         BigDecimal salario = salarioMensual(contrato, config);
 
@@ -358,33 +357,6 @@ public class MotorLiquidacion {
                 .salarioIntegral(Boolean.TRUE.equals(contrato.getEsSalarioIntegral()))
                 .acumuladoMes(acumulado)
                 .build();
-    }
-
-    /** F0 — días de ausencia acumulados de las novedades que restan salario. */
-    private int diasAusencia(NominaEntity nomina) {
-        if (nomina.getNovedades() == null) return 0;
-        return nomina.getNovedades().stream()
-                .filter(n -> Boolean.TRUE.equals(n.getAfectaDiasSalario()))
-                .mapToInt(n -> n.getDias() != null ? n.getDias() : 0)
-                .sum();
-    }
-
-    /**
-     * Tipos de ausencia que SÍ reducen la base de cotización (IBC). Durante estas
-     * no hay obligación de cotizar; el resto (incapacidad, maternidad, vacaciones)
-     * mantiene la cotización sobre el salario pleno.
-     */
-    private static final Set<String> AUSENCIAS_QUE_REDUCEN_IBC =
-            Set.of("LICENCIA_NO_REMUNERADA", "SUSPENSION");
-
-    /** B-05 — días de ausencia que reducen el IBC (solo licencia no remunerada y suspensión). */
-    private int diasAusenciaQueReducenIbc(NominaEntity nomina) {
-        if (nomina.getNovedades() == null) return 0;
-        return nomina.getNovedades().stream()
-                .filter(n -> Boolean.TRUE.equals(n.getAfectaDiasSalario()))
-                .filter(n -> AUSENCIAS_QUE_REDUCEN_IBC.contains(n.getTipo()))
-                .mapToInt(n -> n.getDias() != null ? n.getDias() : 0)
-                .sum();
     }
 
     /**
@@ -440,8 +412,7 @@ public class MotorLiquidacion {
      */
     private LineaLiquidacion saludLectivaAprendiz(ConceptoNominaEntity c, NominaEntity nomina,
                                                   NominaConfigEntity config) {
-        int diasBase = nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
-        int diasIbc = Math.max(0, diasBase - diasAusenciaQueReducenIbc(nomina));
+        int diasIbc = DiasLiquidacion.diasIbc(nomina);
         BigDecimal base = config.getSmmlv()
                 .multiply(BigDecimal.valueOf(diasIbc))
                 .divide(TREINTA, ESCALA, RoundingMode.HALF_UP);

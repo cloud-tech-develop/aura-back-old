@@ -21,6 +21,7 @@ import com.cloud_technological.aura_pos.repositories.nomina.CertificadoEmitidoJP
 import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.terceros.TerceroJPARepository;
+import com.cloud_technological.aura_pos.services.nomina.DiasLiquidacion;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -109,6 +110,10 @@ public class CertificadoService {
             d.setTipoCuenta(n.getEmpleado().getTipoCuentaResuelto());
             d.setNumeroCuenta(n.getEmpleado().getNumeroCuentaResuelto());
         }
+        // El cargo vive en la vinculación liquidada; el del empleado es el respaldo.
+        if (n.getContrato() != null && n.getContrato().getCargo() != null && !n.getContrato().getCargo().isBlank()) {
+            d.setCargo(n.getContrato().getCargo());
+        }
 
         if (n.getPeriodo() != null) {
             d.setPeriodoInicio(n.getPeriodo().getFechaInicio());
@@ -127,7 +132,9 @@ public class CertificadoService {
 
             DesprendibleDto.Linea l = new DesprendibleDto.Linea();
             l.setConcepto(c.getNombre());
-            l.setCantidad(linea.getCantidad());
+            // Nóminas liquidadas antes de guardar los días: se deducen de la nómina.
+            l.setCantidad(linea.getCantidad() != null ? linea.getCantidad()
+                    : DiasLiquidacion.cantidadDe(c.getCodigo(), n));
             l.setBase(linea.getBase());
             l.setPorcentaje(linea.getPorcentaje());
             l.setValor(linea.getValor());
