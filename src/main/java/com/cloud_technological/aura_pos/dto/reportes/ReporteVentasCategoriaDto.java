@@ -11,7 +11,10 @@ public class ReporteVentasCategoriaDto {
     private String categoriaNombre;
     private Long totalVentas;
     private BigDecimal totalUnidades;
+    /** Total cobrado con IVA. */
     private BigDecimal ingresos;
+    /** Venta sin IVA, después de descuentos: la base de la utilidad. */
+    private BigDecimal ventaNeta;
     private BigDecimal costoEstimado;
     private BigDecimal margenBruto;
 }

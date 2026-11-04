@@ -45,6 +45,10 @@ import com.cloud_technological.aura_pos.services.ReporteGastosService;
 import com.cloud_technological.aura_pos.dto.kardex.KardexReporteFiltroDto;
 import com.cloud_technological.aura_pos.services.ReporteKardexService;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteUtilidadCreditoDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteUtilidadDto;
+import com.cloud_technological.aura_pos.dto.reportes.ReporteUtilidadFiltroDto;
+import com.cloud_technological.aura_pos.services.ReporteUtilidadService;
 
 @RestController
 @RequestMapping("/api/reportes")
@@ -75,6 +79,9 @@ public class ReporteController {
 
     @Autowired
     private SecurityUtils securityUtils;
+
+    @Autowired
+    private ReporteUtilidadService reporteUtilidadService;
 
     public ReporteController(ReporteVentasService reporteVentasService,
                             ReporteInventarioService reporteInventarioService) {
@@ -360,6 +367,29 @@ public class ReporteController {
         LocalDate h = hasta != null ? hasta : LocalDate.now();
         return ResponseEntity.ok(new ApiResponse<>(200, "OK", false,
                 reporteAvanzadoService.margenesPorProducto(empresaId, d, h)));
+    }
+
+    /**
+     * Utilidad en ventas: venta sin IVA − costo promedio al vender, contado y crédito.
+     * Parámetros: desde, hasta, agrupar (PRODUCTO, CATEGORIA, VENDEDOR, CLIENTE, MES)
+     * y forma (TODAS, CONTADO, CREDITO).
+     */
+    @GetMapping("/avanzado/utilidad")
+    public ResponseEntity<ApiResponse<ReporteUtilidadDto>> utilidad(ReporteUtilidadFiltroDto filtro) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, reporteUtilidadService.consultar(filtro)));
+    }
+
+    /** Las ventas a crédito del período (desde, hasta): utilidad, abonado y por cobrar. */
+    @GetMapping("/avanzado/utilidad/credito")
+    public ResponseEntity<ApiResponse<List<ReporteUtilidadCreditoDto>>> utilidadCredito(ReporteUtilidadFiltroDto filtro) {
+        return ResponseEntity.ok(new ApiResponse<>(200, "OK", false, reporteUtilidadService.ventasCredito(filtro)));
+    }
+
+    /** El reporte de utilidad en Excel, con los mismos filtros. */
+    @GetMapping("/avanzado/utilidad/excel")
+    public ResponseEntity<byte[]> utilidadExcel(ReporteUtilidadFiltroDto filtro) {
+        return respuesta(reporteUtilidadService.excel(filtro), "utilidad_ventas.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     @GetMapping("/avanzado/rotacion-inventario")
