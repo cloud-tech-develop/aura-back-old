@@ -286,6 +286,19 @@ public class DevolucionServiceImpl implements DevolucionService {
             BigDecimal impuestoOrig = ventaDetalle.getImpuestoValor() != null
                     ? ventaDetalle.getImpuestoValor() : BigDecimal.ZERO;
 
+            // El costo también baja: antes la línea quedaba con menos venta y el
+            // costo completo, y la utilidad del período salía por debajo (negativa
+            // si se devolvía todo). Lo que se quita queda en la devolución para
+            // devolverlo al anularla.
+            BigDecimal costoOrig = ventaDetalle.getCostoLinea();
+            if (costoOrig != null) {
+                BigDecimal costoQueda = cantNuevaVD.signum() <= 0 ? BigDecimal.ZERO
+                        : costoOrig.multiply(cantNuevaVD)
+                                .divide(cantidadOriginal, 2, RoundingMode.HALF_UP);
+                detalle.setCostoLinea(costoOrig.subtract(costoQueda));
+                ventaDetalle.setCostoLinea(costoQueda);
+            }
+
             if (cantNuevaVD.compareTo(BigDecimal.ZERO) <= 0) {
                 ventaDetalle.setCantidad(BigDecimal.ZERO);
                 ventaDetalle.setMontoDescuento(BigDecimal.ZERO);
@@ -510,6 +523,10 @@ public class DevolucionServiceImpl implements DevolucionService {
                             dd.getSubtotalLinea() != null ? dd.getSubtotalLinea() : BigDecimal.ZERO));
                     vd.setImpuestoValor(impActual.add(
                             dd.getImpuestoValor() != null ? dd.getImpuestoValor() : BigDecimal.ZERO));
+                    if (dd.getCostoLinea() != null) {
+                        vd.setCostoLinea((vd.getCostoLinea() != null ? vd.getCostoLinea() : BigDecimal.ZERO)
+                                .add(dd.getCostoLinea()));
+                    }
                     ventaDetalleRepository.save(vd);
                 }
             }
