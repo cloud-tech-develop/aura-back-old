@@ -63,8 +63,14 @@ public class BasesLiquidacion {
     /** IBC antes del tope: para la traza, y para saber si el tope mordió. */
     private final BigDecimal baseIbcSinTope;
 
-    /** Prima y cesantías: salario + auxilio. */
+    /**
+     * Prima y cesantías: salario + auxilio + lo que "hace base prestacional"
+     * (conceptos y novedades marcados, V233).
+     */
     private final BigDecimal basePrestacional;
+
+    /** Novedades y conceptos propios que hacen base prestacional (V233). */
+    private final BigDecimal novedadesPrestacionales;
 
     private final boolean topeAplicado;
     private final boolean salarioIntegral;
@@ -85,6 +91,7 @@ public class BasesLiquidacion {
         this.baseIbc               = b.baseIbc;
         this.baseIbcSinTope        = b.baseIbcSinTope;
         this.basePrestacional      = b.basePrestacional;
+        this.novedadesPrestacionales = b.novedadesPrestacionales;
         this.topeAplicado          = b.topeAplicado;
         this.salarioIntegral       = b.salarioIntegral;
         this.excesoNoSalarial      = b.excesoNoSalarial;
@@ -120,6 +127,7 @@ public class BasesLiquidacion {
         private BigDecimal novedadesIbc         = BigDecimal.ZERO;
         private BigDecimal novedadesNoIbc       = BigDecimal.ZERO;
         private BigDecimal novedadesDeducciones = BigDecimal.ZERO;
+        private BigDecimal novedadesPrestacionales = BigDecimal.ZERO;
         private BigDecimal smmlv                = BigDecimal.ZERO;
         private BigDecimal topeIbcSmmlv         = new BigDecimal("25");
         private BigDecimal factorIntegral       = new BigDecimal("70");
@@ -139,6 +147,7 @@ public class BasesLiquidacion {
         public Builder novedadesIbc(BigDecimal v)         { this.novedadesIbc = nz(v); return this; }
         public Builder novedadesNoIbc(BigDecimal v)       { this.novedadesNoIbc = nz(v); return this; }
         public Builder novedadesDeducciones(BigDecimal v) { this.novedadesDeducciones = nz(v); return this; }
+        public Builder novedadesPrestacionales(BigDecimal v) { this.novedadesPrestacionales = nz(v); return this; }
         public Builder smmlv(BigDecimal v)                { this.smmlv = nz(v); return this; }
         public Builder topeIbcSmmlv(BigDecimal v)         { this.topeIbcSmmlv = nz(v); return this; }
         public Builder factorIntegral(BigDecimal v)       { this.factorIntegral = nz(v); return this; }
@@ -153,7 +162,7 @@ public class BasesLiquidacion {
                     .add(novedadesNoIbc);
 
             // Prima y cesantías.
-            basePrestacional = salarioProporcional.add(auxilioTransporte);
+            basePrestacional = salarioProporcional.add(auxilioTransporte).add(novedadesPrestacionales);
 
             // ── IBC — aquí está la corrección ───────────────────────────────
             // SIN auxilio de transporte. Solo lo salarial. El salario de IBC puede

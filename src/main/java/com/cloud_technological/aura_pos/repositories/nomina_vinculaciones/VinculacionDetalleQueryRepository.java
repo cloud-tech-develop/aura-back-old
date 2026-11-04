@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.repositories.nomina_vinculaciones;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -29,7 +30,7 @@ public class VinculacionDetalleQueryRepository {
      */
     private static final String CONCEPTO_VIGENTE = """
             LEFT JOIN LATERAL (
-                SELECT cn.nombre, cn.clase FROM concepto_nomina cn
+                SELECT cn.nombre, cn.clase, cn.numero FROM concepto_nomina cn
                  WHERE cn.codigo = x.concepto_codigo AND cn.activo = TRUE
                    AND (cn.empresa_id = :empresaId OR cn.empresa_id IS NULL)
                  ORDER BY cn.empresa_id NULLS LAST, cn.vigente_desde DESC
@@ -90,19 +91,52 @@ public class VinculacionDetalleQueryRepository {
         return n != null && n > 0;
     }
 
-    /** Conceptos propios de la vinculación con su nombre y clase vigentes. */
+    /**
+     * Clave interna del concepto del cargo por número (versión que ve la empresa del
+     * contrato). Se usa como LATERAL con el alias {@code cc} de la fila del cargo.
+     */
+    private static final String CLAVE_CARGO = """
+            JOIN LATERAL (
+                SELECT k.codigo FROM concepto_nomina k
+                 WHERE k.numero = cc.concepto_numero
+                   AND (k.empresa_id = ctr.empresa_id OR k.empresa_id IS NULL)
+                 ORDER BY k.empresa_id NULLS LAST, k.vigente_desde DESC
+                 LIMIT 1
+            ) k ON TRUE
+            """;
+
+    /**
+     * Conceptos de la vinculación con su nombre y clase vigentes: las filas propias
+     * (con valor o excluidas) y lo que hereda del cargo y no reemplaza (F6). Lo
+     * heredado llega con {@code id} vacío y origen CARGO.
+     */
     public List<VinculacionConceptoDto> conceptos(Long contratoId, Integer empresaId) {
         return jdbc.query("""
-                SELECT x.*, cn.nombre AS concepto_nombre, cn.clase
-                  FROM vinculacion_concepto x
+                WITH ctr AS (SELECT id, cargo_id, empresa_id FROM contrato_laboral WHERE id = :id)
+                SELECT x.*, cn.nombre AS concepto_nombre, cn.clase, cn.numero AS concepto_numero
+                  FROM (
+                    SELECT v.id, v.concepto_codigo, v.cantidad, v.valor, v.porcentaje, v.fecha_desde, v.fecha_hasta,
+                           v.observacion, v.excluido, 'VINCULACION' AS origen
+                      FROM vinculacion_concepto v
+                     WHERE v.contrato_id = :id AND v.deleted_at IS NULL
+                    UNION ALL
+                    SELECT NULL, k.codigo, cc.cantidad, cc.valor, cc.porcentaje, NULL, NULL,
+                           cc.observacion, FALSE, 'CARGO'
+                      FROM ctr
+                      JOIN nomina_cargo_concepto cc ON cc.cargo_id = ctr.cargo_id
+                """ + CLAVE_CARGO + """
+                     WHERE NOT EXISTS (SELECT 1 FROM vinculacion_concepto v
+                                        WHERE v.contrato_id = :id AND v.deleted_at IS NULL
+                                          AND v.concepto_codigo = k.codigo)
+                  ) x
                 """ + CONCEPTO_VIGENTE + """
-                 WHERE x.contrato_id = :id AND x.deleted_at IS NULL
-                 ORDER BY x.fecha_desde DESC, x.concepto_codigo
+                 ORDER BY cn.numero NULLS LAST, x.fecha_desde DESC NULLS LAST
                 """, new MapSqlParameterSource("id", contratoId).addValue("empresaId", empresaId), (rs, i) -> {
             VinculacionConceptoDto d = new VinculacionConceptoDto();
-            d.setId(rs.getLong("id"));
+            d.setId(rs.getObject("id", Long.class));
             d.setConceptoCodigo(rs.getString("concepto_codigo"));
             d.setConceptoNombre(rs.getString("concepto_nombre"));
+            d.setConceptoNumero(rs.getObject("concepto_numero", Integer.class));
             d.setClase(rs.getString("clase"));
             d.setCantidad(rs.getBigDecimal("cantidad"));
             d.setValor(rs.getBigDecimal("valor"));
@@ -110,6 +144,8 @@ public class VinculacionDetalleQueryRepository {
             d.setFechaDesde(rs.getObject("fecha_desde", LocalDate.class));
             d.setFechaHasta(rs.getObject("fecha_hasta", LocalDate.class));
             d.setObservacion(rs.getString("observacion"));
+            d.setExcluido(rs.getBoolean("excluido"));
+            d.setOrigen(rs.getString("origen"));
             return d;
         });
     }
@@ -134,25 +170,51 @@ public class VinculacionDetalleQueryRepository {
 
     // ── Novedades permitidas ─────────────────────────────────────────────────
 
-    /** Novedades permitidas de la vinculación con el nombre del concepto. */
+    /**
+     * Novedades permitidas de la vinculación: las propias (con topes o excluidas) y
+     * las que hereda del cargo y no reemplaza (F6, {@code id} vacío y origen CARGO).
+     */
     public List<NovedadPermitidaDto> novedadesPermitidas(Long contratoId, Integer empresaId) {
         return jdbc.query("""
-                SELECT x.*, cn.nombre AS concepto_nombre, cn.clase
-                  FROM vinculacion_novedad_permitida x
+                WITH ctr AS (SELECT id, cargo_id, empresa_id FROM contrato_laboral WHERE id = :id)
+                SELECT x.*, cn.nombre AS concepto_nombre, cn.clase, cn.numero AS concepto_numero
+                  FROM (
+                    SELECT v.id, v.concepto_codigo, v.tope_cantidad, v.tope_valor, v.requiere_autorizacion,
+                           v.excluido, 'VINCULACION' AS origen
+                      FROM vinculacion_novedad_permitida v
+                     WHERE v.contrato_id = :id
+                    UNION ALL
+                    SELECT NULL, k.codigo, cc.tope_cantidad, cc.tope_valor, cc.requiere_autorizacion, FALSE, 'CARGO'
+                      FROM ctr
+                      JOIN nomina_cargo_novedad cc ON cc.cargo_id = ctr.cargo_id
+                """ + CLAVE_CARGO + """
+                     WHERE NOT EXISTS (SELECT 1 FROM vinculacion_novedad_permitida v
+                                        WHERE v.contrato_id = :id AND v.concepto_codigo = k.codigo)
+                  ) x
                 """ + CONCEPTO_VIGENTE + """
-                 WHERE x.contrato_id = :id
-                 ORDER BY x.concepto_codigo
+                 ORDER BY cn.numero NULLS LAST
                 """, new MapSqlParameterSource("id", contratoId).addValue("empresaId", empresaId), (rs, i) -> {
             NovedadPermitidaDto d = new NovedadPermitidaDto();
-            d.setId(rs.getLong("id"));
+            d.setId(rs.getObject("id", Long.class));
             d.setConceptoCodigo(rs.getString("concepto_codigo"));
             d.setConceptoNombre(rs.getString("concepto_nombre"));
+            d.setConceptoNumero(rs.getObject("concepto_numero", Integer.class));
             d.setClase(rs.getString("clase"));
             d.setTopeCantidad(rs.getBigDecimal("tope_cantidad"));
             d.setTopeValor(rs.getBigDecimal("tope_valor"));
             d.setRequiereAutorizacion(rs.getBoolean("requiere_autorizacion"));
+            d.setExcluido(rs.getBoolean("excluido"));
+            d.setOrigen(rs.getString("origen"));
             return d;
         });
+    }
+
+    /** Novedad permitida propia de la vinculación para ese concepto, si existe (excluida o no). */
+    public Optional<Long> novedadPropia(Long contratoId, String codigo) {
+        return jdbc.queryForList("""
+                SELECT id FROM vinculacion_novedad_permitida WHERE contrato_id = :id AND concepto_codigo = :codigo
+                """, new MapSqlParameterSource("id", contratoId).addValue("codigo", codigo), Long.class)
+                .stream().findFirst();
     }
 
     /** ¿El concepto ya está permitido en la vinculación? (sin contar el que se edita). */

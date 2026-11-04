@@ -42,6 +42,8 @@ public final class VinculacionDetalleDtos {
         private Long id;
         private String conceptoCodigo;
         private String conceptoNombre;
+        /** Código visible del concepto (V230). */
+        private Integer conceptoNumero;
         /** DEVENGADO | DEDUCCION | APORTE_EMPLEADOR | PROVISION. */
         private String clase;
         private BigDecimal cantidad;
@@ -50,6 +52,10 @@ public final class VinculacionDetalleDtos {
         private LocalDate fechaDesde;
         private LocalDate fechaHasta;
         private String observacion;
+        /** TRUE = excluye para este empleado el concepto que hereda del cargo (V232). */
+        private Boolean excluido;
+        /** VINCULACION (fila propia) o CARGO (heredado, sin id). */
+        private String origen;
     }
 
     /** Crear o editar un concepto propio de la vinculación. */
@@ -80,10 +86,25 @@ public final class VinculacionDetalleDtos {
         private Long id;
         private String conceptoCodigo;
         private String conceptoNombre;
+        /** Código visible del concepto (V230). */
+        private Integer conceptoNumero;
         private String clase;
         private BigDecimal topeCantidad;
         private BigDecimal topeValor;
         private Boolean requiereAutorizacion;
+        /** TRUE = excluye para este empleado la novedad que hereda del cargo (V232). */
+        private Boolean excluido;
+        /** VINCULACION (fila propia) o CARGO (heredada, sin id). */
+        private String origen;
+    }
+
+    /** Excluir para este empleado un concepto o novedad que hereda del cargo. */
+    @Getter
+    @Setter
+    public static class ExcluirHeredadoDto {
+        @NotBlank(message = "Elija el concepto")
+        @Size(max = 30)
+        private String conceptoCodigo;
     }
 
     /** Crear o editar una novedad permitida. */

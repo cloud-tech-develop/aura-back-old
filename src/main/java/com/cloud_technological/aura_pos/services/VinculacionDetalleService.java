@@ -41,7 +41,20 @@ public interface VinculacionDetalleService {
     /** Borrado lógico del concepto propio. */
     List<VinculacionConceptoDto> eliminarConcepto(Long vinculacionId, Long id, Integer empresaId);
 
+    /**
+     * Excluye para este empleado un concepto que hereda del cargo (F6): guarda una
+     * fila excluida desde hoy (o desde el inicio de la vinculación si es posterior).
+     * Para volver a heredarlo se elimina esa fila.
+     */
+    List<VinculacionConceptoDto> excluirConcepto(Long vinculacionId, String conceptoCodigo, Integer empresaId);
+
     List<NovedadPermitidaDto> novedadesPermitidas(Long vinculacionId, Integer empresaId);
+
+    /**
+     * Excluye para este empleado una novedad que hereda del cargo (F6). Si la
+     * vinculación ya tenía una fila propia de ese concepto, queda excluida.
+     */
+    List<NovedadPermitidaDto> excluirNovedad(Long vinculacionId, String conceptoCodigo, Integer empresaId);
 
     /** Permite un concepto como novedad; 400 si no existe o ya está permitido. */
     List<NovedadPermitidaDto> crearNovedad(Long vinculacionId, CreateNovedadPermitidaDto dto, Integer empresaId);

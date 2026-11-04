@@ -77,6 +77,11 @@ public class LineaLiquidacion {
                 d.setValorEmpleado(valor);
                 d.setValorEmpleador(BigDecimal.ZERO);
             }
+            case ConceptoNominaEntity.Clase.NO_IMPUTABLE -> {
+                // Cuenta días (suspensión, licencia no remunerada): no mueve plata.
+                d.setValorEmpleado(BigDecimal.ZERO);
+                d.setValorEmpleador(BigDecimal.ZERO);
+            }
             case ConceptoNominaEntity.Clase.APORTE_EMPLEADOR,
                  ConceptoNominaEntity.Clase.PROVISION -> {
                 d.setValorEmpleado(BigDecimal.ZERO);

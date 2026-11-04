@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.cloud_technological.aura_pos.dto.nomina.vinculacion.CreateVinculacionDto;
 import com.cloud_technological.aura_pos.dto.nomina.vinculacion.FiltroVinculacionDto;
+import com.cloud_technological.aura_pos.dto.nomina.vinculacion.VinculacionDetalleDtos.ExcluirHeredadoDto;
 import com.cloud_technological.aura_pos.dto.nomina.vinculacion.VinculacionDetalleDtos.CentroCostoVinculacionDto;
 import com.cloud_technological.aura_pos.dto.nomina.vinculacion.VinculacionDetalleDtos.CreateNovedadPermitidaDto;
 import com.cloud_technological.aura_pos.dto.nomina.vinculacion.VinculacionDetalleDtos.CreateVinculacionConceptoDto;
@@ -111,6 +112,13 @@ public class VinculacionController {
         return ok("Concepto agregado", detalle.crearConcepto(id, dto, securityUtils.getEmpresaId()));
     }
 
+    /** Excluye para este empleado un concepto que hereda del cargo. */
+    @PostMapping("/{id}/conceptos/excluir")
+    public ResponseEntity<ApiResponse<List<VinculacionConceptoDto>>> excluirConcepto(@PathVariable Long id,
+            @Valid @RequestBody ExcluirHeredadoDto dto) {
+        return ok("Concepto excluido", detalle.excluirConcepto(id, dto.getConceptoCodigo(), securityUtils.getEmpresaId()));
+    }
+
     @PutMapping("/{id}/conceptos/{conceptoId}")
     public ResponseEntity<ApiResponse<List<VinculacionConceptoDto>>> actualizarConcepto(@PathVariable Long id,
             @PathVariable Long conceptoId, @Valid @RequestBody CreateVinculacionConceptoDto dto) {
@@ -134,6 +142,13 @@ public class VinculacionController {
     public ResponseEntity<ApiResponse<List<NovedadPermitidaDto>>> crearNovedad(@PathVariable Long id,
             @Valid @RequestBody CreateNovedadPermitidaDto dto) {
         return ok("Novedad permitida", detalle.crearNovedad(id, dto, securityUtils.getEmpresaId()));
+    }
+
+    /** Excluye para este empleado una novedad que hereda del cargo. */
+    @PostMapping("/{id}/novedades-permitidas/excluir")
+    public ResponseEntity<ApiResponse<List<NovedadPermitidaDto>>> excluirNovedad(@PathVariable Long id,
+            @Valid @RequestBody ExcluirHeredadoDto dto) {
+        return ok("Novedad excluida", detalle.excluirNovedad(id, dto.getConceptoCodigo(), securityUtils.getEmpresaId()));
     }
 
     @PutMapping("/{id}/novedades-permitidas/{novedadId}")

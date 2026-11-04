@@ -24,6 +24,8 @@ public class NominaCargoTableDto {
     private BigDecimal salarioMaximo;
     private String mision;
     private String funciones;
+    private String perfil;
+    private String desempeno;
     private Boolean activo;
     private long totalRows;
 }

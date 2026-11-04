@@ -62,4 +62,15 @@ class ReglasNovedadesPermitidasTest {
         assertFalse(ReglasNovedadesPermitidas.validar(permitidas,
                 List.of(devengo("COMISION", "1", "1000001"))).isEmpty());
     }
+
+    @Test
+    void conAutorizacionPasaElTopeSoloSiTodasEstanAprobadas() {
+        List<NovedadPermitida> permitidas = List.of(
+                new NovedadPermitida("HORA_EXTRA_DIURNA", new BigDecimal("10"), null, true));
+        Novedad aprobada = new Novedad("HORA_EXTRA_DIURNA", new BigDecimal("8"), new BigDecimal("80000"), false, true);
+        Novedad pendiente = new Novedad("HORA_EXTRA_DIURNA", new BigDecimal("4"), new BigDecimal("40000"), false, false);
+        Novedad otraAprobada = new Novedad("HORA_EXTRA_DIURNA", new BigDecimal("4"), new BigDecimal("40000"), false, true);
+        assertFalse(ReglasNovedadesPermitidas.validar(permitidas, List.of(aprobada, pendiente)).isEmpty());
+        assertTrue(ReglasNovedadesPermitidas.validar(permitidas, List.of(aprobada, otraAprobada)).isEmpty());
+    }
 }

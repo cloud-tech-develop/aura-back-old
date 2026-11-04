@@ -153,6 +153,7 @@ public class NominaConceptoContableServiceImpl implements NominaConceptoContable
         Regla regla = ReglaContableNomina.para(c.codigo(), c.clase());
         ConceptoContableNominaDto dto = new ConceptoContableNominaDto();
         dto.setCodigo(c.codigo());
+        dto.setNumero(c.numero());
         dto.setNombre(c.nombre());
         dto.setClase(c.clase());
         dto.setAplicaDebito(regla.debito() != null);

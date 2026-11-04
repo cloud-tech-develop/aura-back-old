@@ -11,6 +11,8 @@ import lombok.Setter;
 public class DetalleLiquidacionDto {
     private Long id;
     private String conceptoCodigo;
+    /** Código visible del concepto (V230). */
+    private Integer conceptoNumero;
     private String conceptoNombre;
     /** DEVENGADO | DEDUCCION | APORTE_EMPLEADOR | PROVISION. */
     private String clase;

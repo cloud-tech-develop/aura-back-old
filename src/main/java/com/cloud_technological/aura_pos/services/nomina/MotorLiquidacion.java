@@ -3,10 +3,14 @@ package com.cloud_technological.aura_pos.services.nomina;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -24,8 +28,14 @@ import com.cloud_technological.aura_pos.repositories.nomina.FondoSolidaridadRang
 import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.VinculacionReglasQueryRepository;
 import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.VinculacionReglasQueryRepository.ConceptoPropio;
 import com.cloud_technological.aura_pos.services.implementations.ConceptoNominaService;
+import com.cloud_technological.aura_pos.services.nomina.formula.AnalizadorFormula;
+import com.cloud_technological.aura_pos.services.nomina.formula.ErrorFormula;
+import com.cloud_technological.aura_pos.services.nomina.formula.EvaluadorFormula;
+import com.cloud_technological.aura_pos.services.nomina.formula.VariableFormula;
 import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasAprendiz;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasConceptosCargo;
 import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasNovedadesPermitidas;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasTopesHoras;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -98,7 +108,7 @@ public class MotorLiquidacion {
                                          LocalDate fechaLiquidacion) {
 
         // R3.2d — las novedades del período deben respetar los topes de la vinculación.
-        validarNovedadesPermitidas(nomina, contrato);
+        validarNovedadesPermitidas(nomina, contrato, config);
 
         // R3.2d — conceptos propios de la vinculación. Se calculan sobre el salario
         // proporcional (primera pasada) y los devengados salariales entran al IBC.
@@ -106,11 +116,12 @@ public class MotorLiquidacion {
         // Ley 1393, exoneración, fondo de solidaridad y retención).
         AcumuladoMes acumulado = acumuladoDelMes(nomina, contrato);
         BasesLiquidacion preliminar = calcularBases(nomina, contrato, config, BigDecimal.ZERO, BigDecimal.ZERO,
-                acumulado);
+                BigDecimal.ZERO, acumulado, fechaLiquidacion);
         List<LineaLiquidacion> propias = lineasConceptosPropios(nomina, contrato, config, fechaLiquidacion,
                 preliminar.getSalarioProporcional());
         BasesLiquidacion bases = calcularBases(nomina, contrato, config,
-                devengadoPropio(propias, true), devengadoPropio(propias, false), acumulado);
+                devengadoPropio(propias, true), devengadoPropio(propias, false), prestacionalPropio(propias),
+                acumulado, fechaLiquidacion);
         boolean modoCompleto = "COMPLETO".equals(config.getModoNomina());
         // Aprendiz SENA (Ley 2466/2025): sin parafiscales ni FSP; en lectiva tampoco
         // descuentos, pensión ni prestaciones. Ver ReglasAprendiz.
@@ -134,10 +145,44 @@ public class MotorLiquidacion {
         lineas.addAll(lineasDevengadosNovedades(nomina, config, fechaLiquidacion));
         lineas.addAll(propias);
 
+        // F6 — el cargo es la plantilla: un concepto propio de la empresa solo se
+        // liquida si está en la plantilla del cargo (si la tiene) y la vinculación
+        // no lo excluye. Los de ley siempre. Los que ya salieron como concepto
+        // propio (con valor del cargo o de la vinculación) no se calculan otra vez.
+        Set<String> delCargo = contrato.getId() != null ? reglasVinculacion.conceptosDelCargo(contrato.getId()) : Set.of();
+        Set<String> excluidos = contrato.getId() != null && nomina.getPeriodo() != null
+                ? reglasVinculacion.conceptosExcluidos(contrato.getId(), nomina.getPeriodo().getFechaInicio(),
+                        nomina.getPeriodo().getFechaFin())
+                : Set.of();
+        Set<String> yaPropios = propias.stream().map(l -> l.getConcepto().getCodigo()).collect(Collectors.toSet());
+
+        // Dos pasadas. Primero los devengados del catálogo (valor fijo, porcentaje,
+        // fórmula): lo que constituye IBC o hace base prestacional tiene que entrar a
+        // las bases ANTES de calcular salud, pensión, aportes y provisiones. Antes se
+        // calculaba todo en una sola pasada con las bases ya cerradas y esos
+        // devengados quedaban por fuera de la seguridad social.
+        List<LineaLiquidacion> devengadosCatalogo = new ArrayList<>();
         for (ConceptoNominaEntity c : conceptos) {
-            if (esConceptoBase(c.getCodigo())) continue;   // ya emitido arriba
-            if (Base.NOVEDAD.equals(c.getBase())) continue;  // lo emiten las novedades y los conceptos propios
-            if (ReglasAprendiz.conceptoNoAplica(contrato, c.getCodigo())) continue;
+            if (!Clase.DEVENGADO.equals(c.getClase())) continue;
+            if (!seCalculaEnCatalogo(c, contrato, delCargo, excluidos, yaPropios)) continue;
+            LineaLiquidacion linea = calcularConcepto(c, bases, contrato, config, nomina, fechaLiquidacion, lineas);
+            if (linea != null) {
+                lineas.add(linea);
+                devengadosCatalogo.add(linea);
+            }
+        }
+        if (!devengadosCatalogo.isEmpty()) {
+            List<LineaLiquidacion> conPropias = new ArrayList<>(propias);
+            conPropias.addAll(devengadosCatalogo);
+            bases = calcularBases(nomina, contrato, config,
+                    devengadoPropio(conPropias, true), devengadoPropio(conPropias, false),
+                    prestacionalPropio(conPropias), acumulado, fechaLiquidacion);
+        }
+
+        // Segunda pasada: deducciones, aportes y provisiones sobre las bases completas.
+        for (ConceptoNominaEntity c : conceptos) {
+            if (Clase.DEVENGADO.equals(c.getClase())) continue;
+            if (!seCalculaEnCatalogo(c, contrato, delCargo, excluidos, yaPropios)) continue;
             // En lectiva la empresa paga toda la salud: 12,5 % sobre un SMMLV.
             if (ReglasAprendiz.enLectiva(contrato) && "APO_SALUD".equals(c.getCodigo())) {
                 LineaLiquidacion salud = saludLectivaAprendiz(c, nomina, config);
@@ -150,7 +195,7 @@ public class MotorLiquidacion {
                 log.debug("Concepto {} exonerado por Ley 1607", c.getCodigo());
                 continue;
             }
-            LineaLiquidacion linea = calcularConcepto(c, bases, contrato, config, lineas);
+            LineaLiquidacion linea = calcularConcepto(c, bases, contrato, config, nomina, fechaLiquidacion, lineas);
             if (linea != null) lineas.add(linea);
         }
 
@@ -171,6 +216,10 @@ public class MotorLiquidacion {
 
         // Deducciones manuales (préstamos, embargos): vienen de novedades.
         lineas.addAll(lineasDeduccionesNovedades(nomina, config, fechaLiquidacion));
+
+        // F2 — redondeo configurado en cada concepto. Va antes de distribuir para
+        // que las porciones sumen exactamente el valor redondeado.
+        lineas = redondear(lineas);
 
         // Días como cantidad del salario, el auxilio, la salud y la pensión.
         DiasLiquidacion.asignar(lineas, nomina);
@@ -206,11 +255,19 @@ public class MotorLiquidacion {
                 contrato, contrato.getEmpresa().getId(),
                 nomina.getPeriodo().getFechaInicio(), nomina.getPeriodo().getFechaFin());
 
-        // Caso mayoritario: una sola porción sin dimensión. No se toca nada.
-        if (porciones.size() == 1 && !porciones.get(0).tieneDimension()) return lineas;
-
+        // F7 — un concepto con centro de costo fijo va entero a ese centro.
+        boolean sinReparto = porciones.size() == 1 && !porciones.get(0).tieneDimension();
         List<LineaLiquidacion> out = new ArrayList<>();
         for (LineaLiquidacion l : lineas) {
+            Long ccFijo = l.getConcepto().getCentroCostoId();
+            if (ccFijo != null || sinReparto) {
+                if (ccFijo != null) {
+                    l.setCentroCostoId(ccFijo);
+                    l.setPorcentajeDistrib(new BigDecimal("100"));
+                }
+                out.add(l);
+                continue;
+            }
             BigDecimal repartido = BigDecimal.ZERO;
             for (int i = 0; i < porciones.size(); i++) {
                 var p = porciones.get(i);
@@ -302,7 +359,9 @@ public class MotorLiquidacion {
                                            NominaConfigEntity config,
                                            BigDecimal propioIbc,
                                            BigDecimal propioNoIbc,
-                                           AcumuladoMes acumulado) {
+                                           BigDecimal propioPrestacional,
+                                           AcumuladoMes acumulado,
+                                           LocalDate fecha) {
         // F0 — conciliación de días. Las novedades de ausencia (incapacidad,
         // licencia no remunerada, vacaciones) restan días al salario ordinario;
         // su pago propio va como línea aparte, no aquí.
@@ -332,15 +391,23 @@ public class MotorLiquidacion {
         BigDecimal novIbc = nz(propioIbc);
         BigDecimal novNoIbc = nz(propioNoIbc);
         BigDecimal novDed = BigDecimal.ZERO;
+        BigDecimal novPrestacional = nz(propioPrestacional);
 
         for (NominaNovedadEntity nov : nomina.getNovedades()) {
             BigDecimal v = nz(nov.getValorTotal());
             if (Boolean.TRUE.equals(nov.getEsDeduccion())) {
                 novDed = novDed.add(v);
-            } else if (Boolean.TRUE.equals(nov.getConstituyeIbc())) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(nov.getConstituyeIbc())) {
                 novIbc = novIbc.add(v);
             } else {
                 novNoIbc = novNoIbc.add(v);
+            }
+            // V233 — el concepto de la novedad dice si suma a la base de prima y cesantías.
+            ConceptoNominaEntity cn = buscarOpcional(config, nov.getTipo(), fecha);
+            if (cn != null && Boolean.TRUE.equals(cn.getHaceBasePrestacional())) {
+                novPrestacional = novPrestacional.add(v);
             }
         }
 
@@ -351,6 +418,7 @@ public class MotorLiquidacion {
                 .novedadesIbc(novIbc)
                 .novedadesNoIbc(novNoIbc)
                 .novedadesDeducciones(novDed)
+                .novedadesPrestacionales(novPrestacional)
                 .smmlv(config.getSmmlv())
                 .topeIbcSmmlv(config.getTopeIbcSmmlv())
                 .factorIntegral(config.getFactorSalarioIntegral())
@@ -456,7 +524,14 @@ public class MotorLiquidacion {
                                               BasesLiquidacion bases,
                                               ContratoLaboralEntity contrato,
                                               NominaConfigEntity config,
+                                              NominaEntity nomina,
+                                              LocalDate fecha,
                                               List<LineaLiquidacion> yaCalculadas) {
+        // F3 — fórmula del concepto, con el intérprete cerrado de Aura.
+        if (Base.FORMULA.equals(c.getBase())) {
+            return calcularFormula(c, bases, contrato, config, nomina, fecha, yaCalculadas);
+        }
+
         BigDecimal base = resolverBase(c, bases);
 
         // MANUAL: el motor resuelve caso por caso. Son los que no encajan en un
@@ -615,15 +690,26 @@ public class MotorLiquidacion {
     // ── Novedades y conceptos propios (R3.2d) ───────────────────────────────
 
     /** 400 con la causa si las novedades incumplen las permitidas de la vinculación. */
-    private void validarNovedadesPermitidas(NominaEntity nomina, ContratoLaboralEntity contrato) {
+    private void validarNovedadesPermitidas(NominaEntity nomina, ContratoLaboralEntity contrato,
+                                            NominaConfigEntity config) {
         if (nomina.getNovedades() == null || nomina.getNovedades().isEmpty()) return;
         List<ReglasNovedadesPermitidas.Novedad> novedades = nomina.getNovedades().stream()
                 .map(n -> new ReglasNovedadesPermitidas.Novedad(n.getTipo(), n.getCantidad(), n.getValorTotal(),
-                        Boolean.TRUE.equals(n.getEsDeduccion())))
+                        Boolean.TRUE.equals(n.getEsDeduccion()), "APROBADA".equals(n.getEstado())))
                 .toList();
         Optional<String> error = ReglasNovedadesPermitidas.validar(
-                reglasVinculacion.novedadesPermitidas(contrato.getId()), novedades);
+                reglasVinculacion.novedadesPermitidas(contrato.getId()), novedades,
+                codigo -> etiquetaConcepto(config, codigo, nomina.getPeriodo() != null
+                        ? nomina.getPeriodo().getFechaFin() : LocalDate.now()));
         if (error.isPresent()) throw new GlobalException(HttpStatus.BAD_REQUEST, error.get());
+
+        // F6 — máximo de horas extra y recargos del cargo.
+        List<ReglasTopesHoras.NovedadHoras> horas = nomina.getNovedades().stream()
+                .filter(n -> !Boolean.TRUE.equals(n.getEsDeduccion()))
+                .map(n -> new ReglasTopesHoras.NovedadHoras(n.getTipo(), n.getCantidad(), n.getFechaInicio()))
+                .toList();
+        Optional<String> errorHoras = ReglasTopesHoras.validar(reglasVinculacion.topesHoras(contrato.getId()), horas);
+        if (errorHoras.isPresent()) throw new GlobalException(HttpStatus.BAD_REQUEST, errorHoras.get());
     }
 
     /**
@@ -642,6 +728,8 @@ public class MotorLiquidacion {
             ConceptoNominaEntity c = buscarOpcional(config, nov.getTipo(), fecha);
             if (c == null) c = buscarOpcional(config, "OTRO_DEVENGO", fecha);
             if (c == null) continue;
+            // No imputable (suspensión, licencia no remunerada): cuenta días, no paga.
+            if (Clase.NO_IMPUTABLE.equals(c.getClase())) continue;
             Traza t = new Traza()
                     .paso(nov.getTipo() + (nov.getDescripcion() != null ? " — " + nov.getDescripcion() : ""), "")
                     .paso("Cantidad", nz(nov.getCantidad()))
@@ -685,7 +773,8 @@ public class MotorLiquidacion {
     /** Línea de un concepto propio, o null si no tiene valor. */
     private static LineaLiquidacion lineaPropia(ConceptoNominaEntity c, ConceptoPropio p,
                                                 BigDecimal salarioProporcional) {
-        String origen = "Concepto propio de la vinculación" + (p.observacion() != null ? " — " + p.observacion() : "");
+        String origen = (p.delCargo() ? "Concepto del cargo" : "Concepto propio de la vinculación")
+                + (p.observacion() != null ? " — " + p.observacion() : "");
         if (p.porcentaje() != null && p.porcentaje().signum() != 0) {
             BigDecimal valor = porcentaje(salarioProporcional, p.porcentaje());
             if (valor.signum() == 0) return null;
@@ -737,6 +826,122 @@ public class MotorLiquidacion {
             out.add(l);
         }
         return out;
+    }
+
+    /**
+     * ¿El recorrido del catálogo calcula este concepto para este contrato? No si ya
+     * se emitió aparte (salario, auxilio, novedades, conceptos propios), si el cargo
+     * o la vinculación no lo incluyen (F6) o si no aplica al aprendiz.
+     */
+    private boolean seCalculaEnCatalogo(ConceptoNominaEntity c, ContratoLaboralEntity contrato,
+                                               Set<String> delCargo, Set<String> excluidos, Set<String> yaPropios) {
+        if (esConceptoBase(c.getCodigo())) return false;      // ya emitido arriba
+        if (Base.NOVEDAD.equals(c.getBase())) return false;   // lo emiten las novedades y los conceptos propios
+        if (yaPropios.contains(c.getCodigo())) return false;
+        if (!ReglasConceptosCargo.aplica(c.getCodigo(), Boolean.TRUE.equals(c.getDeLey()), delCargo, excluidos)) {
+            return false;
+        }
+        return !ReglasAprendiz.conceptoNoAplica(contrato, c.getCodigo());
+    }
+
+    // ── Fórmulas (F3) ───────────────────────────────────────────────────────
+
+    /**
+     * Concepto con fórmula. Una fórmula mal escrita o que divide por cero detiene
+     * la liquidación con el nombre del concepto: un cero silencioso sería peor.
+     */
+    private LineaLiquidacion calcularFormula(ConceptoNominaEntity c, BasesLiquidacion bases,
+                                             ContratoLaboralEntity contrato, NominaConfigEntity config,
+                                             NominaEntity nomina, LocalDate fecha,
+                                             List<LineaLiquidacion> yaCalculadas) {
+        String nombre = c.getNumero() + " - " + c.getNombre();
+        try {
+            AnalizadorFormula.Analisis analisis = AnalizadorFormula.analizar(c.getFormula());
+            EvaluadorFormula.Resultado r = EvaluadorFormula.evaluar(analisis.arbol(),
+                    variablesFormula(bases, contrato, config, nomina, fecha),
+                    numero -> valorPorNumero(yaCalculadas, numero));
+            if (r.valor().signum() <= 0) return null;
+            Traza t = new Traza().paso("Fórmula", c.getFormula());
+            r.usados().forEach(t::paso);
+            t.paso("Resultado", r.valor());
+            return new LineaLiquidacion(c, BigDecimal.ZERO, null, r.valor(), t);
+        } catch (ErrorFormula e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La fórmula del concepto " + nombre + " tiene un error: " + e.getMessage());
+        }
+    }
+
+    /** Valores de las variables de fórmula para esta liquidación. */
+    private Map<String, BigDecimal> variablesFormula(BasesLiquidacion b, ContratoLaboralEntity contrato,
+                                                     NominaConfigEntity config, NominaEntity nomina,
+                                                     LocalDate fecha) {
+        Map<String, BigDecimal> v = new HashMap<>();
+        v.put(VariableFormula.SALARIO_BASICO.name(), nz(salarioMensual(contrato, config)));
+        v.put(VariableFormula.SALARIO_PROPORCIONAL.name(), b.getSalarioProporcional());
+        v.put(VariableFormula.DIAS_LIQUIDADOS.name(), BigDecimal.valueOf(DiasLiquidacion.diasSalario(nomina)));
+        v.put(VariableFormula.SMMLV.name(), nz(config.getSmmlv()));
+        v.put(VariableFormula.AUX_TRANSPORTE.name(), nz(config.getAuxilioTransporte()));
+        v.put(VariableFormula.AUXILIO_PERIODO.name(), b.getAuxilioTransporte());
+        v.put(VariableFormula.BASE_IBC.name(), b.getBaseIbc());
+        v.put(VariableFormula.BASE_PRESTACIONAL.name(), b.getBasePrestacional());
+        v.put(VariableFormula.DEVENGADO_TOTAL.name(), b.getTotalDevengado());
+        v.put(VariableFormula.NOVEDADES_SALARIALES.name(), b.getNovedadesIbc());
+        v.put(VariableFormula.NOVEDADES_NO_SALARIALES.name(), b.getNovedadesNoIbc());
+        LocalDate inicio = contrato.getFechaInicio();
+        long meses = inicio != null && fecha != null && !fecha.isBefore(inicio)
+                ? ChronoUnit.MONTHS.between(inicio, fecha) : 0;
+        v.put(VariableFormula.ANTIGUEDAD_MESES.name(), BigDecimal.valueOf(meses));
+        v.put(VariableFormula.ANTIGUEDAD_ANIOS.name(), BigDecimal.valueOf(meses / 12));
+        return v;
+    }
+
+    /** "10 - Hora extra diurna" para los mensajes: el usuario no ve la clave interna. */
+    private String etiquetaConcepto(NominaConfigEntity config, String codigo, LocalDate fecha) {
+        ConceptoNominaEntity c = buscarOpcional(config, codigo, fecha);
+        return c != null ? c.getNumero() + " - " + c.getNombre() : codigo;
+    }
+
+    /** Suma de las líneas ya calculadas de un concepto, por su número visible. */
+    private static BigDecimal valorPorNumero(List<LineaLiquidacion> lineas, int numero) {
+        return lineas.stream()
+                .filter(l -> l.getConcepto().getNumero() != null && l.getConcepto().getNumero() == numero)
+                .map(LineaLiquidacion::getValor)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // ── Redondeo (F2) ───────────────────────────────────────────────────────
+
+    /** Aplica a cada línea el redondeo de su concepto; anota en la traza si cambió. */
+    private static List<LineaLiquidacion> redondear(List<LineaLiquidacion> lineas) {
+        List<LineaLiquidacion> out = new ArrayList<>(lineas.size());
+        for (LineaLiquidacion l : lineas) {
+            ConceptoNominaEntity c = l.getConcepto();
+            BigDecimal r = RedondeoConcepto.aplicar(l.getValor(), c.getRedondeoPrecision(), c.getRedondeoModo());
+            if (r == null || r.compareTo(l.getValor()) == 0) {
+                out.add(l);
+                continue;
+            }
+            Traza t = l.getTraza() != null ? l.getTraza() : new Traza();
+            t.paso("Redondeo (" + c.getRedondeoPrecision() + ", " + c.getRedondeoModo() + ")", r);
+            LineaLiquidacion nueva = new LineaLiquidacion(c, l.getBase(), l.getPorcentaje(), r, t);
+            nueva.setCantidad(l.getCantidad());
+            nueva.setNovedad(l.getNovedad());
+            nueva.setProyectoId(l.getProyectoId());
+            nueva.setFrenteId(l.getFrenteId());
+            nueva.setCentroCostoId(l.getCentroCostoId());
+            nueva.setPorcentajeDistrib(l.getPorcentajeDistrib());
+            out.add(nueva);
+        }
+        return out;
+    }
+
+    /** Devengado de las líneas propias que hace base prestacional (V233). */
+    private static BigDecimal prestacionalPropio(List<LineaLiquidacion> propias) {
+        return propias.stream()
+                .filter(l -> Clase.DEVENGADO.equals(l.getConcepto().getClase()))
+                .filter(l -> Boolean.TRUE.equals(l.getConcepto().getHaceBasePrestacional()))
+                .map(LineaLiquidacion::getValor)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // ── Utilidades ──────────────────────────────────────────────────────────

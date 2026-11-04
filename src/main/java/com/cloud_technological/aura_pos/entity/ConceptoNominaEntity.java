@@ -3,6 +3,7 @@ package com.cloud_technological.aura_pos.entity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import lombok.Getter;
@@ -98,12 +100,77 @@ public class ConceptoNominaEntity {
     @Column(name = "activo", nullable = false)
     private Boolean activo = Boolean.TRUE;
 
+    /**
+     * Código visible del concepto (V230). Único por empresa; las versiones de
+     * vigencia y la personalización de un global comparten el número.
+     * {@link #codigo} queda como clave interna que el usuario no ve.
+     */
+    @Column(name = "numero", nullable = false)
+    private Integer numero;
+
+    /** Qué es el concepto: fila de {@code nomina_concepto_tipo}. */
+    @Column(name = "tipo_id")
+    private Integer tipoId;
+
+    /** Qué captura la novedad: {@link Entrada}. */
+    @Column(name = "entrada", length = 12, nullable = false)
+    private String entrada = Entrada.NINGUNA;
+
+    @Column(name = "redondeo_precision", length = 10, nullable = false)
+    private String redondeoPrecision = RedondeoPrecision.NINGUNO;
+
+    @Column(name = "redondeo_modo", length = 10, nullable = false)
+    private String redondeoModo = RedondeoModo.AUTOMATICO;
+
+    @Column(name = "frecuencia", length = 12, nullable = false)
+    private String frecuencia = Frecuencia.CADA_PAGO;
+
+    /** Elemento del catálogo GRUPO_CONCEPTO. */
+    @Column(name = "grupo_id")
+    private Long grupoId;
+
+    @Column(name = "aplica_art383", nullable = false)
+    private Boolean aplicaArt383 = Boolean.FALSE;
+
+    /**
+     * Concepto de ley: en la personalización de la empresa no se cambian clase,
+     * tipo, número ni cálculo.
+     */
+    @Column(name = "de_ley", nullable = false)
+    private Boolean deLey = Boolean.FALSE;
+
+    @Column(name = "descripcion", columnDefinition = "text")
+    private String descripcion;
+
+    /**
+     * Expresión del lenguaje de fórmulas de Aura (V233), cuando {@link #base} es
+     * FORMULA. Se analiza y evalúa con un intérprete propio: nunca se ejecuta.
+     */
+    @Column(name = "formula", columnDefinition = "text")
+    private String formula;
+
+    /** Suma a la base de prima y cesantías (salario + auxilio + lo marcado). V233. */
+    @Column(name = "hace_base_prestacional", nullable = false)
+    private Boolean haceBasePrestacional = Boolean.FALSE;
+
+    /** Centro de costo fijo: el concepto no se reparte por los de la vinculación. V233. */
+    @Column(name = "centro_costo_id")
+    private Long centroCostoId;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 
     // ── Constantes del dominio ──────────────────────────────────────────────
@@ -114,6 +181,10 @@ public class ConceptoNominaEntity {
         public static final String DEDUCCION        = "DEDUCCION";
         public static final String APORTE_EMPLEADOR = "APORTE_EMPLEADOR";
         public static final String PROVISION        = "PROVISION";
+        /** Cuenta días (suspensión, licencia no remunerada) pero no mueve plata. */
+        public static final String NO_IMPUTABLE     = "NO_IMPUTABLE";
+        public static final List<String> TODAS =
+                List.of(DEVENGADO, DEDUCCION, APORTE_EMPLEADOR, PROVISION, NO_IMPUTABLE);
         private Clase() {}
     }
 
@@ -136,7 +207,54 @@ public class ConceptoNominaEntity {
          * el motor no lo calcula en su recorrido de conceptos.
          */
         public static final String NOVEDAD = "NOVEDAD";
+        /** El valor sale de {@link #formula} (V233). */
+        public static final String FORMULA = "FORMULA";
         private Base() {}
+    }
+
+    /** Qué se captura al registrar el concepto como novedad (V230). */
+    public static final class Entrada {
+        /** Lo calcula el motor. */
+        public static final String NINGUNA    = "NINGUNA";
+        public static final String VALOR      = "VALOR";
+        /** Horas o días. */
+        public static final String CANTIDAD   = "CANTIDAD";
+        public static final String PORCENTAJE = "PORCENTAJE";
+        public static final List<String> TODAS = List.of(NINGUNA, VALOR, CANTIDAD, PORCENTAJE);
+        private Entrada() {}
+    }
+
+    /** A qué múltiplo se redondea el valor del concepto (V230). */
+    public static final class RedondeoPrecision {
+        public static final String NINGUNO = "NINGUNO";
+        public static final String ENTERO  = "ENTERO";
+        public static final String DECENA  = "DECENA";
+        public static final String CENTENA = "CENTENA";
+        public static final String MIL     = "MIL";
+        public static final List<String> TODAS = List.of(NINGUNO, ENTERO, DECENA, CENTENA, MIL);
+        private RedondeoPrecision() {}
+    }
+
+    /** Hacia dónde se redondea (V230). AUTOMATICO = mitad hacia arriba. */
+    public static final class RedondeoModo {
+        public static final String AUTOMATICO = "AUTOMATICO";
+        public static final String ARRIBA     = "ARRIBA";
+        public static final String ABAJO      = "ABAJO";
+        public static final List<String> TODOS = List.of(AUTOMATICO, ARRIBA, ABAJO);
+        private RedondeoModo() {}
+    }
+
+    /** Cada cuánto se liquida el concepto (V230). */
+    public static final class Frecuencia {
+        public static final String CADA_PAGO   = "CADA_PAGO";
+        /** En la última nómina del mes. */
+        public static final String MENSUAL     = "MENSUAL";
+        public static final String SEMESTRAL   = "SEMESTRAL";
+        public static final String ANUAL       = "ANUAL";
+        /** Solo en la liquidación definitiva. */
+        public static final String LIQUIDACION = "LIQUIDACION";
+        public static final List<String> TODAS = List.of(CADA_PAGO, MENSUAL, SEMESTRAL, ANUAL, LIQUIDACION);
+        private Frecuencia() {}
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
