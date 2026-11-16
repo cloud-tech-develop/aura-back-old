@@ -47,7 +47,8 @@ public enum LineaUso {
 
     /** Lo que toda empresa necesita, sea cual sea la línea. */
     public static final List<String> BASE = List.of(
-            "principal.dashboard", "caja.usuarios", "caja.perfiles", "caja.bitacora", "terceros-y-sucursales.*");
+            "principal.dashboard", "principal.documentos", "caja.usuarios", "caja.perfiles", "caja.bitacora",
+            "terceros-y-sucursales.*");
 
     /** Línea que se asume cuando la empresa no ha declarado ninguna (comportamiento histórico). */
     public static final LineaUso POR_DEFECTO = POS;

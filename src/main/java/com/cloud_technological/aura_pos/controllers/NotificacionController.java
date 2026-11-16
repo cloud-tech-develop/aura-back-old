@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.controllers;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,6 +19,8 @@ import com.cloud_technological.aura_pos.repositories.dashboard.DashboardQueryRep
 import com.cloud_technological.aura_pos.repositories.firma_contable.ActivacionElectronicaQueryRepository.SolicitudActivacionFila;
 import com.cloud_technological.aura_pos.repositories.inventario.LoteQueryRepository;
 import com.cloud_technological.aura_pos.services.firma_contable.ActivacionElectronicaService;
+import com.cloud_technological.aura_pos.services.nube.NubeEspacioService;
+import com.cloud_technological.aura_pos.services.nube.NubeEspacioService.EstadoEspacio;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
 
@@ -98,6 +101,11 @@ public class NotificacionController {
         } catch (Exception e) {
             log.warn("Campana: no se pudieron leer las solicitudes de firma contable: {}", e.getMessage());
         }
+        try {
+            agregarNube(empresaId, notificaciones);
+        } catch (Exception e) {
+            log.warn("Campana: no se pudo leer el espacio de la nube: {}", e.getMessage());
+        }
                 return new ResponseEntity<>(new ApiResponse<>(HttpStatus.OK.value(), "", false, notificaciones), HttpStatus.OK);
     }
 
@@ -135,6 +143,40 @@ public class NotificacionController {
                     acepto ? "Ya puede trabajar con su firma contable."
                             : ultima.motivo() != null ? "Motivo: " + ultima.motivo() : "Puede solicitar otra firma.",
                     1, null, "/admin/usuarios", "Ver"));
+        }
+    }
+
+    @Autowired
+    private NubeEspacioService nubeEspacio;
+
+    /**
+     * Nube de documentos, solo para administradores: espacio casi lleno o lleno
+     * (para que borren o pidan más) y la respuesta de Aura a su solicitud.
+     */
+    private void agregarNube(Integer empresaId, List<NotificacionDto> notificaciones) {
+        String rol = securityUtils.getRol();
+        if (empresaId == null || rol == null
+                || !(rol.equalsIgnoreCase("ADMIN") || rol.equalsIgnoreCase("SUPER_ADMIN"))) return;
+        EstadoEspacio e = nubeEspacio.estado(empresaId);
+        var s = e.solicitud();
+        boolean pendiente = s != null && "PENDIENTE".equals(s.estado());
+        if ("LLENO".equals(e.aviso()) || "95".equals(e.aviso())) {
+            boolean lleno = "LLENO".equals(e.aviso());
+            notificaciones.add(new NotificacionDto("NUBE_ESPACIO", lleno ? "danger" : "warn",
+                    lleno ? "La nube de documentos está llena" : "La nube de documentos está al " + e.porcentaje() + " %",
+                    pendiente ? "Tu solicitud de más espacio está en revisión."
+                            : "Borra archivos y vacía la papelera, o solicita más espacio (tiene costo).",
+                    1, null, "/documentos", pendiente ? "Ver" : "Liberar espacio"));
+        }
+        if (s != null && !pendiente && s.atendidoAt() != null
+                && s.atendidoAt().isAfter(LocalDateTime.now().minusDays(7))) {
+            boolean aprobada = "APROBADA".equals(s.estado());
+            notificaciones.add(new NotificacionDto("NUBE_SOLICITUD", aprobada ? "info" : "warn",
+                    aprobada ? "Tu nube ahora tiene " + s.cuotaSolicitadaMb() + " MB"
+                            : "Aura rechazó la solicitud de más espacio",
+                    aprobada ? "Aura aprobó tu solicitud de más espacio."
+                            : s.observacion() != null ? "Motivo: " + s.observacion() : "Comunícate con Aura.",
+                    1, null, "/documentos", "Ver"));
         }
     }
 
