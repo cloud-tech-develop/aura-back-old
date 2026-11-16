@@ -52,7 +52,7 @@ public final class PerfilesSistema {
      */
     public static final Definicion CONTADOR = new Definicion(CONTADOR_EXTERNO, "Contador externo",
             "Firma contable: contabilidad, compras, cartera, tesorería y reportes. Sin ventas, POS ni caja", false,
-            List.of("principal.dashboard", "contabilidad.*", "compras.*", "cuentas.*", "cartera.*", "tesoreria.*",
+            List.of("principal.dashboard", "principal.documentos", "contabilidad.*", "compras.*", "cuentas.*", "cartera.*", "tesoreria.*",
                     "reportes.*", "terceros-y-sucursales.terceros"));
 
     private PerfilesSistema() {

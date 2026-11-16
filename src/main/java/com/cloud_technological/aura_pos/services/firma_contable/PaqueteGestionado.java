@@ -29,7 +29,8 @@ public enum PaqueteGestionado {
 
     /** Lo que todo gestionado tiene: inicio, usuarios, perfiles, bitácora, terceros y sedes. */
     public static final List<String> BASE = List.of(
-            "principal.dashboard", "caja.usuarios", "caja.perfiles", "caja.bitacora", "terceros-y-sucursales.*");
+            "principal.dashboard", "principal.documentos", "caja.usuarios", "caja.perfiles", "caja.bitacora",
+            "terceros-y-sucursales.*");
 
     private final String nombre;
     private final String descripcion;
