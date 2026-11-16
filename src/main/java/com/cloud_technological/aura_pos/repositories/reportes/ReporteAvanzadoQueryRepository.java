@@ -32,6 +32,34 @@ public class ReporteAvanzadoQueryRepository {
     @Autowired
     private NamedParameterJdbcTemplate jdbc;
 
+    /*
+     * Reglas de utilidad de estos reportes:
+     *
+     * - Cuenta toda venta que no esté anulada (estado_venta <> 'ANULADA'). Una venta
+     *   a crédito o con abono queda en PAGO_PARCIAL y antes se excluía: la utilidad
+     *   nace al vender, no al cobrar, igual que el ingreso 4135 y el costo 6135.
+     * - Venta neta = subtotal_linea − impuesto_valor (subtotal_linea trae el IVA),
+     *   prorrateada por el descuento general de la venta: total_pagar / (subtotal +
+     *   impuestos_total), nunca mayor que 1.
+     * - Costo = venta_detalle.costo_linea, el promedio ponderado congelado al
+     *   vender. producto.costo es el de HOY: solo es respaldo de líneas sin costo.
+     */
+
+    /**
+     * Venta neta (u.venta_neta) y costo (u.costo) de cada línea, según las reglas de
+     * arriba. Se pega después de los JOIN de venta v, venta_detalle vd y producto p.
+     */
+    static final String UTILIDAD_LINEA = """
+                CROSS JOIN LATERAL (
+                    SELECT
+                        (COALESCE(vd.subtotal_linea, 0) - COALESCE(vd.impuesto_valor, 0))
+                            * LEAST(1, COALESCE(v.total_pagar
+                                / NULLIF(COALESCE(v.subtotal, 0) + COALESCE(v.impuestos_total, 0), 0), 1))
+                            AS venta_neta,
+                        COALESCE(vd.costo_linea, vd.cantidad * COALESCE(p.costo, 0)) AS costo
+                ) u
+            """;
+
     // ── Ventas por categoría ──────────────────────────────────────────────────
 
     public List<ReporteVentasCategoriaDto> ventasPorCategoria(Integer empresaId,
@@ -43,14 +71,16 @@ public class ReporteAvanzadoQueryRepository {
                     COUNT(DISTINCT v.id) AS total_ventas,
                     SUM(vd.cantidad) AS total_unidades,
                     SUM(vd.subtotal_linea) AS ingresos,
-                    SUM(vd.cantidad * COALESCE(p.costo, 0)) AS costo_estimado,
-                    SUM(vd.subtotal_linea) - SUM(vd.cantidad * COALESCE(p.costo, 0)) AS margen_bruto
+                    ROUND(SUM(u.venta_neta), 2) AS venta_neta,
+                    ROUND(SUM(u.costo), 2) AS costo_estimado,
+                    ROUND(SUM(u.venta_neta) - SUM(u.costo), 2) AS margen_bruto
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
+                """ + UTILIDAD_LINEA + """
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY c.id, c.nombre
                 ORDER BY ingresos DESC
@@ -81,7 +111,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY p.id, p.nombre, p.sku, c.nombre
                 ORDER BY ingresos DESC
@@ -113,7 +143,7 @@ public class ReporteAvanzadoQueryRepository {
                 INNER JOIN usuario u ON v.usuario_id = u.id
                 LEFT JOIN tercero t ON u.tercero_id = t.id
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY u.id, u.username, t.razon_social, t.nombres, t.apellidos
                 ORDER BY ingresos DESC
@@ -135,24 +165,28 @@ public class ReporteAvanzadoQueryRepository {
                     p.nombre AS producto_nombre,
                     p.sku,
                     COALESCE(c.nombre, 'Sin categoría') AS categoria_nombre,
-                    ROUND(AVG(vd.precio_unitario), 2) AS precio_venta,
-                    COALESCE(p.costo, 0) AS costo,
-                    ROUND(AVG(vd.precio_unitario) - COALESCE(p.costo, 0), 2) AS margen_bruto,
-                    CASE WHEN AVG(vd.precio_unitario) > 0
-                        THEN ROUND(((AVG(vd.precio_unitario) - COALESCE(p.costo, 0))
-                            / AVG(vd.precio_unitario)) * 100, 2)
-                        ELSE 0
-                    END AS margen_porcentaje,
+                    -- Por unidad vendida: promedios ponderados del período, no el
+                    -- costo de hoy (antes p.costo) ni el precio con IVA.
+                    ROUND(SUM(u.venta_neta) / NULLIF(SUM(vd.cantidad), 0), 2) AS precio_venta,
+                    ROUND(SUM(u.costo) / NULLIF(SUM(vd.cantidad), 0), 2) AS costo,
+                    ROUND((SUM(u.venta_neta) - SUM(u.costo)) / NULLIF(SUM(vd.cantidad), 0), 2) AS margen_bruto,
+                    COALESCE(ROUND((SUM(u.venta_neta) - SUM(u.costo)) * 100
+                        / NULLIF(SUM(u.venta_neta), 0), 2), 0) AS margen_porcentaje,
                     SUM(vd.cantidad) AS cantidad_vendida,
-                    SUM(vd.subtotal_linea) AS ingreso_total
+                    SUM(vd.subtotal_linea) AS ingreso_total,
+                    ROUND(SUM(u.venta_neta), 2) AS venta_neta,
+                    ROUND(SUM(u.costo), 2) AS costo_total,
+                    ROUND(SUM(u.venta_neta) - SUM(u.costo), 2) AS utilidad
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                 INNER JOIN producto p ON vd.producto_id = p.id
                 LEFT JOIN categoria c ON p.categoria_id = c.id
+                """ + UTILIDAD_LINEA + """
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
-                GROUP BY p.id, p.nombre, p.sku, c.nombre, p.costo
+                GROUP BY p.id, p.nombre, p.sku, c.nombre
+                HAVING SUM(vd.cantidad) > 0
                 ORDER BY ingreso_total DESC
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -198,7 +232,7 @@ public class ReporteAvanzadoQueryRepository {
                     FROM venta v
                     INNER JOIN venta_detalle vd ON vd.venta_id = v.id
                     WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                      AND v.estado_venta = 'COMPLETADA'
+                      AND v.estado_venta <> 'ANULADA'
                       AND v.fecha_emision >= NOW() - INTERVAL '30 days'
                     GROUP BY vd.producto_id
                 ) ventas_30 ON ventas_30.producto_id = p.id
@@ -231,7 +265,7 @@ public class ReporteAvanzadoQueryRepository {
                     COALESCE(ROUND(AVG(v.total_pagar), 2), 0) AS ticket_promedio
                 FROM venta v
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
         MapSqlParameterSource p = new MapSqlParameterSource()
@@ -250,7 +284,7 @@ public class ReporteAvanzadoQueryRepository {
                 SELECT COALESCE(SUM(v.total_pagar), 0) AS total_ventas
                 FROM venta v
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
         MapSqlParameterSource pAnterior = new MapSqlParameterSource()
@@ -284,27 +318,33 @@ public class ReporteAvanzadoQueryRepository {
         BigDecimal totalCompras = jdbc.queryForObject(alcanceSede.aplicar(sqlCompras, p), p, BigDecimal.class);
         dto.setTotalComprasPeriodo(totalCompras != null ? totalCompras : BigDecimal.ZERO);
 
-        // Margen comercial: precio con IVA − costo con IVA, que es como el comerciante
-        // hace la cuenta (le pagué X al proveedor, me pagaron Y). NO descuenta el IVA
-        // neto que se le gira a la DIAN, así que queda por encima de la utilidad
-        // contable en ese valor; la contabilidad sigue siendo la fuente de verdad.
-        // producto.costo se guarda sin IVA (viene de compra.costo_unitario), por eso
-        // hay que agregarle iva_porcentaje para compararlo contra subtotal_linea.
+        // Utilidad bruta: venta neta sin IVA − costo congelado al vender, contado y
+        // crédito. Antes era un "margen comercial" con IVA (precio con IVA − costo
+        // con IVA) que quedaba por encima de la utilidad contable y no cuadraba con
+        // el estado de resultados.
         String sqlMargen = """
-                SELECT COALESCE(SUM(
-                        vd.subtotal_linea
-                        - COALESCE(vd.costo_linea, vd.cantidad * COALESCE(pr.costo, 0))
-                          * (1 + COALESCE(pr.iva_porcentaje, 0) / 100)
-                    ), 0)
+                SELECT COALESCE(ROUND(SUM(u.venta_neta), 2), 0) AS venta_neta,
+                       COALESCE(ROUND(SUM(u.costo), 2), 0) AS costo
                 FROM venta v
                 INNER JOIN venta_detalle vd ON vd.venta_id = v.id
-                INNER JOIN producto pr ON vd.producto_id = pr.id
+                INNER JOIN producto p ON vd.producto_id = p.id
+                """ + UTILIDAD_LINEA + """
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 """;
-        BigDecimal margen = jdbc.queryForObject(alcanceSede.aplicar(sqlMargen, p), p, BigDecimal.class);
-        dto.setMargenBrutoPeriodo(margen != null ? margen : BigDecimal.ZERO);
+        jdbc.query(alcanceSede.aplicar(sqlMargen, p), p, rs -> {
+            BigDecimal neta = rs.getBigDecimal("venta_neta");
+            BigDecimal costo = rs.getBigDecimal("costo");
+            dto.setVentaNetaPeriodo(neta);
+            dto.setCostoPeriodo(costo);
+            dto.setMargenBrutoPeriodo(neta.subtract(costo));
+        });
+        if (dto.getMargenBrutoPeriodo() == null) {
+            dto.setVentaNetaPeriodo(BigDecimal.ZERO);
+            dto.setCostoPeriodo(BigDecimal.ZERO);
+            dto.setMargenBrutoPeriodo(BigDecimal.ZERO);
+        }
 
         // Clientes nuevos vs recurrentes
         String sqlClientes = """
@@ -316,14 +356,14 @@ public class ReporteAvanzadoQueryRepository {
                     FROM venta v
                     WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
                       AND v.cliente_id IS NOT NULL
-                      AND v.estado_venta = 'COMPLETADA'
+                      AND v.estado_venta <> 'ANULADA'
                     GROUP BY v.cliente_id
                 ) sub
                 WHERE sub.cliente_id IN (
                     SELECT DISTINCT v2.cliente_id
                     FROM venta v2
                     WHERE v2.empresa_id = :empresaId /*SEDE:v2.sucursal_id*/
-                      AND v2.estado_venta = 'COMPLETADA'
+                      AND v2.estado_venta <> 'ANULADA'
                       AND v2.fecha_emision::date BETWEEN :desde AND :hasta
                       AND v2.cliente_id IS NOT NULL
                 )
@@ -352,7 +392,7 @@ public class ReporteAvanzadoQueryRepository {
                     SUM(v.total_pagar) AS total
                 FROM venta v
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY v.fecha_emision::date
                 ORDER BY v.fecha_emision::date
@@ -372,7 +412,7 @@ public class ReporteAvanzadoQueryRepository {
                 FROM venta v
                 INNER JOIN venta_pago vp ON vp.venta_id = v.id
                 WHERE v.empresa_id = :empresaId /*SEDE:v.sucursal_id*/
-                  AND v.estado_venta = 'COMPLETADA'
+                  AND v.estado_venta <> 'ANULADA'
                   AND v.fecha_emision::date BETWEEN :desde AND :hasta
                 GROUP BY vp.metodo_pago
                 ORDER BY total DESC

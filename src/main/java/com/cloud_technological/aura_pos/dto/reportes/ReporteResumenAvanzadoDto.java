@@ -13,7 +13,12 @@ public class ReporteResumenAvanzadoDto {
     private BigDecimal totalVentasPeriodoAnterior;
     private BigDecimal variacionVentas;
     private BigDecimal totalComprasPeriodo;
+    /** Utilidad bruta: ventaNetaPeriodo − costoPeriodo. */
     private BigDecimal margenBrutoPeriodo;
+    /** Venta sin IVA, con descuentos, contado y crédito. */
+    private BigDecimal ventaNetaPeriodo;
+    /** Costo promedio congelado al vender. */
+    private BigDecimal costoPeriodo;
     private Long cantidadTransacciones;
     private BigDecimal ticketPromedio;
     private Long clientesNuevos;

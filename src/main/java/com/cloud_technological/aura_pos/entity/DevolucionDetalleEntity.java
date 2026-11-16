@@ -48,4 +48,12 @@ public class DevolucionDetalleEntity {
 
     @Column(name = "subtotal_linea")
     private BigDecimal subtotalLinea;
+
+    /**
+     * Costo que la devolución le quitó a la línea de la venta (parte proporcional
+     * de venta_detalle.costo_linea). Al anular la devolución se le suma de vuelta.
+     * Null en líneas vendidas sin costo registrado.
+     */
+    @Column(name = "costo_linea")
+    private BigDecimal costoLinea;
 }

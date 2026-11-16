@@ -16,5 +16,12 @@ public class ReporteMargenesProductoDto {
     private BigDecimal margenBruto;
     private BigDecimal margenPorcentaje;
     private BigDecimal cantidadVendida;
+    /** Total cobrado con IVA. */
     private BigDecimal ingresoTotal;
+    /** Venta sin IVA, después de descuentos. */
+    private BigDecimal ventaNeta;
+    /** Costo congelado al vender (venta_detalle.costo_linea). */
+    private BigDecimal costoTotal;
+    /** ventaNeta − costoTotal. */
+    private BigDecimal utilidad;
 }
