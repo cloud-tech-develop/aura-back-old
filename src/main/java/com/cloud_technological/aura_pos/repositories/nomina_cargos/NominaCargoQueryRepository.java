@@ -27,7 +27,7 @@ public class NominaCargoQueryRepository {
             SELECT c.id, c.codigo, c.nombre, c.nivel_id, n.nombre AS nivel_nombre,
                    c.tipo_cargo_id, t.nombre AS tipo_cargo_nombre, c.plazas,
                    c.salario_referencia, c.salario_minimo, c.salario_maximo,
-                   c.mision, c.funciones, c.activo,
+                   c.mision, c.funciones, c.perfil, c.desempeno, c.activo,
                    (SELECT COUNT(*) FROM contrato_laboral v
                      WHERE v.cargo_id = c.id AND v.estado <> 'TERMINADO' AND v.deleted_at IS NULL) AS ocupadas,
                    COUNT(*) OVER() AS total_rows
@@ -148,6 +148,8 @@ public class NominaCargoQueryRepository {
         dto.setSalarioMaximo(rs.getBigDecimal("salario_maximo"));
         dto.setMision(rs.getString("mision"));
         dto.setFunciones(rs.getString("funciones"));
+        dto.setPerfil(rs.getString("perfil"));
+        dto.setDesempeno(rs.getString("desempeno"));
         dto.setActivo(rs.getBoolean("activo"));
         dto.setTotalRows(rs.getLong("total_rows"));
         return dto;

@@ -51,6 +51,10 @@ public class ProyectoFrenteEntity {
     @Column(columnDefinition = "TEXT")
     private String observacion;
 
+    /** Frente "General" = el proyecto completo, para quien no divide la obra en frentes (V241). */
+    @Column(name = "es_general", nullable = false)
+    private Boolean esGeneral = Boolean.FALSE;
+
     @Column(name = "created_by")
     private Long createdBy;
 

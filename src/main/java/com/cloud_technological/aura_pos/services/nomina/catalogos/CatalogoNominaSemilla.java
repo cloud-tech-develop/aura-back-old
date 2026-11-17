@@ -39,6 +39,14 @@ public final class CatalogoNominaSemilla {
                     e("PLA", "Planta"),
                     e("TEM", "Temporal"),
                     e("PRY", "Por proyecto"));
+            case GRUPO_CONCEPTO -> List.of(
+                    e("SAL", "Salario y auxilios"),
+                    e("HER", "Horas extra y recargos"),
+                    e("SSO", "Seguridad social y parafiscales"),
+                    e("PRE", "Prestaciones sociales"),
+                    e("PRV", "Provisiones"),
+                    e("AUS", "Ausentismos"),
+                    e("DES", "Descuentos"));
             case TIPO_EMBARGO -> List.of(
                     e("ALI", "Alimentos", Map.of("prioridad", 1, "limitePorcentaje", new BigDecimal("50"),
                             "depositoJudicial", true)),

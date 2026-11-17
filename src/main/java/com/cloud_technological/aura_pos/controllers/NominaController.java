@@ -159,6 +159,18 @@ public class NominaController {
                 HttpStatus.OK);
     }
 
+    /** Autoriza una novedad que pasa un tope del cargo o de la vinculación. */
+    @PostMapping("/{nominaId}/novedades/{novedadId}/autorizar")
+    public ResponseEntity<ApiResponse<NominaDto>> autorizarNovedad(
+            @PathVariable Long nominaId,
+            @PathVariable Long novedadId) {
+        NominaDto result = nominaService.autorizarNovedad(nominaId, novedadId,
+                securityUtils.getEmpresaId(), securityUtils.getUsuarioId());
+        return new ResponseEntity<>(
+                new ApiResponse<>(HttpStatus.OK.value(), "Novedad autorizada y nómina recalculada", false, result),
+                HttpStatus.OK);
+    }
+
     @DeleteMapping("/{nominaId}/novedades/{novedadId}")
     public ResponseEntity<ApiResponse<NominaDto>> eliminarNovedad(
             @PathVariable Long nominaId,

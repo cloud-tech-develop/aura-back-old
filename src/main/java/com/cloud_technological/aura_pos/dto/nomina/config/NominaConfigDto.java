@@ -14,6 +14,10 @@ public class NominaConfigDto {
     private String modoLiquidacion;
     private BigDecimal smmlv;
     private BigDecimal auxilioTransporte;
+    /** Año de la tabla de ley de donde salen smmlv y auxilio (null = valores propios de la empresa). */
+    private Integer parametrosAgno;
+    /** Norma que fija esos valores (decreto). */
+    private String parametrosNorma;
     private BigDecimal pctSaludEmpleado;
     private BigDecimal pctPensionEmpleado;
     private BigDecimal pctSaludEmpleador;
@@ -25,4 +29,12 @@ public class NominaConfigDto {
     private BigDecimal aprendizPctLectiva;
     private BigDecimal aprendizPctPractica;
     private Boolean permiteVacacionesAnticipadas;
+    /** Asistencia por obra (V243): ¿divide los proyectos en frentes? */
+    private Boolean asistenciaUsaFrentes;
+    /** ¿Exige soporte (PDF o Excel) para enviar un día a revisión? */
+    private Boolean asistenciaExigeSoporte;
+    /** Cómo se registran las horas: MANUAL | EXCEL | AMBOS. */
+    private String asistenciaRegistro;
+    /** ¿Un supervisor aprueba la asistencia antes de la nómina? FALSE = la prenómina la toma al liquidar. */
+    private Boolean asistenciaRequiereAprobacion;
 }

@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -118,4 +119,12 @@ public class NominaNovedadEntity {
 
     @Column(name = "requiere_aprobacion", nullable = false)
     private Boolean requiereAprobacion = false;
+
+    /** Usuario que autorizó la novedad por encima de un tope (V240). */
+    @Column(name = "autorizada_por")
+    private Long autorizadaPor;
+
+    /** Cuándo se autorizó (V240). */
+    @Column(name = "autorizada_at")
+    private LocalDateTime autorizadaAt;
 }

@@ -20,6 +20,9 @@ public enum TipoCatalogoNomina {
 
     TIPO_CARGO("tipos-cargo", "Tipos de cargo", "Planta, temporal, por proyecto", List.of()),
 
+    GRUPO_CONCEPTO("grupos-concepto", "Grupos de conceptos",
+            "Agrupan conceptos para filtrarlos y agregarlos juntos a un cargo", List.of()),
+
     TIPO_EMBARGO("tipos-embargo", "Tipos de embargo", "Clases de embargo con su prioridad y límite legal", List.of(
             AtributoCatalogo.entero("prioridad", "Prioridad", 1, 99,
                     "1 se descuenta primero (los de alimentos van antes)"),

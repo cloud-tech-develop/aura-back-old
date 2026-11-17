@@ -179,6 +179,14 @@ public class NominaDocumentoController {
         return ok("Novedad agregada", novedades.agregar(id, dto, securityUtils.getEmpresaId()));
     }
 
+    /** Autoriza una novedad que pasa un tope; el empleado queda sin liquidar hasta reliquidarlo. */
+    @PostMapping("/{id}/novedades/{novedadId}/autorizar")
+    public ResponseEntity<ApiResponse<List<NovedadDocumentoDto>>> autorizarNovedad(@PathVariable Long id,
+            @PathVariable Long novedadId) {
+        return ok("Novedad autorizada", novedades.autorizar(id, novedadId, securityUtils.getEmpresaId(),
+                securityUtils.getUsuarioId()));
+    }
+
     @DeleteMapping("/{id}/novedades/{novedadId}")
     public ResponseEntity<ApiResponse<List<NovedadDocumentoDto>>> eliminarNovedad(@PathVariable Long id,
             @PathVariable Long novedadId) {

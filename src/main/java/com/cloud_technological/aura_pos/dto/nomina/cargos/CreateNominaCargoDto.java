@@ -39,5 +39,9 @@ public class CreateNominaCargoDto {
 
     private String funciones;
 
+    private String perfil;
+
+    private String desempeno;
+
     private Boolean activo = true;
 }

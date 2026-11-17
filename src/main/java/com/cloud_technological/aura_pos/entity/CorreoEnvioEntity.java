@@ -65,6 +65,10 @@ public class CorreoEnvioEntity {
     @Column(name = "adjunto_nombre", length = 150)
     private String adjuntoNombre;
 
+    /** Nombres de los documentos adicionales enviados con el correo, separados por "; " (V248). */
+    @Column(name = "adjuntos_adicionales", length = 1000)
+    private String adjuntosAdicionales;
+
     @Column(columnDefinition = "BYTEA")
     private byte[] adjunto;
 

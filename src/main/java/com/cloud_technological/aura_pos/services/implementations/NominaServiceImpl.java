@@ -41,6 +41,10 @@ import com.cloud_technological.aura_pos.repositories.nomina.NominaQueryRepositor
 import com.cloud_technological.aura_pos.repositories.nomina.PeriodoNominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.nomina.NominaDetalleJPARepository;
 import com.cloud_technological.aura_pos.services.NominaService;
+import com.cloud_technological.aura_pos.services.AsistenciaRevisionService;
+import com.cloud_technological.aura_pos.services.asistencia.ModoAsistenciaObra;
+import com.cloud_technological.aura_pos.services.nomina.ParametrosLegales;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.TopeNovedadException;
 import com.cloud_technological.aura_pos.services.OrigenFondosService;
 import com.cloud_technological.aura_pos.services.nomina.BasesLiquidacion;
 import com.cloud_technological.aura_pos.services.nomina.MotorLiquidacion;
@@ -110,6 +114,15 @@ public class NominaServiceImpl implements NominaService {
 
     @Autowired
     private com.cloud_technological.aura_pos.services.implementations.LaboralConfigService laboralConfigService;
+
+    @Autowired
+    private ParametrosLegales parametrosLegales;
+
+    @Autowired
+    private ModoAsistenciaObra modoAsistencia;
+
+    @Autowired
+    private AsistenciaRevisionService asistenciaRevisionService;
 
     @Autowired
     private com.cloud_technological.aura_pos.services.AuditoriaNominaService auditoria;
@@ -288,18 +301,15 @@ public class NominaServiceImpl implements NominaService {
             nomina.setCreatedAt(LocalDateTime.now());
         }
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        NominaConfigEntity config = configDelPeriodo(empresaId, periodo);
 
         // Gating de asistencia (Fase 5): si el empleado requiere asistencia y no está
         // aprobada ni autorizada excepcionalmente, se bloquea la liquidación.
-        if (requiereAsistencia(config, empleado)) {
-            if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
-                throw new GlobalException(HttpStatus.BAD_REQUEST,
-                        "No se puede liquidar: la asistencia del período no está aprobada. " +
-                        "Apruebe la asistencia o registre una autorización excepcional.");
-            consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
-        }
+        consolidarAsistenciaSinRevision(empresaId, periodo, empleado);
+        if (requiereAsistencia(config, empleado) && !asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, mensajeSinAsistencia(empresaId));
+        // Las horas extra y recargos aprobados entran siempre; el modo solo dice a quién se le exige.
+        consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
 
         nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, nomina.getContrato(), empresaId));
         calcular(nomina, empleado, config);
@@ -350,14 +360,12 @@ public class NominaServiceImpl implements NominaService {
                 liquidadorDefinitiva.retiroDelDocumento(nomina.getDocumentoId());
         validarContratoLiquidable(nomina.getContrato(), periodo, retiro.isPresent());
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
-        if (requiereAsistencia(config, empleado)) {
-            if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
-                throw new GlobalException(HttpStatus.BAD_REQUEST,
-                        "La asistencia del período no está aprobada ni autorizada.");
-            consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
-        }
+        NominaConfigEntity config = configDelPeriodo(empresaId, periodo);
+        consolidarAsistenciaSinRevision(empresaId, periodo, empleado);
+        if (requiereAsistencia(config, empleado) && !asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, mensajeSinAsistencia(empresaId));
+        // Las horas extra y recargos aprobados entran siempre; el modo solo dice a quién se le exige.
+        consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
         // R7 — las vacaciones registradas en el módulo entran como novedades del período.
         vacacionesEnNomina.sincronizar(nomina, periodo, salarioDelContrato(nomina, empleado), empresaId);
 
@@ -380,8 +388,7 @@ public class NominaServiceImpl implements NominaService {
      */
     private void liquidarPrestacion(NominaEntity nomina, Documento documento, Integer empresaId) {
         validarContratoLiquidable(nomina.getContrato(), nomina.getPeriodo());
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        NominaConfigEntity config = configDelPeriodo(empresaId, nomina.getPeriodo());
         Optional<LineaLiquidacion> linea = liquidadorPrestacion.linea(nomina, documento, config, empresaId);
 
         nominaDetalleRepo.deleteByNominaId(nomina.getId());
@@ -408,8 +415,7 @@ public class NominaServiceImpl implements NominaService {
     private void liquidarRetroactivo(NominaEntity nomina, Documento documento, LocalDate fechaLiquidacion,
                                      Integer empresaId) {
         validarContratoLiquidable(nomina.getContrato(), nomina.getPeriodo());
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        NominaConfigEntity config = configDelPeriodo(empresaId, nomina.getPeriodo());
         List<NominaNovedadEntity> diferencias = liquidadorRetroactivo.novedades(nomina, documento);
         if (diferencias.isEmpty())
             throw new GlobalException(HttpStatus.BAD_REQUEST,
@@ -510,8 +516,7 @@ public class NominaServiceImpl implements NominaService {
         if ("ANULADO".equals(periodo.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "El período está anulado");
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        NominaConfigEntity config = configDelPeriodo(empresaId, periodo);
 
         // V103: se iteran CONTRATOS vigentes en el período, no empleados activos.
         //
@@ -550,10 +555,14 @@ public class NominaServiceImpl implements NominaService {
             }
 
             // Gating de asistencia por empleado; si está bloqueado, se omite del lote.
-            if (requiereAsistencia(config, empleado)) {
-                if (!asistenciaAprobadaOAutorizada(empresaId, periodo, empleado)) continue;
-                consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
+            try {
+                consolidarAsistenciaSinRevision(empresaId, periodo, empleado);
+            } catch (GlobalException e) {
+                continue;   // un día con alertas críticas: el empleado se omite del lote
             }
+            if (requiereAsistencia(config, empleado) && !asistenciaAprobadaOAutorizada(empresaId, periodo, empleado))
+                continue;
+            consumirNovedadesAsistencia(nomina, periodo, empleado, empresaId);
 
             nomina.setDiasTrabajados(diasLiquidacion(periodo, empleado, nomina.getContrato(), empresaId));
             calcular(nomina, empleado, config);
@@ -576,8 +585,7 @@ public class NominaServiceImpl implements NominaService {
         if ("APROBADO".equals(nomina.getEstado()) || "PAGADO".equals(nomina.getEstado()))
             throw new GlobalException(HttpStatus.BAD_REQUEST, "No se pueden agregar novedades a una nómina aprobada o pagada");
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        NominaConfigEntity config = configDelPeriodo(empresaId, nomina.getPeriodo());
 
         NominaNovedadEntity novedad = new NominaNovedadEntity();
         novedad.setNomina(nomina);
@@ -611,8 +619,15 @@ public class NominaServiceImpl implements NominaService {
 
         nomina.getNovedades().add(novedad);
 
-        // Recalcular con la nueva novedad
-        calcular(nomina, nomina.getEmpleado(), config);
+        // Recalcular con la nueva novedad. Si pasa un tope que se resuelve autorizándola,
+        // no se rechaza: queda guardada "por autorizar" y la nómina con la causa.
+        try {
+            calcular(nomina, nomina.getEmpleado(), config);
+        } catch (TopeNovedadException e) {
+            novedad.setEstado(NOVEDAD_POR_AUTORIZAR);
+            novedad.setRequiereAprobacion(true);
+            nomina.setErrorLiquidacion(e.getMessage());
+        }
         nomina.setUpdatedAt(LocalDateTime.now());
 
         return toDto(nominaRepo.save(nomina));
@@ -629,12 +644,54 @@ public class NominaServiceImpl implements NominaService {
 
         nomina.getNovedades().removeIf(n -> n.getId().equals(novedadId));
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
-                .orElseGet(() -> configuracionPorDefecto(empresaId));
-        calcular(nomina, nomina.getEmpleado(), config);
+        NominaConfigEntity config = configDelPeriodo(empresaId, nomina.getPeriodo());
+        recalcularSinBloquearPorTope(nomina, config);
         nomina.setUpdatedAt(LocalDateTime.now());
 
         return toDto(nominaRepo.save(nomina));
+    }
+
+    /**
+     * Autoriza una novedad que pasa un tope del cargo o de la vinculación: queda
+     * APROBADA, con quién y cuándo, y la nómina se recalcula.
+     */
+    @Override
+    @Transactional
+    public NominaDto autorizarNovedad(Long nominaId, Long novedadId, Integer empresaId, Long usuarioId) {
+        NominaEntity nomina = nominaRepo.findByIdAndEmpresaId(nominaId, empresaId)
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Nómina no encontrada"));
+        if ("APROBADO".equals(nomina.getEstado()) || "PAGADO".equals(nomina.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "No se pueden modificar novedades de una nómina aprobada o pagada");
+        NominaNovedadEntity novedad = nomina.getNovedades().stream()
+                .filter(n -> novedadId.equals(n.getId()))
+                .findFirst()
+                .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Novedad no encontrada"));
+        if ("APROBADA".equals(novedad.getEstado()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La novedad ya está autorizada.");
+        novedad.setEstado("APROBADA");
+        novedad.setAutorizadaPor(usuarioId);
+        novedad.setAutorizadaAt(LocalDateTime.now());
+
+        NominaConfigEntity config = configDelPeriodo(empresaId, nomina.getPeriodo());
+        recalcularSinBloquearPorTope(nomina, config);
+        nomina.setUpdatedAt(LocalDateTime.now());
+        return toDto(nominaRepo.save(nomina));
+    }
+
+    /** Estado de una novedad que pasa un tope y espera que alguien la autorice. */
+    private static final String NOVEDAD_POR_AUTORIZAR = "PENDIENTE";
+
+    /**
+     * Recalcula la nómina; si otra novedad sigue por encima de un tope que se
+     * autoriza, no falla: deja la causa en la nómina para que se vea en la fila.
+     */
+    private void recalcularSinBloquearPorTope(NominaEntity nomina, NominaConfigEntity config) {
+        try {
+            calcular(nomina, nomina.getEmpleado(), config);
+            nomina.setErrorLiquidacion(null);
+        } catch (TopeNovedadException e) {
+            nomina.setErrorLiquidacion(e.getMessage());
+        }
     }
 
     // ─── Estado ───────────────────────────────────────────────────────────────
@@ -969,6 +1026,25 @@ public class NominaServiceImpl implements NominaService {
         return false; // SIN_ASISTENCIA
     }
 
+    /**
+     * Empresa sin revisión de asistencia por obra (V245): antes de liquidar, los días
+     * registrados del empleado en el período pasan solos a nómina. Con revisión no hace nada.
+     */
+    private void consolidarAsistenciaSinRevision(Integer empresaId, PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
+        if (modoAsistencia.de(empresaId).requiereAprobacion()) return;
+        asistenciaRevisionService.consolidarParaNomina(empresaId, empleado.getId(),
+                periodo.getFechaInicio(), periodo.getFechaFin(), null);
+    }
+
+    /** Por qué no se puede liquidar a quien exige asistencia y no la tiene. */
+    private String mensajeSinAsistencia(Integer empresaId) {
+        return modoAsistencia.de(empresaId).requiereAprobacion()
+                ? "No se puede liquidar: la asistencia del período no está aprobada. "
+                        + "Apruebe la asistencia o registre una autorización excepcional."
+                : "No se puede liquidar: el empleado requiere asistencia y no tiene días registrados en el período "
+                        + "(digítelos o importe el Excel del mes).";
+    }
+
     /** La asistencia del período está aprobada, o existe autorización excepcional activa. */
     private boolean asistenciaAprobadaOAutorizada(Integer empresaId, PeriodoNominaEntity periodo, EmpleadoEntity empleado) {
         // 1) Autorización excepcional activa: permite liquidar aunque falte asistencia.
@@ -1030,7 +1106,16 @@ public class NominaServiceImpl implements NominaService {
         var staged = asistenciaNovedadRepo.findConsumiblesParaPeriodo(
                 empresaId, empleado.getId(), periodo.getId(),
                 periodo.getFechaInicio(), periodo.getFechaFin());
+        // A quien se paga por día ya no se le pagan los días que faltó: descontarlos además
+        // como ausencia sería cobrarle la falta dos veces.
+        boolean porDia = sePagaPorDia(nomina.getContrato());
         for (var s : staged) {
+            if (porDia && "AUSENCIA_NO_JUSTIFICADA".equals(s.getTipoNovedad())) {
+                s.setPeriodoNomina(periodo);
+                s.setEstado("ENVIADA_A_NOMINA");
+                asistenciaNovedadRepo.save(s);
+                continue;
+            }
             NominaNovedadEntity nv = construirNovedadDesdeStaged(s, salarioDelContrato(nomina, empleado), cfg);
             if (nv == null) continue;
             nv.setNomina(nomina);
@@ -1090,7 +1175,10 @@ public class NominaServiceImpl implements NominaService {
         nv.setEsDeduccion(deduccion);
         nv.setNaturaleza(deduccion ? "DEDUCCION" : "DEVENGADO");
         nv.setOrigen(s.getOrigen() != null ? s.getOrigen() : "ASISTENCIA");
-        nv.setEstado("APLICADA");
+        // Ya la aprobó el supervisor en asistencia o en la revisión del frente: llega
+        // APROBADA para que un tope "con autorización" del cargo la deje pasar. Con
+        // APLICADA nunca pasaba, porque se regenera en cada liquidación y no hay dónde aprobarla.
+        nv.setEstado("APROBADA");
         nv.setRequiereAprobacion(false);
         return nv;
     }
@@ -1117,6 +1205,12 @@ public class NominaServiceImpl implements NominaService {
      * lo que dejaba en 0 días a quien se vinculó con fecha anterior al registro.
      * Sin contrato se usan las del empleado.
      */
+    /** ¿La vinculación se paga por día trabajado (jornal) o por hora? */
+    private static boolean sePagaPorDia(ContratoLaboralEntity contrato) {
+        return contrato != null
+                && ("JORNAL".equals(contrato.getTipoRemuneracion()) || "HORA".equals(contrato.getTipoRemuneracion()));
+    }
+
     private int diasLiquidacion(PeriodoNominaEntity periodo, EmpleadoEntity empleado, ContratoLaboralEntity contrato,
                                 Integer empresaId) {
         LocalDate inicio = periodo.getFechaInicio();
@@ -1131,11 +1225,14 @@ public class NominaServiceImpl implements NominaService {
 
         if (fin.isBefore(inicio)) return 0;
 
-        // Pago por asistencia de frente: los jornaleros (requiere_control_asistencia = true)
-        // se pagan por los DÍAS efectivamente trabajados en el frente (las horas solo son
-        // control). Fallback seguro: si el empleado marcado no tiene asistencia de frente
-        // consolidada en el período, se paga el período completo como siempre.
+        // Pago por asistencia de frente: SOLO a quien se le paga por día (contrato JORNAL u
+        // HORA) se le pagan los DÍAS efectivamente trabajados en el frente. A un salario
+        // MENSUAL o INTEGRAL se le paga el período completo: sábados, domingos y festivos no
+        // trabajados son descanso, no falta; las faltas ("No asistió") se descuentan como
+        // novedad de ausencia. Antes bastaba "requiere control de asistencia" y a un mensual
+        // de lunes a viernes se le pagaban 11 días de 16.
         if (Boolean.TRUE.equals(empleado.getRequiereControlAsistencia())
+                && sePagaPorDia(contrato)
                 && frenteQueryRepo.tieneFrenteConsolidada(empresaId, empleado.getId(), inicio, fin)) {
             return frenteQueryRepo.contarDiasTrabajadosFrente(empresaId, empleado.getId(), inicio, fin);
         }
@@ -1269,6 +1366,16 @@ public class NominaServiceImpl implements NominaService {
         return nomina.getDiasTrabajados() != null ? nomina.getDiasTrabajados() : 30;
     }
 
+    /**
+     * Configuración de la empresa con el salario mínimo y el auxilio de transporte
+     * del año del período (V239): reliquidar un período viejo usa los valores de su año.
+     */
+    private NominaConfigEntity configDelPeriodo(Integer empresaId, PeriodoNominaEntity periodo) {
+        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+                .orElseGet(() -> configuracionPorDefecto(empresaId));
+        return parametrosLegales.delAgno(config, periodo != null ? periodo.getFechaFin() : LocalDate.now());
+    }
+
     private NominaConfigEntity configuracionPorDefecto(Integer empresaId) {
         NominaConfigEntity config = new NominaConfigEntity();
         EmpresaEntity empresa = new EmpresaEntity();
@@ -1331,6 +1438,8 @@ public class NominaServiceImpl implements NominaService {
             ndto.setSubtipo(n.getSubtipo());
             ndto.setFechaInicio(n.getFechaInicio());
             ndto.setFechaFin(n.getFechaFin());
+            ndto.setEstado(n.getEstado());
+            ndto.setRequiereAprobacion(n.getRequiereAprobacion());
             return ndto;
         }).collect(Collectors.toList()));
         return dto;

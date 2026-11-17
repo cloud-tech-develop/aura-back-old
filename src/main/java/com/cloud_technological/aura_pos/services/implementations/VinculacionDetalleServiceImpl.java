@@ -1,6 +1,7 @@
 package com.cloud_technological.aura_pos.services.implementations;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -98,7 +99,7 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
         mapper.actualizarConcepto(dto, e);
         e.setContratoId(vinculacionId);
         e.setCreatedAt(LocalDateTime.now());
-        conceptoRepository.save(e);
+        conceptoRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.conceptos(vinculacionId, empresaId);
     }
 
@@ -111,7 +112,7 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
         validarConcepto(c, dto, empresaId, id);
         mapper.actualizarConcepto(dto, e);
         e.setUpdatedAt(LocalDateTime.now());
-        conceptoRepository.save(e);
+        conceptoRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.conceptos(vinculacionId, empresaId);
     }
 
@@ -121,7 +122,28 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
         editable(vinculacionId, empresaId);
         VinculacionConceptoEntity e = concepto(vinculacionId, id);
         e.setDeletedAt(LocalDateTime.now());
-        conceptoRepository.save(e);
+        conceptoRepository.saveAndFlush(e);  // la respuesta se relee con SQL
+        return queryRepository.conceptos(vinculacionId, empresaId);
+    }
+
+    @Override
+    @Transactional
+    public List<VinculacionConceptoDto> excluirConcepto(Long vinculacionId, String conceptoCodigo, Integer empresaId) {
+        ContratoLaboralEntity c = editable(vinculacionId, empresaId);
+        if (!queryRepository.conceptoExiste(conceptoCodigo, empresaId))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El concepto " + conceptoCodigo + " no existe.");
+        LocalDate desde = LocalDate.now().isBefore(c.getFechaInicio()) ? c.getFechaInicio() : LocalDate.now();
+        if (queryRepository.conceptoSeCruza(vinculacionId, conceptoCodigo, desde, null, null))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "La vinculación ya tiene ese concepto desde esa fecha; quítelo o cierre su vigencia primero.");
+        VinculacionConceptoEntity e = new VinculacionConceptoEntity();
+        e.setContratoId(vinculacionId);
+        e.setConceptoCodigo(conceptoCodigo);
+        e.setFechaDesde(desde);
+        e.setExcluido(Boolean.TRUE);
+        e.setObservacion("Excluido de lo que hereda del cargo");
+        e.setCreatedAt(LocalDateTime.now());
+        conceptoRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.conceptos(vinculacionId, empresaId);
     }
 
@@ -168,7 +190,7 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
         e.setContratoId(vinculacionId);
         e.setRequiereAutorizacion(Boolean.TRUE.equals(dto.getRequiereAutorizacion()));
         e.setCreatedAt(LocalDateTime.now());
-        novedadRepository.save(e);
+        novedadRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.novedadesPermitidas(vinculacionId, empresaId);
     }
 
@@ -182,7 +204,7 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
         mapper.actualizarNovedad(dto, e);
         e.setRequiereAutorizacion(Boolean.TRUE.equals(dto.getRequiereAutorizacion()));
         e.setUpdatedAt(LocalDateTime.now());
-        novedadRepository.save(e);
+        novedadRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.novedadesPermitidas(vinculacionId, empresaId);
     }
 
@@ -191,6 +213,29 @@ public class VinculacionDetalleServiceImpl implements VinculacionDetalleService 
     public List<NovedadPermitidaDto> eliminarNovedad(Long vinculacionId, Long id, Integer empresaId) {
         editable(vinculacionId, empresaId);
         novedadRepository.delete(novedad(vinculacionId, id));
+        novedadRepository.flush();  // la respuesta se relee con SQL
+        return queryRepository.novedadesPermitidas(vinculacionId, empresaId);
+    }
+
+    @Override
+    @Transactional
+    public List<NovedadPermitidaDto> excluirNovedad(Long vinculacionId, String conceptoCodigo, Integer empresaId) {
+        editable(vinculacionId, empresaId);
+        if (!queryRepository.conceptoExiste(conceptoCodigo, empresaId))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El concepto " + conceptoCodigo + " no existe.");
+        VinculacionNovedadPermitidaEntity e = queryRepository.novedadPropia(vinculacionId, conceptoCodigo)
+                .flatMap(novedadRepository::findById)
+                .orElseGet(VinculacionNovedadPermitidaEntity::new);
+        if (e.getId() == null) {
+            e.setContratoId(vinculacionId);
+            e.setConceptoCodigo(conceptoCodigo);
+            e.setRequiereAutorizacion(Boolean.FALSE);
+            e.setCreatedAt(LocalDateTime.now());
+        } else {
+            e.setUpdatedAt(LocalDateTime.now());
+        }
+        e.setExcluido(Boolean.TRUE);
+        novedadRepository.saveAndFlush(e);  // la respuesta se relee con SQL
         return queryRepository.novedadesPermitidas(vinculacionId, empresaId);
     }
 

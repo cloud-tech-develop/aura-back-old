@@ -69,6 +69,18 @@ public class NominaDocumentoNovedadServiceImpl implements NominaDocumentoNovedad
         return queryRepository.novedades(documentoId);
     }
 
+    @Override
+    @Transactional
+    public List<NovedadDocumentoDto> autorizar(Long documentoId, Long novedadId, Integer empresaId, Long usuarioId) {
+        buscarPrenominaPreliminar(documentoId, empresaId);
+        Long nominaId = queryRepository.filaDeLaNovedad(documentoId, novedadId);
+        if (nominaId == null)
+            throw new GlobalException(HttpStatus.NOT_FOUND, "La novedad no es de esta prenómina.");
+        nominaService.autorizarNovedad(nominaId, novedadId, empresaId, usuarioId);
+        quedaPendiente(documentoId, nominaId);
+        return queryRepository.novedades(documentoId);
+    }
+
     // ── Apoyo ────────────────────────────────────────────────────────────────
 
     /**

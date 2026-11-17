@@ -21,4 +21,7 @@ public interface NominaDocumentoNovedadService {
 
     /** Quita una novedad de un empleado de la prenómina preliminar. */
     List<NovedadDocumentoDto> eliminar(Long documentoId, Long novedadId, Integer empresaId);
+
+    /** Autoriza una novedad que pasa un tope del cargo o de la vinculación. */
+    List<NovedadDocumentoDto> autorizar(Long documentoId, Long novedadId, Integer empresaId, Long usuarioId);
 }

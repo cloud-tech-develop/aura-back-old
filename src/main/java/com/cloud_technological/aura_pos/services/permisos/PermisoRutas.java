@@ -45,7 +45,9 @@ public final class PermisoRutas {
             "/api/tarifas-retencion", "/api/empresa", "/api/comisiones/tecnicos", "/api/comisiones/vendedores",
             // Catálogos de nómina: los usan la vinculación y otros formularios de RR. HH.
             "/api/nomina/catalogos", "/api/nomina/cargos", "/api/nomina/tipos-vinculacion",
-            "/api/nomina/tipos-comprobante");
+            "/api/nomina/tipos-comprobante",
+            // Conceptos de nómina: el buscador los ofrece en Cargos y Vinculaciones.
+            "/api/concepto");
 
     /** Prefijo → claves aceptadas (basta una). */
     static final Map<String, List<String>> CLAVES = construir();

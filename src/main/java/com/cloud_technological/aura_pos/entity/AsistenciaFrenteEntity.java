@@ -45,6 +45,10 @@ public class AsistenciaFrenteEntity {
     @Column(name = "observacion_lider", length = 500)
     private String observacionLider;
 
+    /** DIGITACION (día por día) | EXCEL (plantilla del mes, V242). */
+    @Column(name = "origen", length = 20, nullable = false)
+    private String origen = "DIGITACION";
+
     @Column(name = "observacion_admin", length = 500)
     private String observacionAdmin;
 

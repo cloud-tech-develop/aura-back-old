@@ -40,10 +40,10 @@ public class NominaConfigEntity {
     // SIN_ASISTENCIA | CON_ASISTENCIA_OBLIGATORIA | MIXTA
 
     @Column(name = "smmlv", nullable = false, precision = 15, scale = 2)
-    private BigDecimal smmlv = new BigDecimal("1423500");
+    private BigDecimal smmlv = new BigDecimal("1750905");
 
     @Column(name = "auxilio_transporte", nullable = false, precision = 15, scale = 2)
-    private BigDecimal auxilioTransporte = new BigDecimal("200000");
+    private BigDecimal auxilioTransporte = new BigDecimal("249095");
 
     @Column(name = "pct_salud_empleado", nullable = false, precision = 5, scale = 2)
     private BigDecimal pctSaludEmpleado = new BigDecimal("4.00");
@@ -107,6 +107,22 @@ public class NominaConfigEntity {
     /** F3 — ¿se pueden tomar vacaciones sin días causados suficientes? */
     @Column(name = "permite_vacaciones_anticipadas", nullable = false)
     private Boolean permiteVacacionesAnticipadas = Boolean.FALSE;
+
+    /** V243 — FALSE: trabaja por proyecto sin frentes (todo va al frente General). */
+    @Column(name = "asistencia_usa_frentes", nullable = false)
+    private Boolean asistenciaUsaFrentes = Boolean.TRUE;
+
+    /** V243 — FALSE: un día se envía a revisión sin soporte (PDF o Excel). */
+    @Column(name = "asistencia_exige_soporte", nullable = false)
+    private Boolean asistenciaExigeSoporte = Boolean.TRUE;
+
+    /** V243 — cómo se registran las horas: MANUAL | EXCEL | AMBOS. */
+    @Column(name = "asistencia_registro", length = 12, nullable = false)
+    private String asistenciaRegistro = "AMBOS";
+
+    /** V245 — FALSE: sin revisión; la prenómina toma los días registrados al liquidar. */
+    @Column(name = "asistencia_requiere_aprobacion", nullable = false)
+    private Boolean asistenciaRequiereAprobacion = Boolean.TRUE;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

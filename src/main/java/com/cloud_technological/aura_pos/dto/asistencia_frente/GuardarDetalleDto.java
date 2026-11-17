@@ -13,6 +13,8 @@ public class GuardarDetalleDto {
     /** Formato "HH:mm". */
     private String horaEntrada;
     private String horaSalida;
+    /** Descanso real del día en minutos (opcional; vacío = el del turno del frente). */
+    private Integer minutosDescanso;
     private String estadoAsistencia;
     private String observacionLider;
 }

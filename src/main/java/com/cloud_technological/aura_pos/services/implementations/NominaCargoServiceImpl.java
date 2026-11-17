@@ -79,7 +79,8 @@ public class NominaCargoServiceImpl implements NominaCargoService {
         mapper.updateEntityFromDto(dto, entity);
         completar(entity, dto, codigo);
         entity.setUpdatedAt(LocalDateTime.now());
-        jpaRepository.save(entity);
+        // saveAndFlush: obtener() relee con SQL y sin flush devolvería el cargo de antes.
+        jpaRepository.saveAndFlush(entity);
         return obtener(id, empresaId);
     }
 

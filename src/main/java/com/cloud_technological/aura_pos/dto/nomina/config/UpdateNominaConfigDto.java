@@ -23,4 +23,9 @@ public class UpdateNominaConfigDto {
     private BigDecimal aprendizPctLectiva;
     private BigDecimal aprendizPctPractica;
     private Boolean permiteVacacionesAnticipadas;
+    private Boolean asistenciaUsaFrentes;
+    private Boolean asistenciaExigeSoporte;
+    /** MANUAL | EXCEL | AMBOS. */
+    private String asistenciaRegistro;
+    private Boolean asistenciaRequiereAprobacion;
 }

@@ -52,6 +52,13 @@ public class VinculacionConceptoEntity {
     @Column(length = 300)
     private String observacion;
 
+    /**
+     * Excepción a la plantilla del cargo (V232): TRUE quita para este empleado el
+     * concepto que hereda del cargo.
+     */
+    @Column(nullable = false)
+    private Boolean excluido = Boolean.FALSE;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

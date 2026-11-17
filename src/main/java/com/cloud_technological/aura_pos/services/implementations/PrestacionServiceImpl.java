@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.services.nomina.ParametrosLegales;
 import com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto;
 import com.cloud_technological.aura_pos.dto.nomina.prestacion.CrearPrestacionDto;
 import com.cloud_technological.aura_pos.dto.nomina.prestacion.PrestacionDto;
@@ -39,6 +40,7 @@ public class PrestacionServiceImpl implements PrestacionService {
     @Autowired private EmpleadoJPARepository empleadoRepo;
     @Autowired private CuentaBancariaJPARepository cuentaBancariaRepo;
     @Autowired private NominaConfigJPARepository configRepo;
+    @Autowired private ParametrosLegales parametrosLegales;
     @Autowired private com.cloud_technological.aura_pos.repositories.nomina.ContratoLaboralJPARepository contratoRepo;
     @Autowired private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Autowired private com.cloud_technological.aura_pos.services.nomina.VacacionesService vacacionesService;
@@ -385,7 +387,7 @@ public class PrestacionServiceImpl implements PrestacionService {
 
         BigDecimal diasIndem = BigDecimal.ZERO;
         if ("INDEFINIDO".equals(contrato)) {
-            NominaConfigEntity config = configRepo.findByEmpresaId(empresaId).orElse(null);
+            NominaConfigEntity config = parametrosLegales.delAgno(configRepo.findByEmpresaId(empresaId).orElse(null), fechaRetiro);
             BigDecimal smmlv = config != null && config.getSmmlv() != null ? config.getSmmlv() : BigDecimal.ZERO;
             boolean menorA10 = smmlv.signum() > 0 && salario.compareTo(smmlv.multiply(DIEZ)) < 0;
             BigDecimal diasPrimerAnio = menorA10 ? new BigDecimal("30") : new BigDecimal("20");
@@ -446,7 +448,7 @@ public class PrestacionServiceImpl implements PrestacionService {
         // corte, no del campo caché `empleado.salarioBase` (que puede estar
         // desactualizado tras un aumento y liquidar sobre un valor equivocado).
         BigDecimal salario = salarioBaseVigente(empleado, contrato, fechaHasta);
-        BigDecimal auxilio = auxilioTransporte(empresaId, salario);
+        BigDecimal auxilio = auxilioTransporte(empresaId, salario, fechaHasta);
 
         // B-01 — la base prestacional incluye el promedio del salario variable
         // (comisiones, horas extra, recargos). Sin esto, un empleado con pago
@@ -630,8 +632,8 @@ public class PrestacionServiceImpl implements PrestacionService {
     }
 
     /** Auxilio de transporte mensual si el modo es COMPLETO y el salario ≤ 2 SMMLV. */
-    private BigDecimal auxilioTransporte(Integer empresaId, BigDecimal salario) {
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId).orElse(null);
+    private BigDecimal auxilioTransporte(Integer empresaId, BigDecimal salario, LocalDate fecha) {
+        NominaConfigEntity config = parametrosLegales.delAgno(configRepo.findByEmpresaId(empresaId).orElse(null), fecha);
         if (config == null || !"COMPLETO".equals(config.getModoNomina())) return BigDecimal.ZERO;
         BigDecimal smmlv = config.getSmmlv() != null ? config.getSmmlv() : BigDecimal.ZERO;
         BigDecimal dosSmmlv = smmlv.multiply(DOS);

@@ -107,7 +107,7 @@ public class NominaDocumentoLiquidacionQueryRepository {
      */
     public List<DetalleLiquidacionDto> detalle(Long documentoId, Long nominaId) {
         return jdbc.query("""
-                SELECT d.id, c.codigo, c.nombre, c.clase, d.cantidad, d.base, d.porcentaje, d.valor,
+                SELECT d.id, c.codigo, c.numero, c.nombre, c.clase, d.cantidad, d.base, d.porcentaje, d.valor,
                        d.traza::TEXT AS traza
                   FROM nomina_detalle d
                   JOIN nomina n ON n.id = d.nomina_id
@@ -156,6 +156,7 @@ public class NominaDocumentoLiquidacionQueryRepository {
         DetalleLiquidacionDto dto = new DetalleLiquidacionDto();
         dto.setId(rs.getLong("id"));
         dto.setConceptoCodigo(rs.getString("codigo"));
+        dto.setConceptoNumero(rs.getObject("numero", Integer.class));
         dto.setConceptoNombre(rs.getString("nombre"));
         dto.setClase(rs.getString("clase"));
         dto.setCantidad(rs.getBigDecimal("cantidad"));

@@ -25,4 +25,12 @@ public interface ProyectoFrenteService {
     void asignarTrabajador(Long frenteId, AsignarTrabajadorDto dto, Integer empresaId, Long usuarioId);
 
     void retirarTrabajador(Long frenteId, Long empleadoId, Integer empresaId, Long usuarioId);
+
+    /**
+     * La empresa deja de usar frentes (Configuración de nómina, V243): cada proyecto
+     * queda con su frente General y en él sus trabajadores y su turno.
+     *
+     * @return cuántos trabajadores se pasaron al General
+     */
+    int consolidarEnGeneral(Integer empresaId, Long usuarioId);
 }

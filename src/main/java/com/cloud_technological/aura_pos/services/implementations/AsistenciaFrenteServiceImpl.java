@@ -5,6 +5,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +25,12 @@ import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaAlertaDt
 import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaDetalleDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaFrenteDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.GuardarBorradorDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.CalendarioAsistenciaDtos.CalendarioMesDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.CalendarioAsistenciaDtos.DiaAsistenciaDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.CalendarioAsistenciaDtos.TrabajadorMesDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.GuardarDetalleDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.ErrorDiaDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.ResultadoRangoDto;
 import com.cloud_technological.aura_pos.dto.laboral.JornadaConfigDto;
 import com.cloud_technological.aura_pos.dto.proyecto.FrenteTrabajadorDto;
 import com.cloud_technological.aura_pos.entity.AsistenciaAlertaEntity;
@@ -39,6 +47,7 @@ import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoFrenteJPAR
 import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoFrenteQueryRepository;
 import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoFrenteTrabajadorJPARepository;
 import com.cloud_technological.aura_pos.services.AsistenciaFrenteService;
+import com.cloud_technological.aura_pos.services.asistencia.ModoAsistenciaObra;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 @Service
@@ -57,6 +66,7 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
     @Autowired private com.cloud_technological.aura_pos.services.implementations.R2StorageService r2Storage;
     @Autowired private ClasificadorHorasService clasificador;
     @Autowired private LaboralConfigService jornadaService;
+    @Autowired private ModoAsistenciaObra modoAsistencia;
 
     @Override
     public AsistenciaFrenteDto obtener(Long frenteId, LocalDate fecha, Integer empresaId) {
@@ -101,6 +111,21 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
     @Transactional
     public AsistenciaFrenteDto guardarBorrador(Long frenteId, GuardarBorradorDto dto,
             Integer empresaId, Long usuarioId) {
+        // V243 — si la empresa registra las horas solo con el Excel del mes, no se digita a mano.
+        modoAsistencia.exigirManual(empresaId);
+        return guardar(frenteId, dto, empresaId, usuarioId);
+    }
+
+    @Override
+    @Transactional
+    public AsistenciaFrenteDto guardarBorradorImportado(Long frenteId, GuardarBorradorDto dto,
+            Integer empresaId, Long usuarioId) {
+        return guardar(frenteId, dto, empresaId, usuarioId);
+    }
+
+    /** Guarda el borrador del día: clasifica las horas de cada trabajador y deja sus alertas. */
+    private AsistenciaFrenteDto guardar(Long frenteId, GuardarBorradorDto dto,
+            Integer empresaId, Long usuarioId) {
         ProyectoFrenteEntity frente = getFrente(frenteId, empresaId);
         LocalDate fecha = dto.getFecha();
 
@@ -137,8 +162,11 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
             LocalTime salida = parseHora(d.getHoraSalida());
 
             // ── Motor de clasificación de horas (G2) ──
+            if (d.getMinutosDescanso() != null && (d.getMinutosDescanso() < 0 || d.getMinutosDescanso() > 720))
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "El descanso debe estar entre 0 y 720 minutos.");
             ClasificadorHorasService.Resultado r = clasificador.clasificar(
-                    empresaId, frenteId, fecha, entrada, salida, estadoAsis);
+                    empresaId, frenteId, fecha, entrada, salida, estadoAsis, d.getMinutosDescanso());
 
             AsistenciaFrenteDetalleEntity det = new AsistenciaFrenteDetalleEntity();
             det.setEmpresaId(empresaId);
@@ -149,6 +177,7 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
             det.setFecha(fecha);
             det.setHoraEntrada(entrada);
             det.setHoraSalida(salida);
+            det.setMinutosDescanso(d.getMinutosDescanso());
             det.setHorasTrabajadas(r.total);
             det.setHorasOrdinarias(r.ordDiurna.add(r.ordNocturna).add(r.domFest));
             det.setHorasOrdinariasDiurnas(r.ordDiurna);
@@ -196,7 +225,7 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
         for (GuardarDetalleDto d : detalles) {
             BigDecimal extrasSemana = queryRepo.sumExtrasSemana(empresaId, d.getEmpleadoId(), lunes, domingo);
             if (extrasSemana.compareTo(maxSemana) > 0) {
-                alertas.add(alerta(saved, frente, d.getEmpleadoId(), "HORAS_EXTRA_SUPERA_LIMITE_SEMANA", "CRITICA",
+                alertas.add(alerta(saved, frente, d.getEmpleadoId(), "HORAS_EXTRA_SUPERA_LIMITE_SEMANA", "ADVERTENCIA",
                         "Las horas extra de la semana (" + extrasSemana + ") superan el máximo (" + maxSemana + ")"));
             }
         }
@@ -279,9 +308,13 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
                     "Solo se puede enviar a revisión una asistencia en borrador o en corrección");
         }
-        if (af.getSoportePdfId() == null) {
+        // V243 — el soporte es obligatorio solo si la empresa lo exige. Un día importado
+        // de la plantilla de Excel ya tiene su soporte: el Excel (aunque no se haya podido
+        // guardar el archivo), así que no se le pide PDF.
+        if (af.getSoportePdfId() == null && modoAsistencia.de(empresaId).exigeSoporte()
+                && !"EXCEL".equals(af.getOrigen())) {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
-                    "No puede enviar la asistencia a revisión porque aún no se ha cargado el PDF soporte");
+                    "No puede enviar la asistencia a revisión porque aún no se ha cargado el soporte (PDF o el Excel importado)");
         }
         if (detalleRepo.findByAsistenciaFrenteIdAndDeletedAtIsNull(asistenciaId).isEmpty()) {
             throw new GlobalException(HttpStatus.BAD_REQUEST,
@@ -296,6 +329,81 @@ public class AsistenciaFrenteServiceImpl implements AsistenciaFrenteService {
         af.setEnviadoRevisionAt(LocalDateTime.now());
         af.setUpdatedBy(usuarioId);
         asistFrenteRepo.save(af);
+    }
+
+    @Override
+    @Transactional
+    public ResultadoRangoDto enviarRevisionRango(Long frenteId, LocalDate desde, LocalDate hasta,
+            Integer empresaId, Long usuarioId) {
+        validarRango(desde, hasta);
+        getFrente(frenteId, empresaId);
+        ResultadoRangoDto r = new ResultadoRangoDto();
+        for (AsistenciaFrenteEntity af : queryRepo.asistenciasEnRango(frenteId, desde, hasta, empresaId,
+                List.of("BORRADOR", "EN_CORRECCION"))) {
+            try {
+                enviarRevision(af.getId(), empresaId, usuarioId);
+                r.setProcesados(r.getProcesados() + 1);
+            } catch (GlobalException e) {
+                r.getErrores().add(new ErrorDiaDto(af.getFecha(), e.getMessage()));
+            }
+        }
+        return r;
+    }
+
+    @Override
+    public CalendarioMesDto calendario(Long frenteId, YearMonth mes, Integer empresaId) {
+        getFrente(frenteId, empresaId);
+        LocalDate desde = mes.atDay(1);
+        LocalDate hasta = mes.atEndOfMonth();
+        CalendarioMesDto cal = new CalendarioMesDto();
+        cal.setAnio(mes.getYear());
+        cal.setMes(mes.getMonthValue());
+        cal.setFestivos(queryRepo.festivos(empresaId, desde, hasta));
+
+        Map<Long, TrabajadorMesDto> porEmpleado = new LinkedHashMap<>();
+        for (FrenteTrabajadorDto t : frenteQueryRepo.listarTrabajadores(frenteId, empresaId)) {
+            if (!"ACTIVO".equals(t.getEstado()) || Boolean.FALSE.equals(t.getEmpleadoActivo())) continue;
+            porEmpleado.computeIfAbsent(t.getEmpleadoId(), id -> trabajadorMes(id, t.getEmpleadoNombre(), t.getDocumento()));
+        }
+        for (AsistenciaFrenteQueryRepository.DiaRegistrado r : queryRepo.diasDelFrente(frenteId, empresaId, desde, hasta)) {
+            TrabajadorMesDto t = porEmpleado.computeIfAbsent(r.empleadoId(),
+                    id -> trabajadorMes(id, r.nombre(), r.documento()));
+            DiaAsistenciaDto d = new DiaAsistenciaDto();
+            d.setFecha(r.fecha());
+            d.setEstadoAsistencia(r.estadoAsistencia());
+            d.setEstadoDia(r.estadoDia());
+            d.setHoraEntrada(r.horaEntrada());
+            d.setHoraSalida(r.horaSalida());
+            d.setHoras(r.horas());
+            d.setHorasExtra(r.horasExtra());
+            d.setHorasRecargo(r.horasRecargo());
+            t.getDias().add(d);
+            if (List.of("ASISTIO", "LLEGO_TARDE", "SALIO_TEMPRANO").contains(r.estadoAsistencia()))
+                t.setDiasAsistidos(t.getDiasAsistidos() + 1);
+            if ("NO_ASISTIO".equals(r.estadoAsistencia())) t.setFaltas(t.getFaltas() + 1);
+            t.setHoras(t.getHoras().add(r.horas()));
+            t.setHorasExtra(t.getHorasExtra().add(r.horasExtra()));
+        }
+        cal.getTrabajadores().addAll(porEmpleado.values());
+        return cal;
+    }
+
+    private static TrabajadorMesDto trabajadorMes(Long empleadoId, String nombre, String documento) {
+        TrabajadorMesDto t = new TrabajadorMesDto();
+        t.setEmpleadoId(empleadoId);
+        t.setNombre(nombre);
+        t.setDocumento(documento);
+        return t;
+    }
+
+    /** Rango válido y de máximo 62 días (dos meses). */
+    static void validarRango(LocalDate desde, LocalDate hasta) {
+        if (desde == null || hasta == null)
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Indique desde y hasta.");
+        if (hasta.isBefore(desde))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "La fecha final no puede ser anterior a la inicial.");
+        if (desde.plusDays(62).isBefore(hasta))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El rango no puede pasar de 62 días.");
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────

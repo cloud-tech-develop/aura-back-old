@@ -14,6 +14,8 @@ public class AsistenciaDetalleDto {
     /** Formato "HH:mm". */
     private String horaEntrada;
     private String horaSalida;
+    /** Descanso del día en minutos; null = el del turno. */
+    private Integer minutosDescanso;
     private BigDecimal horasTrabajadas;
     private BigDecimal horasExtraDiurnas;
     private BigDecimal horasExtraNocturnas;

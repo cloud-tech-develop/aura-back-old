@@ -61,6 +61,14 @@ public class NominaCargoEntity {
     @Column(columnDefinition = "text")
     private String funciones;
 
+    /** Formación, experiencia y competencias que pide el cargo (V231). */
+    @Column(columnDefinition = "text")
+    private String perfil;
+
+    /** Cómo se evalúa el desempeño del cargo (V231). */
+    @Column(columnDefinition = "text")
+    private String desempeno;
+
     @Column(nullable = false)
     private Boolean activo = Boolean.TRUE;
 

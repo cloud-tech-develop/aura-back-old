@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.services.nomina.ParametrosLegales;
 import com.cloud_technological.aura_pos.entity.ContratoAfiliacionEntity;
 import com.cloud_technological.aura_pos.entity.ContratoLaboralEntity;
 import com.cloud_technological.aura_pos.entity.EmpresaEntity;
@@ -66,6 +67,7 @@ public class GeneradorPila {
     private final ContratoLaboralJPARepository contratoRepo;
     private final NominaJPARepository nominaRepo;
     private final NominaConfigJPARepository configRepo;
+    private final ParametrosLegales parametrosLegales;
     private final EmpresaJPARepository empresaRepo;
     private final AfiliacionService afiliacionService;
     private final ResolverNovedadesPila resolverNovedades;
@@ -77,6 +79,7 @@ public class GeneradorPila {
                          ContratoLaboralJPARepository contratoRepo,
                          NominaJPARepository nominaRepo,
                          NominaConfigJPARepository configRepo,
+                         ParametrosLegales parametrosLegales,
                          EmpresaJPARepository empresaRepo,
                          AfiliacionService afiliacionService,
                          ResolverNovedadesPila resolverNovedades,
@@ -87,6 +90,7 @@ public class GeneradorPila {
         this.contratoRepo = contratoRepo;
         this.nominaRepo = nominaRepo;
         this.configRepo = configRepo;
+        this.parametrosLegales = parametrosLegales;
         this.empresaRepo = empresaRepo;
         this.afiliacionService = afiliacionService;
         this.resolverNovedades = resolverNovedades;
@@ -107,9 +111,9 @@ public class GeneradorPila {
 
         EmpresaEntity empresa = empresaRepo.findById(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Empresa no encontrada"));
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId)
+        NominaConfigEntity config = parametrosLegales.delAgno(configRepo.findByEmpresaId(empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.CONFLICT,
-                        "La empresa no tiene configuración de nómina"));
+                        "La empresa no tiene configuración de nómina")), hasta);
 
         List<ContratoLaboralEntity> contratos = contratoRepo.findVigentesEnPeriodo(empresaId, desde, hasta);
         if (contratos.isEmpty()) {

@@ -43,6 +43,10 @@ public class AsistenciaFrenteDetalleEntity {
     @Column(name = "hora_salida")
     private LocalTime horaSalida;
 
+    /** Descanso real del día en minutos; null = el del turno del frente (V242). */
+    @Column(name = "minutos_descanso")
+    private Integer minutosDescanso;
+
     @Column(name = "horas_trabajadas", precision = 6, scale = 2)
     private BigDecimal horasTrabajadas = BigDecimal.ZERO;
 

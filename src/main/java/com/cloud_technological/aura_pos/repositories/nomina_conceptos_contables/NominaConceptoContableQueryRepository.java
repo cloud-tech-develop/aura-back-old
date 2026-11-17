@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 public class NominaConceptoContableQueryRepository {
 
     /** Concepto de nómina vigente (código, nombre y clase). */
-    public record Concepto(String codigo, String nombre, String clase) {
+    public record Concepto(String codigo, String nombre, String clase, Integer numero) {
     }
 
     /** Cambio de la empresa sobre un concepto (lo nulo usa el valor por defecto). */
@@ -34,16 +34,18 @@ public class NominaConceptoContableQueryRepository {
      */
     public List<Concepto> conceptos(Integer empresaId) {
         return jdbc.query("""
-                SELECT codigo, nombre, clase FROM (
-                    SELECT DISTINCT ON (codigo) codigo, nombre, clase, orden
+                SELECT codigo, nombre, clase, numero FROM (
+                    SELECT DISTINCT ON (codigo) codigo, nombre, clase, orden, numero
                       FROM concepto_nomina
                      WHERE (empresa_id IS NULL OR empresa_id = :empresaId) AND activo
+                       AND clase <> 'NO_IMPUTABLE'
                      ORDER BY codigo, empresa_id NULLS LAST, vigente_desde DESC
                 ) c
                  ORDER BY CASE clase WHEN 'DEVENGADO' THEN 1 WHEN 'DEDUCCION' THEN 2
-                                     WHEN 'APORTE_EMPLEADOR' THEN 3 ELSE 4 END, orden, codigo
+                                     WHEN 'APORTE_EMPLEADOR' THEN 3 ELSE 4 END, numero, codigo
                 """, new MapSqlParameterSource("empresaId", empresaId),
-                (rs, i) -> new Concepto(rs.getString("codigo"), rs.getString("nombre"), rs.getString("clase")));
+                (rs, i) -> new Concepto(rs.getString("codigo"), rs.getString("nombre"), rs.getString("clase"),
+                        rs.getObject("numero", Integer.class)));
     }
 
     /** Cambios de la empresa, por código de concepto. */

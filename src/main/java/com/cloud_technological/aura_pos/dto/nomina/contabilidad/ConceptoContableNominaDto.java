@@ -11,6 +11,8 @@ import lombok.Setter;
 @Setter
 public class ConceptoContableNominaDto {
     private String codigo;
+    /** Código visible del concepto (V230). */
+    private Integer numero;
     private String nombre;
     /** DEVENGADO | DEDUCCION | APORTE_EMPLEADOR | PROVISION. */
     private String clase;
