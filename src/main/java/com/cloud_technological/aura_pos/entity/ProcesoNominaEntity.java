@@ -46,7 +46,7 @@ public class ProcesoNominaEntity {
     @Column(name = "referencia_id")
     private Long referenciaId;
 
-    @Column(name = "estado", length = 20, nullable = false)
+    @Column(name = "estado", length = 30, nullable = false)
     private String estado = Estado.PENDIENTE;
 
     @Column(name = "progreso", nullable = false)

@@ -142,6 +142,29 @@ public class NominaCargoPlantillaQueryRepository {
         return n != null && n > 0;
     }
 
+    /**
+     * Números de los conceptos base que ve la empresa: sueldo, auxilio de transporte,
+     * horas extra y recargos, salud, pensión, fondo de solidaridad, retención,
+     * aportes del empleador y provisiones (por tipo de concepto, V230).
+     *
+     * @param conPropiosAutomaticos además los conceptos propios de la empresa que hoy
+     *        se liquidan solos (valor fijo, porcentaje o fórmula): al estrenar la
+     *        plantilla, el cargo sigue liquidando lo mismo que liquidaba sin ella
+     */
+    public List<Integer> numerosConceptosBase(Integer empresaId, boolean conPropiosAutomaticos) {
+        return jdbc.queryForList("""
+                SELECT DISTINCT numero FROM concepto_nomina
+                 WHERE activo = TRUE
+                   AND (empresa_id = :empresaId OR empresa_id IS NULL)
+                   AND (tipo_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 40, 41, 42, 43, 60, 61, 62, 63, 64, 65, 70, 71, 72, 73)
+                        OR (:propios AND empresa_id = :empresaId AND NOT de_ley
+                            AND base NOT IN ('NOVEDAD', 'MANUAL')
+                            AND clase IN ('DEVENGADO', 'DEDUCCION')))
+                 ORDER BY numero
+                """, new MapSqlParameterSource("empresaId", empresaId).addValue("propios", conPropiosAutomaticos),
+                Integer.class);
+    }
+
     /** Números que ya están en los conceptos fijos del cargo. */
     public List<Integer> numerosConceptos(Long cargoId) {
         return jdbc.queryForList("SELECT concepto_numero FROM nomina_cargo_concepto WHERE cargo_id = :cargoId",

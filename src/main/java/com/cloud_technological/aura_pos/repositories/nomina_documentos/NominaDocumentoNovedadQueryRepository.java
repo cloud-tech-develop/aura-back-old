@@ -25,7 +25,7 @@ public class NominaDocumentoNovedadQueryRepository {
         return jdbc.query("""
                 SELECT v.id, v.nomina_id, CONCAT(e.nombres, ' ', e.apellidos) AS empleado_nombre, e.numero_documento,
                        v.tipo, v.subtipo, v.descripcion, v.fecha_inicio, v.fecha_fin, v.dias, v.cantidad,
-                       v.valor_unitario, v.valor_total, v.es_deduccion, v.origen
+                       v.valor_unitario, v.valor_total, v.es_deduccion, v.origen, v.estado, v.requiere_aprobacion
                   FROM nomina_novedad v
                   JOIN nomina n ON n.id = v.nomina_id
                   JOIN empleados e ON e.id = n.empleado_id
@@ -80,6 +80,8 @@ public class NominaDocumentoNovedadQueryRepository {
         dto.setValorTotal(rs.getBigDecimal("valor_total"));
         dto.setEsDeduccion(rs.getBoolean("es_deduccion"));
         dto.setOrigen(rs.getString("origen"));
+        dto.setEstado(rs.getString("estado"));
+        dto.setRequiereAprobacion(rs.getBoolean("requiere_aprobacion"));
         return dto;
     }
 }

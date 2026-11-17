@@ -60,6 +60,12 @@ public class NominaCargoPlantillaController {
                 service.agregarConceptos(cargoId, dto.getNumeros(), securityUtils.getEmpresaId()));
     }
 
+    /** Precarga los conceptos base de un empleado en la plantilla del cargo. */
+    @PostMapping("/conceptos/base")
+    public ResponseEntity<ApiResponse<List<CargoConceptoDto>>> cargarConceptosBase(@PathVariable Long cargoId) {
+        return ok("Conceptos base cargados", service.cargarConceptosBase(cargoId, securityUtils.getEmpresaId()));
+    }
+
     @PutMapping("/conceptos/{filaId}")
     public ResponseEntity<ApiResponse<List<CargoConceptoDto>>> actualizarConcepto(@PathVariable Long cargoId,
             @PathVariable Long filaId, @RequestBody GuardarCargoConceptoDto dto) {

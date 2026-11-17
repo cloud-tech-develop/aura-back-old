@@ -7,8 +7,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.ErrorDiaDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.ResultadoRangoDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaFrenteDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaFrenteTableDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.RevisarDetallesDto;
@@ -22,6 +25,7 @@ import com.cloud_technological.aura_pos.entity.AsistenciaFrenteDetalleEntity;
 import com.cloud_technological.aura_pos.entity.AsistenciaFrenteEntity;
 import com.cloud_technological.aura_pos.entity.AsistenciaNovedadNominaEntity;
 import com.cloud_technological.aura_pos.entity.EmpleadoEntity;
+import com.cloud_technological.aura_pos.entity.EmpresaEntity;
 import com.cloud_technological.aura_pos.entity.PeriodoNominaEntity;
 import com.cloud_technological.aura_pos.repositories.asistencia.AsistenciaNovedadNominaJPARepository;
 import com.cloud_technological.aura_pos.repositories.asistencia_frente.AsistenciaAlertaJPARepository;
@@ -156,6 +160,56 @@ public class AsistenciaRevisionServiceImpl implements AsistenciaRevisionService 
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int consolidarParaNomina(Integer empresaId, Long empleadoId, LocalDate desde, LocalDate hasta,
+            Long usuarioId) {
+        int n = 0;
+        for (AsistenciaFrenteEntity dia : queryRepo.asistenciasDelEmpleado(empresaId, empleadoId, desde, hasta,
+                List.of("BORRADOR", "EN_CORRECCION", "ENVIADO_REVISION", "APROBADO"))) {
+            AsistenciaFrenteEntity af = getAsistencia(dia.getId(), empresaId);
+            try {
+                if ("BORRADOR".equals(af.getEstado()) || "EN_CORRECCION".equals(af.getEstado())) {
+                    af.setEstado("ENVIADO_REVISION");
+                    af.setEnviadoRevisionAt(LocalDateTime.now());
+                    af.setUpdatedBy(usuarioId);
+                    asistFrenteRepo.save(af);
+                }
+                if ("ENVIADO_REVISION".equals(af.getEstado())) {
+                    RevisionAccionDto accion = new RevisionAccionDto();
+                    accion.setObservacion("Aprobado al liquidar la prenómina: la empresa no revisa la asistencia.");
+                    aprobar(af.getId(), accion, empresaId, usuarioId);
+                }
+                enviarNomina(af.getId(), empresaId, usuarioId);
+                n++;
+            } catch (GlobalException e) {
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Asistencia del " + af.getFecha() + ": " + e.getMessage());
+            }
+        }
+        return n;
+    }
+
+    @Override
+    @Transactional
+    public ResultadoRangoDto aprobarRango(Long frenteId, LocalDate desde, LocalDate hasta, boolean enviarNomina,
+            Integer empresaId, Long usuarioId) {
+        if (desde == null || hasta == null || hasta.isBefore(desde) || desde.plusDays(62).isBefore(hasta))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "Rango de fechas no válido (máximo 62 días).");
+        ResultadoRangoDto r = new ResultadoRangoDto();
+        List<String> estados = enviarNomina ? List.of("ENVIADO_REVISION", "APROBADO") : List.of("ENVIADO_REVISION");
+        for (AsistenciaFrenteEntity dia : queryRepo.asistenciasEnRango(frenteId, desde, hasta, empresaId, estados)) {
+            try {
+                if ("ENVIADO_REVISION".equals(dia.getEstado())) aprobar(dia.getId(), null, empresaId, usuarioId);
+                if (enviarNomina) enviarNomina(dia.getId(), empresaId, usuarioId);
+                r.setProcesados(r.getProcesados() + 1);
+            } catch (GlobalException e) {
+                r.getErrores().add(new ErrorDiaDto(dia.getFecha(), e.getMessage()));
+            }
+        }
+        return r;
+    }
+
+    @Override
     @Transactional
     public int enviarNomina(Long asistenciaId, Integer empresaId, Long usuarioId) {
         AsistenciaFrenteEntity af = getAsistencia(asistenciaId, empresaId);
@@ -164,14 +218,16 @@ public class AsistenciaRevisionServiceImpl implements AsistenciaRevisionService 
                     "La asistencia debe estar APROBADA para enviarla a nómina");
         }
 
-        // Período de nómina que cubre la fecha de la asistencia.
+        // Período que cubre la fecha, si ya existe. Los períodos los crea la prenómina: si
+        // todavía no hay prenómina para esas fechas, las horas quedan esperando sin período
+        // y la liquidación las toma por la FECHA trabajada (findConsumiblesParaPeriodo).
         PeriodoNominaEntity periodo = periodoRepo.findByEmpresaIdOrderByIdDesc(empresaId).stream()
                 .filter(p -> !"ANULADO".equals(p.getEstado()))
                 .filter(p -> !af.getFecha().isBefore(p.getFechaInicio()) && !af.getFecha().isAfter(p.getFechaFin()))
                 .findFirst()
-                .orElseThrow(() -> new GlobalException(HttpStatus.BAD_REQUEST,
-                        "No hay un período de nómina que cubra la fecha " + af.getFecha()
-                                + ". Crea el período antes de enviar a nómina."));
+                .orElse(null);
+        EmpresaEntity empresa = new EmpresaEntity();
+        empresa.setId(empresaId);
 
         List<AsistenciaFrenteDetalleEntity> detalles = detalleRepo.findByAsistenciaFrenteIdAndDeletedAtIsNull(asistenciaId);
         int generadas = 0;
@@ -183,7 +239,7 @@ public class AsistenciaRevisionServiceImpl implements AsistenciaRevisionService 
 
             for (String[] nv : mapearNovedades(d)) {
                 AsistenciaNovedadNominaEntity n = new AsistenciaNovedadNominaEntity();
-                n.setEmpresa(periodo.getEmpresa());
+                n.setEmpresa(empresa);
                 n.setPeriodoNomina(periodo);
                 n.setEmpleado(empleado);
                 n.setTipoNovedad(nv[0]);

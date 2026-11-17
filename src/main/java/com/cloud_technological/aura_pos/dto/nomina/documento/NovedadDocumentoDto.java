@@ -26,4 +26,8 @@ public class NovedadDocumentoDto {
     private Boolean esDeduccion;
     /** MANUAL | ASISTENCIA… */
     private String origen;
+    /** APLICADA | PENDIENTE (por autorizar: pasa un tope) | APROBADA (autorizada). */
+    private String estado;
+    /** Pasó un tope y necesita autorización para liquidarse. */
+    private Boolean requiereAprobacion;
 }

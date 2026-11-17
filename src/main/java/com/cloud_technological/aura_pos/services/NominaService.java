@@ -34,6 +34,9 @@ public interface NominaService {
     void liquidarFilaDocumento(Long nominaId, LocalDate fechaLiquidacion, Integer empresaId);
     NominaDto agregarNovedad(Long nominaId, AddNovedadDto dto, Integer empresaId);
     NominaDto eliminarNovedad(Long nominaId, Long novedadId, Integer empresaId);
+
+    /** Autoriza una novedad que pasa un tope del cargo o de la vinculación y recalcula. */
+    NominaDto autorizarNovedad(Long nominaId, Long novedadId, Integer empresaId, Long usuarioId);
     NominaDto aprobar(Long id, Integer empresaId);
     NominaDto pagar(Long id, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId);
     void pagarPeriodo(Long periodoId, com.cloud_technological.aura_pos.dto.nomina.nomina.PagoNominaDto dto, Integer empresaId);

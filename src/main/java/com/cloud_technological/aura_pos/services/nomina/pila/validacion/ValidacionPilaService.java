@@ -2,6 +2,7 @@ package com.cloud_technological.aura_pos.services.nomina.pila.validacion;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -11,6 +12,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.services.nomina.ParametrosLegales;
 import com.cloud_technological.aura_pos.dto.nomina.pila.ValidacionPilaDtos.CotizanteValidacionDto;
 import com.cloud_technological.aura_pos.dto.nomina.pila.ValidacionPilaDtos.HallazgoDto;
 import com.cloud_technological.aura_pos.dto.nomina.pila.ValidacionPilaDtos.ReporteValidacionDto;
@@ -50,6 +52,7 @@ public class ValidacionPilaService {
     private final PilaPlanillaRepo planillaRepo;
     private final PilaCotizanteRepo cotizanteRepo;
     private final NominaConfigJPARepository configRepo;
+    private final ParametrosLegales parametrosLegales;
     private final PilaTipoCotizanteRepo tipoCotizanteRepo;
     private final PilaEntidadRepo entidadRepo;
     private final PilaCatalogoRepo catalogoRepo;
@@ -58,6 +61,7 @@ public class ValidacionPilaService {
                                  PilaPlanillaRepo planillaRepo,
                                  PilaCotizanteRepo cotizanteRepo,
                                  NominaConfigJPARepository configRepo,
+                                 ParametrosLegales parametrosLegales,
                                  PilaTipoCotizanteRepo tipoCotizanteRepo,
                                  PilaEntidadRepo entidadRepo,
                                  PilaCatalogoRepo catalogoRepo) {
@@ -65,6 +69,7 @@ public class ValidacionPilaService {
         this.planillaRepo = planillaRepo;
         this.cotizanteRepo = cotizanteRepo;
         this.configRepo = configRepo;
+        this.parametrosLegales = parametrosLegales;
         this.tipoCotizanteRepo = tipoCotizanteRepo;
         this.entidadRepo = entidadRepo;
         this.catalogoRepo = catalogoRepo;
@@ -90,7 +95,8 @@ public class ValidacionPilaService {
                 ? cotizanteRepo.findByPlanillaIdOrderBySecuencia(planilla.getId())
                 : List.of();
 
-        NominaConfigEntity config = configRepo.findByEmpresaId(empresaId).orElse(null);
+        NominaConfigEntity config = parametrosLegales.delAgno(configRepo.findByEmpresaId(empresaId).orElse(null),
+                YearMonth.parse(periodo).atEndOfMonth());
 
         // ── Contexto de la planilla (Paso 1) ────────────────────────────────
         List<HallazgoDto> hPlanilla = new ArrayList<>();

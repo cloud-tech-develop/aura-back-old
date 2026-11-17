@@ -51,6 +51,14 @@ public final class CorreoDtos {
         /** PDF que armó la pantalla; null en el cobro de cartera (lo arma el servidor). */
         @Valid
         private Adjunto adjunto;
+
+        /**
+         * Documentos adicionales que el usuario adjunta (contrato, RUT, orden de compra,
+         * fotos…). Se envían con el correo y no se guardan (V248).
+         */
+        @Valid
+        @Size(max = 5, message = "Máximo 5 documentos adicionales")
+        private List<Adjunto> adicionales = new ArrayList<>();
     }
 
     /** Un comprobante de nómina del lote: el correo del empleado lo pone el backend. */
@@ -118,6 +126,8 @@ public final class CorreoDtos {
         private String asunto;
         private String estado;
         private String error;
+        /** Documentos adicionales enviados, separados por "; " (V248). */
+        private String adjuntosAdicionales;
         private LocalDateTime createdAt;
         private LocalDateTime enviadoAt;
         private String usuarioNombre;

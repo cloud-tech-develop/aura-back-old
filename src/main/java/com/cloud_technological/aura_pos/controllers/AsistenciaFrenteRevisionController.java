@@ -20,6 +20,8 @@ import com.cloud_technological.aura_pos.dto.asistencia_frente.PreliquidacionFren
 import com.cloud_technological.aura_pos.dto.asistencia_frente.RevisarDetallesDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.RevisionAccionDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.RevisionFilterDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.RangoDiasDto;
+import com.cloud_technological.aura_pos.dto.asistencia_frente.MarcajeExcelDtos.ResultadoRangoDto;
 import com.cloud_technological.aura_pos.services.AsistenciaRevisionService;
 import com.cloud_technological.aura_pos.utils.ApiResponse;
 import com.cloud_technological.aura_pos.utils.SecurityUtils;
@@ -62,6 +64,16 @@ public class AsistenciaFrenteRevisionController {
             @PathVariable Long asistenciaId, @RequestBody RevisarDetallesDto dto) {
         service.revisarDetalles(asistenciaId, dto, securityUtils.getEmpresaId(), securityUtils.getUsuarioId());
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Revisión guardada", false, true));
+    }
+
+    /** Aprueba (y por defecto envía a nómina) todos los días en revisión del frente en el rango. */
+    @PostMapping("/frente/{frenteId}/aprobar-rango")
+    public ResponseEntity<ApiResponse<ResultadoRangoDto>> aprobarRango(@PathVariable Long frenteId,
+            @RequestBody RangoDiasDto dto) {
+        ResultadoRangoDto r = service.aprobarRango(frenteId, dto.getDesde(), dto.getHasta(),
+                !Boolean.FALSE.equals(dto.getEnviarNomina()), securityUtils.getEmpresaId(), securityUtils.getUsuarioId());
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(),
+                r.getProcesados() + " día(s) aprobado(s)", false, r));
     }
 
     @PostMapping("/{asistenciaId}/aprobar")

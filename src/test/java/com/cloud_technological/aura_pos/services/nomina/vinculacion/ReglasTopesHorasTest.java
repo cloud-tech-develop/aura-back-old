@@ -56,6 +56,26 @@ class ReglasTopesHorasTest {
     }
 
     @Test
+    void pasarElTopeConTodasAutorizadasPasa() {
+        LocalDate lunes = LocalDate.of(2026, 10, 19);
+        List<NovedadHoras> autorizadas = List.of(
+                new NovedadHoras("HORA_EXTRA_DIURNA", new BigDecimal("5"), lunes, true),
+                new NovedadHoras("HORA_EXTRA_DIURNA", new BigDecimal("50"), null, true));
+        assertTrue(ReglasTopesHoras.validar(List.of(HED), autorizadas).isEmpty());
+    }
+
+    @Test
+    void unaSinAutorizarSigueBloqueandoYDiceComo() {
+        LocalDate lunes = LocalDate.of(2026, 10, 19);
+        List<NovedadHoras> mezcla = List.of(
+                new NovedadHoras("HORA_EXTRA_DIURNA", new BigDecimal("2"), lunes, true),
+                new NovedadHoras("HORA_EXTRA_DIURNA", new BigDecimal("3"), lunes, false));
+        var error = ReglasTopesHoras.validar(List.of(HED), mezcla);
+        assertFalse(error.isEmpty());
+        assertTrue(error.get().contains("Autorice la novedad"));
+    }
+
+    @Test
     void otroTipoSinTopeNoSeRevisa() {
         NovedadHoras nocturna = new NovedadHoras("HORA_EXTRA_NOCTURNA", new BigDecimal("50"), null);
         assertTrue(ReglasTopesHoras.validar(List.of(HED), List.of(nocturna)).isEmpty());

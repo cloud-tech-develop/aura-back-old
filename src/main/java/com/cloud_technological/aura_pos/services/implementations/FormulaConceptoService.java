@@ -100,8 +100,8 @@ public class FormulaConceptoService {
     /** Variables que puede usar una fórmula, con un valor de ejemplo de la empresa. */
     public List<VariableFormulaDto> variables(Integer empresaId) {
         Map<String, BigDecimal> parametros = queryRepo.parametrosNomina(empresaId);
-        BigDecimal smmlv = parametros.getOrDefault("SMMLV", new BigDecimal("1423500"));
-        BigDecimal aux = parametros.getOrDefault("AUX_TRANSPORTE", new BigDecimal("200000"));
+        BigDecimal smmlv = parametros.getOrDefault("SMMLV", new BigDecimal("1750905"));
+        BigDecimal aux = parametros.getOrDefault("AUX_TRANSPORTE", new BigDecimal("249095"));
         BigDecimal salario = smmlv.multiply(DOS);
         Map<String, BigDecimal> ejemplos = Map.ofEntries(
                 Map.entry("SALARIO_BASICO", salario),

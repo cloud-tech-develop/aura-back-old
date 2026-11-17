@@ -22,4 +22,7 @@ public class NominaNovedadDto {
     private String subtipo;
     private java.time.LocalDate fechaInicio;
     private java.time.LocalDate fechaFin;
+    /** APLICADA | PENDIENTE (por autorizar: pasa un tope) | APROBADA. */
+    private String estado;
+    private Boolean requiereAprobacion;
 }

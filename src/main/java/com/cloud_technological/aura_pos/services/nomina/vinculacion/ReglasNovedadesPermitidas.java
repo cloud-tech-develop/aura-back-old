@@ -41,6 +41,13 @@ public final class ReglasNovedadesPermitidas {
         }
     }
 
+    /**
+     * Una regla incumplida: el mensaje para el usuario y si autorizar la novedad la
+     * resuelve (tope "con autorización") o no (concepto no permitido, tope fijo).
+     */
+    public record Incumplimiento(String mensaje, boolean autorizable) {
+    }
+
     private ReglasNovedadesPermitidas() {
     }
 
@@ -61,6 +68,15 @@ public final class ReglasNovedadesPermitidas {
      */
     public static Optional<String> validar(List<NovedadPermitida> permitidas, List<Novedad> novedades,
                                            Function<String, String> etiqueta) {
+        return validarDetalle(permitidas, novedades, etiqueta).map(Incumplimiento::mensaje);
+    }
+
+    /**
+     * Igual que {@link #validar(List, List, Function)} pero dice además si la regla
+     * incumplida se resuelve autorizando la novedad.
+     */
+    public static Optional<Incumplimiento> validarDetalle(List<NovedadPermitida> permitidas, List<Novedad> novedades,
+                                                          Function<String, String> etiqueta) {
         if (permitidas.isEmpty()) return Optional.empty();
 
         Map<String, NovedadPermitida> porCodigo = new LinkedHashMap<>();
@@ -72,7 +88,8 @@ public final class ReglasNovedadesPermitidas {
         for (Novedad n : novedades) {
             if (n.deduccion() || SIEMPRE_PERMITIDAS.contains(n.tipo())) continue;
             if (!porCodigo.containsKey(n.tipo()))
-                return Optional.of("La novedad " + etiqueta.apply(n.tipo()) + " no está permitida en su vinculación ni en su cargo.");
+                return Optional.of(new Incumplimiento("La novedad " + etiqueta.apply(n.tipo())
+                        + " no está permitida en su vinculación ni en su cargo.", false));
             cantidades.merge(n.tipo(), nz(n.cantidad()), BigDecimal::add);
             valores.merge(n.tipo(), nz(n.valor()), BigDecimal::add);
             todasAprobadas.merge(n.tipo(), n.aprobada(), Boolean::logicalAnd);
@@ -82,14 +99,16 @@ public final class ReglasNovedadesPermitidas {
             NovedadPermitida p = porCodigo.get(e.getKey());
             // Pasar el tope con autorización: vale si todas las novedades del tipo están aprobadas.
             if (p.requiereAutorizacion() && Boolean.TRUE.equals(todasAprobadas.get(e.getKey()))) continue;
-            String sufijo = p.requiereAutorizacion() ? " Requiere autorización: apruebe la novedad para pasar el tope." : "";
+            String sufijo = p.requiereAutorizacion() ? " Requiere autorización: autorice la novedad para pasar el tope." : "";
             if (p.topeCantidad() != null && e.getValue().compareTo(p.topeCantidad()) > 0)
-                return Optional.of("La novedad " + etiqueta.apply(e.getKey()) + " suma " + e.getValue().stripTrailingZeros().toPlainString()
-                        + " y su tope por período es " + p.topeCantidad().stripTrailingZeros().toPlainString() + "." + sufijo);
+                return Optional.of(new Incumplimiento("La novedad " + etiqueta.apply(e.getKey()) + " suma "
+                        + e.getValue().stripTrailingZeros().toPlainString() + " y su tope por período es "
+                        + p.topeCantidad().stripTrailingZeros().toPlainString() + "." + sufijo, p.requiereAutorizacion()));
             BigDecimal valor = valores.get(e.getKey());
             if (p.topeValor() != null && valor.compareTo(p.topeValor()) > 0)
-                return Optional.of("La novedad " + etiqueta.apply(e.getKey()) + " suma $" + valor.stripTrailingZeros().toPlainString()
-                        + " y su tope por período es $" + p.topeValor().stripTrailingZeros().toPlainString() + "." + sufijo);
+                return Optional.of(new Incumplimiento("La novedad " + etiqueta.apply(e.getKey()) + " suma $"
+                        + valor.stripTrailingZeros().toPlainString() + " y su tope por período es $"
+                        + p.topeValor().stripTrailingZeros().toPlainString() + "." + sufijo, p.requiereAutorizacion()));
         }
         return Optional.empty();
     }

@@ -170,7 +170,7 @@ public class CorreoQueryRepository {
     // ── Historial ───────────────────────────────────────────────────────────
 
     private static final String FILA = """
-            SELECT c.id, c.tipo, c.documento_id, c.destinatario, c.asunto, c.estado, c.error,
+            SELECT c.id, c.tipo, c.documento_id, c.destinatario, c.asunto, c.estado, c.error, c.adjuntos_adicionales,
                    c.created_at, c.enviado_at,
                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', tu.nombres, tu.apellidos)), ''), u.username) AS usuario_nombre,
                    CASE WHEN c.tipo = 'NOMINA' THEN (
@@ -219,6 +219,7 @@ public class CorreoQueryRepository {
         f.setDocumentoId(rs.getLong("documento_id"));
         f.setDestinatario(rs.getString("destinatario"));
         f.setAsunto(rs.getString("asunto"));
+        f.setAdjuntosAdicionales(rs.getString("adjuntos_adicionales"));
         f.setEstado(rs.getString("estado"));
         f.setError(rs.getString("error"));
         f.setCreatedAt(rs.getObject("created_at", LocalDateTime.class));

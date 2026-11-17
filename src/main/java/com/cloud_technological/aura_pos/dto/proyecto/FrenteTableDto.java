@@ -19,4 +19,6 @@ public class FrenteTableDto {
     private String estado;
     private String observacion;
     private long trabajadoresCount;
+    /** Frente "General" (todo el proyecto), creado por el sistema (V241). */
+    private Boolean esGeneral;
 }

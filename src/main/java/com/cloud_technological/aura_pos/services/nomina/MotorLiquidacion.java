@@ -36,6 +36,7 @@ import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasAprend
 import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasConceptosCargo;
 import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasNovedadesPermitidas;
 import com.cloud_technological.aura_pos.services.nomina.vinculacion.ReglasTopesHoras;
+import com.cloud_technological.aura_pos.services.nomina.vinculacion.TopeNovedadException;
 import com.cloud_technological.aura_pos.utils.GlobalException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -689,28 +690,39 @@ public class MotorLiquidacion {
 
     // ── Novedades y conceptos propios (R3.2d) ───────────────────────────────
 
-    /** 400 con la causa si las novedades incumplen las permitidas de la vinculación. */
+    /**
+     * 400 con la causa si las novedades incumplen las permitidas de la vinculación
+     * o los topes de horas del cargo. Cuando autorizar la novedad lo resuelve, lanza
+     * {@link TopeNovedadException} para que quien la registra la deje "por autorizar".
+     */
     private void validarNovedadesPermitidas(NominaEntity nomina, ContratoLaboralEntity contrato,
                                             NominaConfigEntity config) {
         if (nomina.getNovedades() == null || nomina.getNovedades().isEmpty()) return;
         List<ReglasNovedadesPermitidas.Novedad> novedades = nomina.getNovedades().stream()
                 .map(n -> new ReglasNovedadesPermitidas.Novedad(n.getTipo(), n.getCantidad(), n.getValorTotal(),
-                        Boolean.TRUE.equals(n.getEsDeduccion()), "APROBADA".equals(n.getEstado())))
+                        Boolean.TRUE.equals(n.getEsDeduccion()), APROBADA.equals(n.getEstado())))
                 .toList();
-        Optional<String> error = ReglasNovedadesPermitidas.validar(
+        Optional<ReglasNovedadesPermitidas.Incumplimiento> error = ReglasNovedadesPermitidas.validarDetalle(
                 reglasVinculacion.novedadesPermitidas(contrato.getId()), novedades,
                 codigo -> etiquetaConcepto(config, codigo, nomina.getPeriodo() != null
                         ? nomina.getPeriodo().getFechaFin() : LocalDate.now()));
-        if (error.isPresent()) throw new GlobalException(HttpStatus.BAD_REQUEST, error.get());
+        if (error.isPresent()) {
+            if (error.get().autorizable()) throw new TopeNovedadException(error.get().mensaje());
+            throw new GlobalException(HttpStatus.BAD_REQUEST, error.get().mensaje());
+        }
 
-        // F6 — máximo de horas extra y recargos del cargo.
+        // F6 — máximo de horas extra y recargos del cargo: pasarlo exige autorizar la novedad.
         List<ReglasTopesHoras.NovedadHoras> horas = nomina.getNovedades().stream()
                 .filter(n -> !Boolean.TRUE.equals(n.getEsDeduccion()))
-                .map(n -> new ReglasTopesHoras.NovedadHoras(n.getTipo(), n.getCantidad(), n.getFechaInicio()))
+                .map(n -> new ReglasTopesHoras.NovedadHoras(n.getTipo(), n.getCantidad(), n.getFechaInicio(),
+                        APROBADA.equals(n.getEstado())))
                 .toList();
         Optional<String> errorHoras = ReglasTopesHoras.validar(reglasVinculacion.topesHoras(contrato.getId()), horas);
-        if (errorHoras.isPresent()) throw new GlobalException(HttpStatus.BAD_REQUEST, errorHoras.get());
+        if (errorHoras.isPresent()) throw new TopeNovedadException(errorHoras.get());
     }
+
+    /** Estado de una novedad autorizada (por el supervisor de asistencia o en la prenómina). */
+    private static final String APROBADA = "APROBADA";
 
     /**
      * Una línea de devengado por cada novedad que paga, con el concepto de su tipo

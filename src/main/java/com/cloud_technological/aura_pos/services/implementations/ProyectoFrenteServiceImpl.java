@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import com.cloud_technological.aura_pos.services.asistencia.ModoAsistenciaObra;
 import com.cloud_technological.aura_pos.dto.proyecto.AsignarTrabajadorDto;
 import com.cloud_technological.aura_pos.dto.proyecto.CreateFrenteDto;
 import com.cloud_technological.aura_pos.dto.proyecto.FrenteTableDto;
@@ -32,6 +33,7 @@ public class ProyectoFrenteServiceImpl implements ProyectoFrenteService {
     @Autowired private ProyectoFrenteJPARepository frenteRepo;
     @Autowired private ProyectoFrenteTrabajadorJPARepository trabajadorRepo;
     @Autowired private ProyectoFrenteQueryRepository queryRepo;
+    @Autowired private ModoAsistenciaObra modoAsistencia;
 
     @Override
     public List<FrenteTableDto> listarPorProyecto(Long proyectoId, Integer empresaId) {
@@ -45,7 +47,14 @@ public class ProyectoFrenteServiceImpl implements ProyectoFrenteService {
 
     @Override
     @Transactional
+    public int consolidarEnGeneral(Integer empresaId, Long usuarioId) {
+        return queryRepo.consolidarEnGeneral(empresaId, usuarioId);
+    }
+
+    @Override
+    @Transactional
     public FrenteTableDto crearFrente(Long proyectoId, CreateFrenteDto dto, Integer empresaId, Long usuarioId) {
+        modoAsistencia.exigirFrentes(empresaId);
         ProyectoEntity proyecto = proyectoRepo.findByIdAndEmpresaIdAndDeletedAtIsNull(proyectoId, empresaId)
                 .orElseThrow(() -> new GlobalException(HttpStatus.NOT_FOUND, "Proyecto no encontrado"));
         if ("FINALIZADO".equals(proyecto.getEstado()) || "ANULADO".equals(proyecto.getEstado())) {
@@ -111,6 +120,9 @@ public class ProyectoFrenteServiceImpl implements ProyectoFrenteService {
     @Transactional
     public void eliminarFrente(Long id, Integer empresaId, Long usuarioId) {
         ProyectoFrenteEntity e = getFrente(id, empresaId);
+        if (Boolean.TRUE.equals(e.getEsGeneral()))
+            throw new GlobalException(HttpStatus.BAD_REQUEST,
+                    "El frente General representa el proyecto completo y no se elimina.");
         e.setDeletedAt(LocalDateTime.now());
         e.setDeletedBy(usuarioId);
         e.setEstado("ANULADO");
@@ -185,6 +197,7 @@ public class ProyectoFrenteServiceImpl implements ProyectoFrenteService {
         d.setFechaFin(e.getFechaFin());
         d.setEstado(e.getEstado());
         d.setObservacion(e.getObservacion());
+        d.setEsGeneral(e.getEsGeneral());
         return d;
     }
 }

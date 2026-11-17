@@ -48,7 +48,18 @@ public class ResendClient {
      * @param idempotencia    llave única del envío (por ejemplo "correo-123")
      */
     public record Mensaje(String nombreRemitente, List<String> para, List<String> cc, String responderA,
-            String asunto, String html, String adjuntoNombre, byte[] adjunto, String idempotencia) {
+            String asunto, String html, String adjuntoNombre, byte[] adjunto, String idempotencia,
+            List<Archivo> adicionales) {
+
+        /** Correo con un solo adjunto (o ninguno). */
+        public Mensaje(String nombreRemitente, List<String> para, List<String> cc, String responderA,
+                String asunto, String html, String adjuntoNombre, byte[] adjunto, String idempotencia) {
+            this(nombreRemitente, para, cc, responderA, asunto, html, adjuntoNombre, adjunto, idempotencia, List.of());
+        }
+    }
+
+    /** Un archivo adjunto más (V248). */
+    public record Archivo(String nombre, byte[] contenido) {
     }
 
     /**
@@ -77,12 +88,16 @@ public class ResendClient {
         if (m.responderA() != null && !m.responderA().isBlank()) body.put("reply_to", m.responderA());
         body.put("subject", m.asunto());
         body.put("html", m.html());
+        List<Map<String, Object>> adjuntos = new ArrayList<>();
         if (m.adjunto() != null && m.adjunto().length > 0) {
-            List<Map<String, Object>> adjuntos = new ArrayList<>();
             adjuntos.add(Map.of("filename", m.adjuntoNombre(), "content",
                     Base64.getEncoder().encodeToString(m.adjunto())));
-            body.put("attachments", adjuntos);
         }
+        if (m.adicionales() != null) {
+            for (Archivo a : m.adicionales())
+                adjuntos.add(Map.of("filename", a.nombre(), "content", Base64.getEncoder().encodeToString(a.contenido())));
+        }
+        if (!adjuntos.isEmpty()) body.put("attachments", adjuntos);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

@@ -1,6 +1,8 @@
 package com.cloud_technological.aura_pos.repositories.asistencia_frente;
 
 import java.util.List;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageImpl;
@@ -16,6 +18,7 @@ import com.cloud_technological.aura_pos.dto.asistencia_frente.AsistenciaFrenteTa
 import com.cloud_technological.aura_pos.dto.asistencia_frente.RevisionFilterDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.PreliquidacionFrenteItemDto;
 import com.cloud_technological.aura_pos.dto.asistencia_frente.SoporteInfoDto;
+import com.cloud_technological.aura_pos.entity.AsistenciaFrenteEntity;
 
 @Repository
 public class AsistenciaFrenteQueryRepository {
@@ -200,6 +203,101 @@ public class AsistenciaFrenteQueryRepository {
         return new PageImpl<>(list, PageRequest.of(page, size), total);
     }
 
+    /**
+     * Días de asistencia del frente en el rango, en los estados dados, del más
+     * antiguo al más reciente. Devuelve entidades sueltas con id, fecha y estado.
+     */
+    public List<AsistenciaFrenteEntity> asistenciasEnRango(Long frenteId,
+            LocalDate desde, LocalDate hasta, Integer empresaId, List<String> estados) {
+        String sql = """
+            SELECT id, fecha, estado FROM asistencia_frente
+             WHERE frente_id = :frenteId AND empresa_id = :empresaId
+               AND fecha BETWEEN :desde AND :hasta
+               AND estado IN (:estados) AND deleted_at IS NULL
+             ORDER BY fecha
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource("frenteId", frenteId)
+                .addValue("empresaId", empresaId).addValue("desde", desde).addValue("hasta", hasta)
+                .addValue("estados", estados);
+        return jdbc.query(sql, params, (rs, i) -> {
+            AsistenciaFrenteEntity af =
+                    new AsistenciaFrenteEntity();
+            af.setId(rs.getLong("id"));
+            af.setFecha(rs.getObject("fecha", LocalDate.class));
+            af.setEstado(rs.getString("estado"));
+            return af;
+        });
+    }
+
+    /**
+     * Días de asistencia por obra en los que aparece el empleado dentro del rango,
+     * en los estados dados (cualquier frente), del más antiguo al más reciente.
+     */
+    public List<AsistenciaFrenteEntity> asistenciasDelEmpleado(Integer empresaId, Long empleadoId,
+            LocalDate desde, LocalDate hasta, List<String> estados) {
+        String sql = """
+            SELECT DISTINCT af.id, af.fecha, af.estado
+              FROM asistencia_frente af
+              JOIN asistencia_frente_detalle d ON d.asistencia_frente_id = af.id AND d.deleted_at IS NULL
+             WHERE af.empresa_id = :empresaId AND d.empleado_id = :empleadoId
+               AND af.fecha BETWEEN :desde AND :hasta
+               AND af.estado IN (:estados) AND af.deleted_at IS NULL
+             ORDER BY af.fecha
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource("empresaId", empresaId)
+                .addValue("empleadoId", empleadoId).addValue("desde", desde).addValue("hasta", hasta)
+                .addValue("estados", estados);
+        return jdbc.query(sql, params, (rs, i) -> {
+            AsistenciaFrenteEntity af = new AsistenciaFrenteEntity();
+            af.setId(rs.getLong("id"));
+            af.setFecha(rs.getObject("fecha", LocalDate.class));
+            af.setEstado(rs.getString("estado"));
+            return af;
+        });
+    }
+
+    /** Lo registrado por trabajador y día en el frente dentro del rango (para el calendario del mes). */
+    public List<DiaRegistrado> diasDelFrente(Long frenteId, Integer empresaId, LocalDate desde, LocalDate hasta) {
+        String sql = """
+            SELECT d.empleado_id, (e.nombres || ' ' || e.apellidos) AS nombre, e.numero_documento,
+                   d.fecha, d.estado_asistencia, af.estado AS estado_dia,
+                   to_char(d.hora_entrada, 'HH24:MI') AS hora_entrada, to_char(d.hora_salida, 'HH24:MI') AS hora_salida,
+                   COALESCE(d.horas_trabajadas, 0) AS horas,
+                   COALESCE(d.horas_extra_diurnas, 0) + COALESCE(d.horas_extra_nocturnas, 0)
+                     + COALESCE(d.horas_extra_diurnas_dom_fest, 0) + COALESCE(d.horas_extra_nocturnas_dom_fest, 0) AS horas_extra,
+                   COALESCE(d.horas_ordinarias_nocturnas, 0) + COALESCE(d.horas_dominicales_festivas, 0) AS horas_recargo
+              FROM asistencia_frente_detalle d
+              JOIN asistencia_frente af ON af.id = d.asistencia_frente_id AND af.deleted_at IS NULL
+              JOIN empleados e ON e.id = d.empleado_id
+             WHERE d.frente_id = :frenteId AND d.empresa_id = :empresaId AND d.deleted_at IS NULL
+               AND d.fecha BETWEEN :desde AND :hasta
+             ORDER BY nombre, d.fecha
+        """;
+        MapSqlParameterSource params = new MapSqlParameterSource("frenteId", frenteId)
+                .addValue("empresaId", empresaId).addValue("desde", desde).addValue("hasta", hasta);
+        return jdbc.query(sql, params, (rs, i) -> new DiaRegistrado(rs.getLong("empleado_id"), rs.getString("nombre"),
+                rs.getString("numero_documento"), rs.getObject("fecha", LocalDate.class), rs.getString("estado_asistencia"),
+                rs.getString("estado_dia"), rs.getString("hora_entrada"), rs.getString("hora_salida"),
+                rs.getBigDecimal("horas"), rs.getBigDecimal("horas_extra"), rs.getBigDecimal("horas_recargo")));
+    }
+
+    /** Un trabajador en un día, tal como quedó registrado. */
+    public record DiaRegistrado(Long empleadoId, String nombre, String documento, LocalDate fecha,
+            String estadoAsistencia, String estadoDia, String horaEntrada, String horaSalida,
+            BigDecimal horas, BigDecimal horasExtra, BigDecimal horasRecargo) {
+    }
+
+    /** Festivos de la empresa en el rango (calendario laboral). */
+    public List<LocalDate> festivos(Integer empresaId, LocalDate desde, LocalDate hasta) {
+        return jdbc.queryForList("""
+            SELECT fecha FROM calendario_laboral
+             WHERE empresa_id = :empresaId AND deleted_at IS NULL AND fecha BETWEEN :desde AND :hasta
+               AND tipo_dia IN ('FESTIVO_NACIONAL', 'FESTIVO_REGIONAL')
+             ORDER BY fecha
+        """, new MapSqlParameterSource("empresaId", empresaId).addValue("desde", desde).addValue("hasta", hasta),
+                LocalDate.class);
+    }
+
     public List<AsistenciaDetalleDto> listarDetalles(Long asistenciaFrenteId) {
         String sql = """
             SELECT
@@ -210,6 +308,7 @@ public class AsistenciaFrenteQueryRepository {
                 e.cargo,
                 to_char(d.hora_entrada, 'HH24:MI') AS hora_entrada,
                 to_char(d.hora_salida, 'HH24:MI') AS hora_salida,
+                d.minutos_descanso,
                 d.horas_trabajadas,
                 d.horas_extra_diurnas,
                 d.horas_extra_nocturnas,

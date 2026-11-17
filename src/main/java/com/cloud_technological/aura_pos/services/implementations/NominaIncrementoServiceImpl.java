@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cloud_technological.aura_pos.services.nomina.ParametrosLegales;
 import com.cloud_technological.aura_pos.dto.nomina.comprobante.TipoComprobanteTableDto;
 import com.cloud_technological.aura_pos.dto.nomina.documento.AgregarEmpleadosDto;
 import com.cloud_technological.aura_pos.dto.nomina.documento.CreateDocumentoNominaDto;
@@ -49,6 +50,7 @@ public class NominaIncrementoServiceImpl implements NominaIncrementoService {
     private final NominaIncrementoJPARepository jpaRepository;
     private final NominaIncrementoQueryRepository queryRepository;
     private final NominaConfigJPARepository configRepository;
+    private final ParametrosLegales parametrosLegales;
     private final ContratoLaboralService contratos;
     private final NominaTipoComprobanteService tiposComprobante;
     private final NominaDocumentoService documentos;
@@ -57,6 +59,7 @@ public class NominaIncrementoServiceImpl implements NominaIncrementoService {
     public NominaIncrementoServiceImpl(NominaIncrementoJPARepository jpaRepository,
             NominaIncrementoQueryRepository queryRepository,
             NominaConfigJPARepository configRepository,
+            ParametrosLegales parametrosLegales,
             ContratoLaboralService contratos,
             NominaTipoComprobanteService tiposComprobante,
             NominaDocumentoService documentos,
@@ -64,6 +67,7 @@ public class NominaIncrementoServiceImpl implements NominaIncrementoService {
         this.jpaRepository = jpaRepository;
         this.queryRepository = queryRepository;
         this.configRepository = configRepository;
+        this.parametrosLegales = parametrosLegales;
         this.contratos = contratos;
         this.tiposComprobante = tiposComprobante;
         this.documentos = documentos;
@@ -260,7 +264,9 @@ public class NominaIncrementoServiceImpl implements NominaIncrementoService {
      * @return cuántas vinculaciones quedaron fuera por no cambiar
      */
     private int calcular(NominaIncrementoEntity i, List<Long> ids) {
+        // El mínimo del año en que rige el incremento (V239), no el guardado en la configuración.
         BigDecimal smmlv = configRepository.findByEmpresaId(i.getEmpresaId())
+                .map(c -> parametrosLegales.delAgno(c, i.getFechaAplicacion()))
                 .map(NominaConfigEntity::getSmmlv).orElse(null);
         CalculoIncremento.Tipo tipo = CalculoIncremento.Tipo.valueOf(i.getTipoIncremento());
         CalculoIncremento.Redondeo redondeo = CalculoIncremento.Redondeo.valueOf(i.getRedondeo());

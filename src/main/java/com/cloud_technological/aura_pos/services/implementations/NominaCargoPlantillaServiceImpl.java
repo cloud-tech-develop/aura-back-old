@@ -97,6 +97,27 @@ public class NominaCargoPlantillaServiceImpl implements NominaCargoPlantillaServ
 
     @Override
     @Transactional
+    public List<CargoConceptoDto> cargarConceptosBase(Long cargoId, Integer empresaId) {
+        exigirCargo(cargoId, empresaId);
+        Set<Integer> yaEnConceptos = new HashSet<>(queryRepo.numerosConceptos(cargoId));
+        Set<Integer> enNovedades = new HashSet<>(queryRepo.numerosNovedades(cargoId));
+        // Plantilla vacía = hoy el cargo liquida todo el catálogo: se incluyen también los
+        // propios automáticos para que estrenar la plantilla no quite ninguno.
+        boolean estrena = yaEnConceptos.isEmpty();
+        for (Integer numero : queryRepo.numerosConceptosBase(empresaId, estrena)) {
+            if (yaEnConceptos.contains(numero) || enNovedades.contains(numero)) continue;
+            NominaCargoConceptoEntity e = new NominaCargoConceptoEntity();
+            e.setCargoId(cargoId);
+            e.setConceptoNumero(numero);
+            e.setCreatedAt(LocalDateTime.now());
+            conceptoRepo.save(e);
+        }
+        conceptoRepo.flush();
+        return queryRepo.conceptos(cargoId, empresaId);
+    }
+
+    @Override
+    @Transactional
     public List<CargoConceptoDto> actualizarConcepto(Long cargoId, Long filaId, GuardarCargoConceptoDto dto,
             Integer empresaId) {
         exigirCargo(cargoId, empresaId);

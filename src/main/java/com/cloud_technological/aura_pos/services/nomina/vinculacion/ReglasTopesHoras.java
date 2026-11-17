@@ -18,15 +18,27 @@ import com.cloud_technological.aura_pos.repositories.nomina_vinculaciones.Vincul
  *   <li>Por día y por semana se cuentan solo las novedades con fecha.</li>
  *   <li>El tope mensual se compara con el total del período (una quincena nunca
  *       lo pasa si el mes no lo pasa).</li>
- *   <li>Los topes son de horas: la autorización no los levanta (el de horas extra
- *       es además un límite legal).</li>
+ *   <li>Pasar un tope exige autorización: si todas las novedades de ese concepto
+ *       están APROBADAS, pasa. Las horas trabajadas se pagan aunque excedan el
+ *       límite legal (el exceso es responsabilidad del empleador, no del pago);
+ *       las que vienen de asistencia o frentes ya llegan aprobadas por el supervisor.</li>
  * </ul>
  */
 public final class ReglasTopesHoras {
 
-    /** Una novedad de horas: tipo (= código de concepto), cantidad de horas y fecha (puede faltar). */
-    public record NovedadHoras(String tipo, BigDecimal horas, LocalDate fecha) {
+    /**
+     * Una novedad de horas: tipo (= código de concepto), cantidad de horas, fecha
+     * (puede faltar) y si ya está aprobada.
+     */
+    public record NovedadHoras(String tipo, BigDecimal horas, LocalDate fecha, boolean aprobada) {
+
+        public NovedadHoras(String tipo, BigDecimal horas, LocalDate fecha) {
+            this(tipo, horas, fecha, false);
+        }
     }
+
+    /** Sufijo de los mensajes: cómo se pasa el tope. */
+    static final String COMO_AUTORIZAR = " Autorice la novedad para pagar las horas por encima del tope.";
 
     private ReglasTopesHoras() {
     }
@@ -44,8 +56,10 @@ public final class ReglasTopesHoras {
         Map<String, BigDecimal> total = new LinkedHashMap<>();
         Map<String, BigDecimal> porDia = new LinkedHashMap<>();
         Map<String, BigDecimal> porSemana = new LinkedHashMap<>();
+        Map<String, Boolean> todasAprobadas = new LinkedHashMap<>();
         for (NovedadHoras n : novedades) {
             if (!porCodigo.containsKey(n.tipo())) continue;
+            todasAprobadas.merge(n.tipo(), n.aprobada(), Boolean::logicalAnd);
             BigDecimal horas = n.horas() != null ? n.horas() : BigDecimal.ZERO;
             total.merge(n.tipo(), horas, BigDecimal::add);
             if (n.fecha() != null) {
@@ -59,23 +73,28 @@ public final class ReglasTopesHoras {
         for (Map.Entry<String, BigDecimal> e : porDia.entrySet()) {
             String[] partes = e.getKey().split("\\|");
             TopeHoras t = porCodigo.get(partes[0]);
-            if (excede(e.getValue(), t.topeDia()))
+            if (excede(e.getValue(), t.topeDia()) && !aprobadas(todasAprobadas, partes[0]))
                 return Optional.of(t.tipoNombre() + ": " + texto(e.getValue()) + " horas el " + partes[1]
-                        + " y el cargo permite " + texto(t.topeDia()) + " al día.");
+                        + " y el cargo permite " + texto(t.topeDia()) + " al día." + COMO_AUTORIZAR);
         }
         for (Map.Entry<String, BigDecimal> e : porSemana.entrySet()) {
-            TopeHoras t = porCodigo.get(e.getKey().split("\\|")[0]);
-            if (excede(e.getValue(), t.topeSemana()))
+            String codigo = e.getKey().split("\\|")[0];
+            TopeHoras t = porCodigo.get(codigo);
+            if (excede(e.getValue(), t.topeSemana()) && !aprobadas(todasAprobadas, codigo))
                 return Optional.of(t.tipoNombre() + ": " + texto(e.getValue()) + " horas en una semana y el cargo permite "
-                        + texto(t.topeSemana()) + ".");
+                        + texto(t.topeSemana()) + "." + COMO_AUTORIZAR);
         }
         for (Map.Entry<String, BigDecimal> e : total.entrySet()) {
             TopeHoras t = porCodigo.get(e.getKey());
-            if (excede(e.getValue(), t.topeMes()))
+            if (excede(e.getValue(), t.topeMes()) && !aprobadas(todasAprobadas, e.getKey()))
                 return Optional.of(t.tipoNombre() + ": " + texto(e.getValue()) + " horas en el período y el cargo permite "
-                        + texto(t.topeMes()) + " al mes.");
+                        + texto(t.topeMes()) + " al mes." + COMO_AUTORIZAR);
         }
         return Optional.empty();
+    }
+
+    private static boolean aprobadas(Map<String, Boolean> todasAprobadas, String codigo) {
+        return Boolean.TRUE.equals(todasAprobadas.get(codigo));
     }
 
     private static boolean excede(BigDecimal valor, BigDecimal tope) {

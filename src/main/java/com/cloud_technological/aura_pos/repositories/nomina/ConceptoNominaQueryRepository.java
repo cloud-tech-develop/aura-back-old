@@ -246,7 +246,14 @@ public class ConceptoNominaQueryRepository {
     /** SMMLV y auxilio de transporte de la empresa (para los ejemplos del editor de fórmulas). */
     public Map<String, BigDecimal> parametrosNomina(Integer empresaId) {
         Map<String, BigDecimal> m = new HashMap<>();
-        jdbc.query("SELECT smmlv, auxilio_transporte FROM nomina_config WHERE empresa_id = :empresaId",
+        // V239: el valor de ley del año en curso; el de la configuración solo si el año no está cargado.
+        jdbc.query("""
+                SELECT COALESCE(p.smmlv, c.smmlv) AS smmlv,
+                       COALESCE(p.auxilio_transporte, c.auxilio_transporte) AS auxilio_transporte
+                  FROM nomina_config c
+                  LEFT JOIN nomina_parametro_anual p ON p.agno = EXTRACT(YEAR FROM CURRENT_DATE)
+                 WHERE c.empresa_id = :empresaId
+                """,
                 new MapSqlParameterSource("empresaId", empresaId), rs -> {
                     m.put("SMMLV", rs.getBigDecimal("smmlv"));
                     m.put("AUX_TRANSPORTE", rs.getBigDecimal("auxilio_transporte"));

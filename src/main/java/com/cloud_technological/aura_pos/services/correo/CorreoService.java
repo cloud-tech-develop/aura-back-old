@@ -52,6 +52,11 @@ public class CorreoService {
 
     /** Tamaño máximo del PDF (Resend acepta hasta 40 MB por correo). */
     private static final int MAX_ADJUNTO = 10 * 1024 * 1024;
+    /** Límite de todos los adjuntos de un correo (Resend acepta 40 MB ya codificados). */
+    private static final long MAX_TOTAL = 20L * 1024 * 1024;
+    /** Lo que se puede adjuntar además del PDF del documento. */
+    private static final Set<String> EXTENSIONES_ADICIONALES = Set.of(
+            "pdf", "jpg", "jpeg", "png", "webp", "xlsx", "xls", "docx", "doc", "csv", "txt");
     private static final Pattern CORREO = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final CorreoEnvioJPARepository repo;
@@ -255,10 +260,14 @@ public class CorreoService {
     private CorreoDtos.Fila enviarAhora(Integer empresaId, String tipo, Long documentoId, CorreoDtos.Enviar dto,
             Integer usuarioId) {
         exigirConfigurado();
-        CorreoEnvioEntity c = repo.save(nuevo(empresaId, tipo, documentoId, dto.getPara(), dto.getCc(),
-                dto.getAsunto(), dto.getMensaje(), dto.getAdjunto(), usuarioId));
+        CorreoEnvioEntity borrador = nuevo(empresaId, tipo, documentoId, dto.getPara(), dto.getCc(),
+                dto.getAsunto(), dto.getMensaje(), dto.getAdjunto(), usuarioId);
+        List<ResendClient.Archivo> adicionales = adicionales(dto.getAdicionales(), borrador.getAdjunto());
+        if (!adicionales.isEmpty())
+            borrador.setAdjuntosAdicionales(recortarNombres(adicionales.stream().map(ResendClient.Archivo::nombre).toList()));
+        CorreoEnvioEntity c = repo.save(borrador);
         c.setIntentos(1);
-        registrar(c, despachar(c));
+        registrar(c, despachar(c, adicionales));
         // Un fallo no se lanza: quedaría deshecho y no aparecería en el historial con su motivo.
         repo.saveAndFlush(c);
         return query.historial(empresaId, List.of(tipo), documentoId).stream()
@@ -266,13 +275,73 @@ public class CorreoService {
     }
 
     private ResendClient.Resultado despachar(CorreoEnvioEntity c) {
+        return despachar(c, List.of());
+    }
+
+    /** Envía el correo con su PDF y, si los hay, los documentos adicionales. */
+    private ResendClient.Resultado despachar(CorreoEnvioEntity c, List<ResendClient.Archivo> adicionales) {
         EmpresaCorreo e = query.empresa(c.getEmpresaId());
         String nombre = e != null ? e.nombre() : "Aura";
-        String html = CorreoPlantilla.html(nombre, e != null ? e.logoUrl() : null, c.getMensaje(), c.getAdjuntoNombre(),
+        String listaAdjuntos = c.getAdjuntoNombre();
+        if (!adicionales.isEmpty()) {
+            String otros = String.join(", ", adicionales.stream().map(ResendClient.Archivo::nombre).toList());
+            listaAdjuntos = listaAdjuntos != null ? listaAdjuntos + ", " + otros : otros;
+        }
+        String html = CorreoPlantilla.html(nombre, e != null ? e.logoUrl() : null, c.getMensaje(), listaAdjuntos,
                 e != null ? e.correo() : null, null, null);
         return resend.enviar(new ResendClient.Mensaje(nombre, separar(c.getDestinatario()), separar(c.getCc()),
                 e != null ? e.correo() : null, c.getAsunto(), html, c.getAdjuntoNombre(), c.getAdjunto(),
-                llave(c)));
+                llave(c), adicionales));
+    }
+
+    /**
+     * Documentos adicionales del correo, ya validados: tipo permitido, sin archivos
+     * vacíos y que el total con el PDF del documento no pase de {@link #MAX_TOTAL}.
+     */
+    private static List<ResendClient.Archivo> adicionales(List<CorreoDtos.Adjunto> lista, byte[] principal) {
+        if (lista == null || lista.isEmpty()) return List.of();
+        List<ResendClient.Archivo> out = new ArrayList<>();
+        long total = principal != null ? principal.length : 0;
+        for (CorreoDtos.Adjunto a : lista) {
+            String nombre = nombreAdicional(a.getNombre());
+            byte[] datos = decodificarArchivo(a.getBase64(), nombre);
+            total += datos.length;
+            if (total > MAX_TOTAL)
+                throw new GlobalException(HttpStatus.BAD_REQUEST,
+                        "Los adjuntos suman más de " + (MAX_TOTAL / (1024 * 1024)) + " MB: quite alguno o envíelo en otro correo");
+            out.add(new ResendClient.Archivo(nombre, datos));
+        }
+        return out;
+    }
+
+    /** Nombre seguro de un documento adicional; solo extensiones que el cliente puede abrir. */
+    static String nombreAdicional(String nombre) {
+        String n = nombre == null ? "" : nombre.replaceAll("[\\\\/:*?\"<>|\\r\\n]", "").trim();
+        int punto = n.lastIndexOf('.');
+        String ext = punto > 0 ? n.substring(punto + 1).toLowerCase() : "";
+        if (!EXTENSIONES_ADICIONALES.contains(ext))
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo \"" + (n.isEmpty() ? "sin nombre" : n)
+                    + "\" no se puede adjuntar. Se aceptan PDF, imágenes (JPG, PNG), Excel, Word, CSV y TXT.");
+        return n.length() > 150 ? n.substring(0, 140) + "." + ext : n;
+    }
+
+    private static byte[] decodificarArchivo(String base64, String nombre) {
+        String b = base64 != null && base64.startsWith("data:") && base64.contains(",")
+                ? base64.substring(base64.indexOf(',') + 1) : base64;
+        byte[] datos;
+        try {
+            datos = Base64.getDecoder().decode(b == null ? "" : b.replaceAll("\\s", ""));
+        } catch (IllegalArgumentException e) {
+            throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo \"" + nombre + "\" llegó dañado. Vuelva a adjuntarlo");
+        }
+        if (datos.length == 0) throw new GlobalException(HttpStatus.BAD_REQUEST, "El archivo \"" + nombre + "\" está vacío");
+        return datos;
+    }
+
+    /** La lista de nombres cabe en la columna del historial. */
+    private static String recortarNombres(List<String> nombres) {
+        String s = String.join("; ", nombres);
+        return s.length() > 1000 ? s.substring(0, 997) + "..." : s;
     }
 
     /**

@@ -13,6 +13,8 @@ import com.cloud_technological.aura_pos.dto.proyecto.ProyectoDto;
 import com.cloud_technological.aura_pos.dto.proyecto.ProyectoTableDto;
 import com.cloud_technological.aura_pos.dto.proyecto.UpdateProyectoDto;
 import com.cloud_technological.aura_pos.entity.ProyectoEntity;
+import com.cloud_technological.aura_pos.entity.ProyectoFrenteEntity;
+import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoFrenteJPARepository;
 import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoJPARepository;
 import com.cloud_technological.aura_pos.repositories.proyecto.ProyectoQueryRepository;
 import com.cloud_technological.aura_pos.services.ProyectoService;
@@ -26,6 +28,7 @@ public class ProyectoServiceImpl implements ProyectoService {
 
     @Autowired private ProyectoJPARepository jpaRepo;
     @Autowired private ProyectoQueryRepository queryRepo;
+    @Autowired private ProyectoFrenteJPARepository frenteRepo;
 
     @Override
     public PageImpl<ProyectoTableDto> listar(PageableDto<Object> pageable, Integer empresaId) {
@@ -65,7 +68,26 @@ public class ProyectoServiceImpl implements ProyectoService {
         e.setObservacion(dto.getObservacion());
         e.setCreatedBy(usuarioId);
 
-        return toTableDto(jpaRepo.save(e));
+        ProyectoEntity guardado = jpaRepo.save(e);
+        crearFrenteGeneral(guardado, usuarioId);
+        return toTableDto(guardado);
+    }
+
+    /**
+     * Frente "General" del proyecto (V241): la asistencia y los trabajadores cuelgan
+     * de un frente; quien no divide la obra trabaja sobre este sin ver frentes.
+     */
+    private void crearFrenteGeneral(ProyectoEntity proyecto, Long usuarioId) {
+        ProyectoFrenteEntity general = new ProyectoFrenteEntity();
+        general.setEmpresaId(proyecto.getEmpresaId());
+        general.setProyectoId(proyecto.getId());
+        general.setCodigo("GENERAL");
+        general.setNombre("General (todo el proyecto)");
+        general.setDescripcion("Frente creado por el sistema para registrar el proyecto completo, sin dividirlo en frentes.");
+        general.setEstado("ACTIVO");
+        general.setEsGeneral(Boolean.TRUE);
+        general.setCreatedBy(usuarioId);
+        frenteRepo.save(general);
     }
 
     @Override

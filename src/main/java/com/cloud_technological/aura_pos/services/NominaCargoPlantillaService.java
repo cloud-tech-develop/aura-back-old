@@ -43,6 +43,13 @@ public interface NominaCargoPlantillaService {
     /** Agrega novedades permitidas por número, con las mismas reglas que los conceptos. */
     List<CargoNovedadDto> agregarNovedades(Long cargoId, List<Integer> numeros, Integer empresaId);
 
+    /**
+     * Precarga en la plantilla del cargo los conceptos base de un empleado (sueldo,
+     * auxilio, horas extra y recargos, seguridad social, aportes y provisiones).
+     * No repite los que ya están ni toca los de novedades permitidas.
+     */
+    List<CargoConceptoDto> cargarConceptosBase(Long cargoId, Integer empresaId);
+
     /** Cambia topes y autorización de una novedad del cargo. */
     List<CargoNovedadDto> actualizarNovedad(Long cargoId, Long filaId, GuardarCargoNovedadDto dto, Integer empresaId);
 

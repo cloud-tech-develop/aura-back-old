@@ -48,6 +48,17 @@ public class ClasificadorHorasService {
 
     public Resultado clasificar(Integer empresaId, Long frenteId, LocalDate fecha,
             LocalTime entrada, LocalTime salida, String estadoAsistencia) {
+        return clasificar(empresaId, frenteId, fecha, entrada, salida, estadoAsistencia, null);
+    }
+
+    /**
+     * Igual que {@link #clasificar(Integer, Long, LocalDate, LocalTime, LocalTime, String)}
+     * con el descanso real del día.
+     *
+     * @param minutosDescanso descanso del día en minutos; null = el del turno del frente
+     */
+    public Resultado clasificar(Integer empresaId, Long frenteId, LocalDate fecha,
+            LocalTime entrada, LocalTime salida, String estadoAsistencia, Integer minutosDescanso) {
         Resultado r = new Resultado();
 
         boolean cuentaHoras = entrada != null && salida != null
@@ -78,6 +89,7 @@ public class ClasificadorHorasService {
             if (turno.getMinutosDescanso() != null) descansoMin = turno.getMinutosDescanso();
             cruzaMedianoche = Boolean.TRUE.equals(turno.getCruzaMedianoche());
         }
+        if (minutosDescanso != null) descansoMin = minutosDescanso;
 
         // ── Intervalo bruto (minutos), manejando cruce de medianoche ──
         int entMin = entrada.toSecondOfDay() / 60;
@@ -137,8 +149,11 @@ public class ClasificadorHorasService {
         }
 
         // ── Límite diario de extras ──
+        // ADVERTENCIA, no CRITICA: las horas trabajadas se pagan aunque pasen el límite
+        // legal. Como crítica bloqueaba enviar y aprobar el día para siempre (no hay
+        // cómo cerrar una alerta), y la nómina nunca recibía esas horas.
         if (extraTotal.compareTo(maxDia) > 0) {
-            r.alertas.add(new Alerta("HORAS_EXTRA_SUPERA_LIMITE_DIA", "CRITICA",
+            r.alertas.add(new Alerta("HORAS_EXTRA_SUPERA_LIMITE_DIA", "ADVERTENCIA",
                     "Las horas extra del día (" + extraTotal + ") superan el máximo permitido (" + maxDia + ")"));
         }
 
