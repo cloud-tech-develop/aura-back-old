@@ -58,6 +58,8 @@ public class SecurityConfig {
                     .requestMatchers("/api/auth/forgot-password").permitAll()
                     .requestMatchers("/api/auth/reset-password").permitAll()
                     .requestMatchers("/api/municipios/**").permitAll()
+                    // Consulta de la orden de servicio técnico por el cliente (enlace con clave).
+                    .requestMatchers("/api/auth/consulta-servicio/**").permitAll()
                     .requestMatchers("/api/platform/**").hasAuthority("PLATFORM_ADMIN")
                     .requestMatchers("/api/auth/register").hasAuthority("PLATFORM_ADMIN");
 

@@ -72,6 +72,24 @@ public class CorreoController {
         return ok("Correo enviado", service.enviarCotizacion(securityUtils.getEmpresaId(), id, dto, actor()));
     }
 
+    // ── Orden de servicio técnico ────────────────────────────────────────
+
+    @GetMapping("/servicio-tecnico/{id}/sugerencia")
+    public ResponseEntity<ApiResponse<CorreoDtos.Sugerencia>> sugerenciaServicio(@PathVariable Long id) {
+        return ok("Sugerencia", service.sugerenciaServicio(securityUtils.getEmpresaId(), id));
+    }
+
+    @GetMapping("/servicio-tecnico/{id}")
+    public ResponseEntity<ApiResponse<List<CorreoDtos.Fila>>> historialServicio(@PathVariable Long id) {
+        return ok("Correos de la orden", service.historialServicio(securityUtils.getEmpresaId(), id));
+    }
+
+    @PostMapping("/servicio-tecnico/{id}/enviar")
+    public ResponseEntity<ApiResponse<CorreoDtos.Fila>> enviarServicio(@PathVariable Long id,
+            @Valid @RequestBody CorreoDtos.Enviar dto) {
+        return ok("Correo enviado", service.enviarServicio(securityUtils.getEmpresaId(), id, dto, actor()));
+    }
+
     // ── Comprobantes de nómina en masa ──────────────────────────────────
 
     @GetMapping("/nomina/sugerencia")
