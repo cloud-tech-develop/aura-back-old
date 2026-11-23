@@ -61,6 +61,10 @@ public final class PermisoRutas {
         m.put("/api/dashboard", List.of("principal.dashboard"));
         // Nube de documentos (PLAN_NUBE_DOCUMENTOS): el servicio además revisa el permiso siempre.
         m.put("/api/nube", List.of("principal.documentos"));
+        // Servicio técnico (PLAN_SERVICIO_TECNICO): módulo opcional por empresa.
+        m.put("/api/servicio-tecnico", List.of("servicio-tecnico.ordenes"));
+        m.put("/api/servicio-tecnico/config", List.of("servicio-tecnico.configuracion"));
+        m.put("/api/correos/servicio-tecnico", List.of("servicio-tecnico.ordenes"));
         // Tableros de inicio por línea de uso (PLAN_PERFIL_EMPRESA): la puerta es el inicio.
         m.put("/api/tablero", List.of("principal.dashboard"));
         m.put("/api/pos/carritos-abandonados/reporte", List.of("reportes.carritos-abandonados"));

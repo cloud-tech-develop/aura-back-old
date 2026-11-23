@@ -62,6 +62,18 @@ public class CorreoQueryRepository {
         return r.isEmpty() ? null : r.get(0);
     }
 
+    /** Orden de servicio técnico: el correo de contacto de la orden manda sobre el del cliente. */
+    public DocumentoCorreo servicioTecnico(Long ordenId, Integer empresaId) {
+        String sql = "SELECT o.id, 'SERVICIO_TECNICO' AS tipo, o.codigo AS numero, "
+                + NOMBRE_TERCERO + " AS nombre, "
+                + "COALESCE(NULLIF(TRIM(o.contacto_email), ''), " + CORREO_TERCERO + ") AS correo "
+                + "FROM servicio_orden o JOIN tercero t ON t.id = o.cliente_id "
+                + "WHERE o.id = :id AND o.empresa_id = :empresaId";
+        List<DocumentoCorreo> r = jdbc.query(sql, new MapSqlParameterSource("id", ordenId).addValue("empresaId", empresaId),
+                CorreoQueryRepository::documento);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
     /** Nóminas de la empresa con el empleado, su correo y el período. */
     public List<DocumentoCorreo> nominas(List<Long> nominaIds, Integer empresaId) {
         if (nominaIds == null || nominaIds.isEmpty()) return List.of();

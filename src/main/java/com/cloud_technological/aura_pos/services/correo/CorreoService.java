@@ -44,6 +44,7 @@ public class CorreoService {
     public static final String FACTURA = "FACTURA";
     public static final String CUENTA_COBRO = "CUENTA_COBRO";
     public static final String COTIZACION = "COTIZACION";
+    public static final String SERVICIO_TECNICO = "SERVICIO_TECNICO";
     public static final String NOMINA = "NOMINA";
     /** Cobro de cartera: documento_id = el cliente (tercero). */
     public static final String COBRO = "COBRO";
@@ -84,6 +85,35 @@ public class CorreoService {
         String mensaje = "Hola " + saludo(d.nombre()) + ",\n\nAdjuntamos la cotización que nos solicitó. "
                 + "Si tiene preguntas o quiere ajustar algo, responda este correo.\n\nCordialmente,\n" + empresa;
         return new CorreoDtos.Sugerencia(lista(d.correo()), doc + " - " + empresa, mensaje, resend.configurado());
+    }
+
+    /** Para, asunto y mensaje propuestos para una orden de servicio técnico. */
+    public CorreoDtos.Sugerencia sugerenciaServicio(Integer empresaId, Long ordenId) {
+        DocumentoCorreo d = servicio(empresaId, ordenId);
+        String empresa = nombreEmpresa(empresaId);
+        String mensaje = "Hola " + saludo(d.nombre()) + ",\n\nAdjuntamos la orden de servicio " + d.numero()
+                + " con el estado de su equipo, el diagnóstico y el valor del servicio. Si tiene preguntas, "
+                + "responda este correo.\n\nCordialmente,\n" + empresa;
+        return new CorreoDtos.Sugerencia(lista(d.correo()), "Orden de servicio " + d.numero() + " - " + empresa, mensaje,
+                resend.configurado());
+    }
+
+    @Transactional
+    public CorreoDtos.Fila enviarServicio(Integer empresaId, Long ordenId, CorreoDtos.Enviar dto, Integer usuarioId) {
+        exigirAdjunto(dto);
+        servicio(empresaId, ordenId);
+        return enviarAhora(empresaId, SERVICIO_TECNICO, ordenId, dto, usuarioId);
+    }
+
+    public List<CorreoDtos.Fila> historialServicio(Integer empresaId, Long ordenId) {
+        servicio(empresaId, ordenId);
+        return query.historial(empresaId, List.of(SERVICIO_TECNICO), ordenId);
+    }
+
+    private DocumentoCorreo servicio(Integer empresaId, Long id) {
+        DocumentoCorreo d = query.servicioTecnico(id, empresaId);
+        if (d == null) throw new GlobalException(HttpStatus.NOT_FOUND, "Orden de servicio no encontrada");
+        return d;
     }
 
     /** Asunto y mensaje del lote de comprobantes (el "para" es el correo de cada empleado). */
